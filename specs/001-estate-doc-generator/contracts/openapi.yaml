@@ -1,0 +1,1756 @@
+openapi: 3.0.3
+info:
+  title: Document Merge System API
+  description: |
+    RESTful API for the Document Merge System, supporting admin and client modes.
+    Administrators manage users, question groups, document flows, and templates.
+    Users complete questionnaires and generate merged PDF documents.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api.example.com/api/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and password management
+  - name: Users
+    description: User management (admin only)
+  - name: Question Groups
+    description: Question group and question management
+  - name: Document Flows
+    description: Document flow management
+  - name: Templates
+    description: Document template management
+  - name: Sessions
+    description: Questionnaire session management
+  - name: Merge
+    description: Document merge and PDF generation
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ==================== Authentication ====================
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user with username and password, returns JWT token in httpOnly cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: access_token=abc123; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      description: Invalidate JWT token and clear cookie
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user
+      description: Returns information about the currently authenticated user
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /auth/forgot-password:
+    post:
+      tags: [Authentication]
+      summary: Request password reset
+      description: Send password reset email to user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Password reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset email sent
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/reset-password:
+    post:
+      tags: [Authentication]
+      summary: Reset password
+      description: Reset password using token from email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token:
+                  type: string
+                  format: uuid
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset successfully
+        '400':
+          description: Invalid or expired token
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ==================== Users (Admin Only) ====================
+  /users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: Get paginated list of users (admin only)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, user]
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+    post:
+      tags: [Users]
+      summary: Create new user
+      description: Create a new user account (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Username or email already exists
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Users]
+      summary: Update user
+      description: Update user information (admin only)
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict (optimistic locking)
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags: [Users]
+      summary: Deactivate user
+      description: Soft delete user (admin only)
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '204':
+          description: User deactivated successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== Question Groups ====================
+  /question-groups:
+    get:
+      tags: [Question Groups]
+      summary: List question groups
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of question groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  question_groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionGroup'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+    post:
+      tags: [Question Groups]
+      summary: Create question group
+      description: Create a new question group (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionGroupCreate'
+      responses:
+        '201':
+          description: Question group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionGroup'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /question-groups/{group_id}:
+    get:
+      tags: [Question Groups]
+      summary: Get question group by ID
+      parameters:
+        - $ref: '#/components/parameters/GroupIdParam'
+      responses:
+        '200':
+          description: Question group details with questions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionGroupDetail'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Question Groups]
+      summary: Update question group
+      parameters:
+        - $ref: '#/components/parameters/GroupIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionGroupUpdate'
+      responses:
+        '200':
+          description: Question group updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionGroup'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict
+
+    delete:
+      tags: [Question Groups]
+      summary: Delete question group
+      parameters:
+        - $ref: '#/components/parameters/GroupIdParam'
+      responses:
+        '204':
+          description: Question group deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /question-groups/{group_id}/questions:
+    post:
+      tags: [Question Groups]
+      summary: Add question to group
+      parameters:
+        - $ref: '#/components/parameters/GroupIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionCreate'
+      responses:
+        '201':
+          description: Question added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+        '400':
+          description: Question identifier already exists
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /questions/{question_id}:
+    get:
+      tags: [Question Groups]
+      summary: Get question by ID
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdParam'
+      responses:
+        '200':
+          description: Question details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Question Groups]
+      summary: Update question
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionUpdate'
+      responses:
+        '200':
+          description: Question updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict
+
+    delete:
+      tags: [Question Groups]
+      summary: Delete question
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdParam'
+      responses:
+        '204':
+          description: Question deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /questions/{question_id}/flow-rules:
+    get:
+      tags: [Question Groups]
+      summary: Get flow rules for question
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdParam'
+      responses:
+        '200':
+          description: List of flow rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlowRule'
+
+    post:
+      tags: [Question Groups]
+      summary: Add flow rule to question
+      parameters:
+        - $ref: '#/components/parameters/QuestionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowRuleCreate'
+      responses:
+        '201':
+          description: Flow rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowRule'
+        '400':
+          description: Rule would create cycle or duplicate
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /flow-rules/{rule_id}:
+    delete:
+      tags: [Question Groups]
+      summary: Delete flow rule
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Flow rule deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== Document Flows ====================
+  /flows:
+    get:
+      tags: [Document Flows]
+      summary: List document flows
+      parameters:
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of document flows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentFlow'
+
+    post:
+      tags: [Document Flows]
+      summary: Create document flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentFlowCreate'
+      responses:
+        '201':
+          description: Document flow created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentFlow'
+        '400':
+          description: Flow name already exists
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /flows/{flow_id}:
+    get:
+      tags: [Document Flows]
+      summary: Get flow by ID
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+      responses:
+        '200':
+          description: Flow details with assigned question groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentFlowDetail'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Document Flows]
+      summary: Update document flow
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentFlowUpdate'
+      responses:
+        '200':
+          description: Flow updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentFlow'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict
+
+    delete:
+      tags: [Document Flows]
+      summary: Delete document flow
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+      responses:
+        '204':
+          description: Flow deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /flows/{flow_id}/question-groups:
+    post:
+      tags: [Document Flows]
+      summary: Assign question group to flow
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_group_id]
+              properties:
+                question_group_id:
+                  type: integer
+                display_order:
+                  type: integer
+                  default: 0
+      responses:
+        '201':
+          description: Question group assigned to flow
+        '400':
+          description: Question group already assigned to this flow
+        '404':
+          description: Flow or question group not found
+
+    delete:
+      tags: [Document Flows]
+      summary: Remove question group from flow
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+        - name: question_group_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Question group removed from flow
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /flows/{flow_id}/validate:
+    post:
+      tags: [Document Flows]
+      summary: Validate flow structure
+      description: Check for cycles, unreachable groups, and missing navigation paths
+      parameters:
+        - $ref: '#/components/parameters/FlowIdParam'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+
+  # ==================== Templates ====================
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List document templates
+      parameters:
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentTemplate'
+
+    post:
+      tags: [Templates]
+      summary: Create document template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreate'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '400':
+          description: Template name already exists
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /templates/upload:
+    post:
+      tags: [Templates]
+      summary: Upload document for template
+      description: Upload Word/PDF/image file, extract text via OCR, convert to Markdown
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                template_name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: File uploaded and processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id:
+                    type: integer
+                  extracted_text:
+                    type: string
+                  ocr_status:
+                    type: string
+                    enum: [pending, processing, completed, failed]
+        '400':
+          description: Invalid file type or size
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /templates/{template_id}:
+    get:
+      tags: [Templates]
+      summary: Get template by ID
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdParam'
+      responses:
+        '200':
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Templates]
+      summary: Update template
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateUpdate'
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict
+
+    delete:
+      tags: [Templates]
+      summary: Delete template
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdParam'
+      responses:
+        '204':
+          description: Template deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /templates/{template_id}/validate:
+    post:
+      tags: [Templates]
+      summary: Validate template identifiers
+      description: Check that all <<identifier>> placeholders correspond to existing questions
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdParam'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_valid:
+                    type: boolean
+                  identifiers_found:
+                    type: array
+                    items:
+                      type: string
+                  missing_identifiers:
+                    type: array
+                    items:
+                      type: string
+
+  # ==================== Sessions ====================
+  /sessions:
+    get:
+      tags: [Sessions]
+      summary: List questionnaire sessions
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: flow_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [in_progress, completed, abandoned]
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionnaireSession'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+    post:
+      tags: [Sessions]
+      summary: Start new questionnaire session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+      responses:
+        '201':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionnaireSession'
+        '404':
+          description: Client or flow not found
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      summary: Get session by ID
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      responses:
+        '200':
+          description: Session details with current group and answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionnaireSessionDetail'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    patch:
+      tags: [Sessions]
+      summary: Update session
+      description: Update current group or status
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_group_id:
+                  type: integer
+                status:
+                  type: string
+                  enum: [in_progress, completed, abandoned]
+      responses:
+        '200':
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionnaireSession'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /sessions/{session_id}/answers:
+    post:
+      tags: [Sessions]
+      summary: Submit answer
+      description: Submit or update answer for a question (auto-save)
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerSubmit'
+      responses:
+        '201':
+          description: Answer saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Answer'
+        '404':
+          description: Session or question not found
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /sessions/{session_id}/navigate:
+    post:
+      tags: [Sessions]
+      summary: Navigate to next/previous group
+      description: Navigate based on flow rules and current answers
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [direction]
+              properties:
+                direction:
+                  type: string
+                  enum: [forward, backward]
+      responses:
+        '200':
+          description: Navigation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  next_group_id:
+                    type: integer
+                    nullable: true
+                  is_complete:
+                    type: boolean
+                  current_group:
+                    $ref: '#/components/schemas/QuestionGroupDetail'
+        '400':
+          description: Cannot navigate (missing required answers, no valid path)
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==================== Merge ====================
+  /merge:
+    post:
+      tags: [Merge]
+      summary: Generate merged PDF document
+      description: Merge client answers into template and generate PDF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, template_id]
+              properties:
+                session_id:
+                  type: integer
+                template_id:
+                  type: integer
+      responses:
+        '201':
+          description: Document generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedDocument'
+        '400':
+          description: Session not completed or template has missing identifiers
+        '404':
+          description: Session or template not found
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /merge/batch:
+    post:
+      tags: [Merge]
+      summary: Generate multiple PDFs
+      description: Merge client answers into multiple templates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, template_ids]
+              properties:
+                session_id:
+                  type: integer
+                template_ids:
+                  type: array
+                  items:
+                    type: integer
+                  minItems: 1
+      responses:
+        '201':
+          description: Documents generated successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeneratedDocument'
+        '400':
+          description: Session not completed
+        '404':
+          description: Session or templates not found
+
+  /documents/{document_id}/download:
+    get:
+      tags: [Merge]
+      summary: Download generated PDF
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /clients:
+    get:
+      tags: [Sessions]
+      summary: List clients
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Client'
+                  total:
+                    type: integer
+
+    post:
+      tags: [Sessions]
+      summary: Create client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientCreate'
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+
+# ==================== Components ====================
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    UserIdParam:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    GroupIdParam:
+      name: group_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    QuestionIdParam:
+      name: question_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    FlowIdParam:
+      name: flow_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    TemplateIdParam:
+      name: template_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    SessionIdParam:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+    ValidationErrorResponse:
+      type: object
+      required: [error, message, validation_errors]
+      properties:
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
+        validation_errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    LoginResponse:
+      type: object
+      required: [user, message]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        message:
+          type: string
+          example: Login successful
+
+    User:
+      type: object
+      required: [id, username, email, role, is_active, created_at]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user]
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserCreate:
+      type: object
+      required: [username, email, password, role]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        role:
+          type: string
+          enum: [admin, user]
+
+    UserUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user]
+        is_active:
+          type: boolean
+        version:
+          type: integer
+
+    QuestionGroup:
+      type: object
+      required: [id, group_name, is_active, created_at]
+      properties:
+        id:
+          type: integer
+        group_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    QuestionGroupDetail:
+      allOf:
+        - $ref: '#/components/schemas/QuestionGroup'
+        - type: object
+          properties:
+            questions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Question'
+
+    QuestionGroupCreate:
+      type: object
+      required: [group_name]
+      properties:
+        group_name:
+          type: string
+          minLength: 3
+        description:
+          type: string
+
+    QuestionGroupUpdate:
+      type: object
+      properties:
+        group_name:
+          type: string
+          minLength: 3
+        description:
+          type: string
+        version:
+          type: integer
+
+    Question:
+      type: object
+      required: [id, question_group_id, question_identifier, question_text, question_type, is_required, display_order]
+      properties:
+        id:
+          type: integer
+        question_group_id:
+          type: integer
+        question_identifier:
+          type: string
+        question_text:
+          type: string
+        question_type:
+          type: string
+          enum: [multiple_choice, free_form, dropdown]
+        is_required:
+          type: boolean
+        display_order:
+          type: integer
+        options:
+          type: array
+          items:
+            type: string
+          nullable: true
+        dropdown_table:
+          type: string
+          nullable: true
+        dropdown_column:
+          type: string
+          nullable: true
+        validation_rules:
+          type: object
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    QuestionCreate:
+      type: object
+      required: [question_identifier, question_text, question_type]
+      properties:
+        question_identifier:
+          type: string
+          minLength: 2
+        question_text:
+          type: string
+          minLength: 5
+        question_type:
+          type: string
+          enum: [multiple_choice, free_form, dropdown]
+        is_required:
+          type: boolean
+          default: false
+        display_order:
+          type: integer
+          default: 0
+        options:
+          type: array
+          items:
+            type: string
+        dropdown_table:
+          type: string
+        dropdown_column:
+          type: string
+        validation_rules:
+          type: object
+
+    QuestionUpdate:
+      type: object
+      properties:
+        question_text:
+          type: string
+          minLength: 5
+        is_required:
+          type: boolean
+        display_order:
+          type: integer
+        options:
+          type: array
+          items:
+            type: string
+        validation_rules:
+          type: object
+        version:
+          type: integer
+
+    FlowRule:
+      type: object
+      required: [id, source_question_id, answer_value, target_group_id, priority]
+      properties:
+        id:
+          type: integer
+        source_question_id:
+          type: integer
+        answer_value:
+          type: string
+        target_group_id:
+          type: integer
+        priority:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    FlowRuleCreate:
+      type: object
+      required: [answer_value, target_group_id]
+      properties:
+        answer_value:
+          type: string
+        target_group_id:
+          type: integer
+        priority:
+          type: integer
+          default: 0
+
+    DocumentFlow:
+      type: object
+      required: [id, flow_name, is_active, created_at]
+      properties:
+        id:
+          type: integer
+        flow_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        starting_group_id:
+          type: integer
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DocumentFlowDetail:
+      allOf:
+        - $ref: '#/components/schemas/DocumentFlow'
+        - type: object
+          properties:
+            question_groups:
+              type: array
+              items:
+                $ref: '#/components/schemas/QuestionGroup'
+
+    DocumentFlowCreate:
+      type: object
+      required: [flow_name]
+      properties:
+        flow_name:
+          type: string
+          minLength: 3
+        description:
+          type: string
+        starting_group_id:
+          type: integer
+
+    DocumentFlowUpdate:
+      type: object
+      properties:
+        flow_name:
+          type: string
+          minLength: 3
+        description:
+          type: string
+        starting_group_id:
+          type: integer
+        version:
+          type: integer
+
+    DocumentTemplate:
+      type: object
+      required: [id, template_name, markdown_content, is_active, created_at]
+      properties:
+        id:
+          type: integer
+        template_name:
+          type: string
+        markdown_content:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DocumentTemplateCreate:
+      type: object
+      required: [template_name, markdown_content]
+      properties:
+        template_name:
+          type: string
+          minLength: 3
+        markdown_content:
+          type: string
+          minLength: 10
+        description:
+          type: string
+
+    DocumentTemplateUpdate:
+      type: object
+      properties:
+        template_name:
+          type: string
+          minLength: 3
+        markdown_content:
+          type: string
+          minLength: 10
+        description:
+          type: string
+        version:
+          type: integer
+
+    Client:
+      type: object
+      required: [id, client_name, is_active, created_at]
+      properties:
+        id:
+          type: integer
+        client_name:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    ClientCreate:
+      type: object
+      required: [client_name]
+      properties:
+        client_name:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        notes:
+          type: string
+
+    QuestionnaireSession:
+      type: object
+      required: [id, client_id, flow_id, user_id, status, started_at, last_activity_at]
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        flow_id:
+          type: integer
+        user_id:
+          type: integer
+        current_group_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, completed, abandoned]
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_activity_at:
+          type: string
+          format: date-time
+
+    QuestionnaireSessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/QuestionnaireSession'
+        - type: object
+          properties:
+            client:
+              $ref: '#/components/schemas/Client'
+            flow:
+              $ref: '#/components/schemas/DocumentFlow'
+            current_group:
+              $ref: '#/components/schemas/QuestionGroupDetail'
+            answers:
+              type: array
+              items:
+                $ref: '#/components/schemas/Answer'
+
+    SessionCreate:
+      type: object
+      required: [client_id, flow_id]
+      properties:
+        client_id:
+          type: integer
+        flow_id:
+          type: integer
+
+    Answer:
+      type: object
+      required: [id, session_id, question_id, question_identifier, answer_value, answered_at]
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: integer
+        question_id:
+          type: integer
+        question_identifier:
+          type: string
+        answer_value:
+          type: string
+        answered_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AnswerSubmit:
+      type: object
+      required: [question_id, answer_value]
+      properties:
+        question_id:
+          type: integer
+        answer_value:
+          type: string
+          minLength: 1
+
+    GeneratedDocument:
+      type: object
+      required: [id, client_id, session_id, template_id, file_path, file_size_bytes, generated_at]
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        session_id:
+          type: integer
+        template_id:
+          type: integer
+        file_path:
+          type: string
+        file_size_bytes:
+          type: integer
+        generated_at:
+          type: string
+          format: date-time
+        download_url:
+          type: string
+          format: uri
