@@ -10,6 +10,10 @@ import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/admin/Users'
 import QuestionGroups from './pages/admin/QuestionGroups'
+import Templates from './pages/admin/Templates'
+import Flows from './pages/admin/Flows'
+import Questionnaire from './pages/Questionnaire'
+import Documents from './pages/Documents'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,10 +78,18 @@ function App() {
                 <ProtectedRoute requireAdmin>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <div className="p-8">
-                      <h1 className="text-2xl font-bold">Document Templates</h1>
-                      <p className="text-gray-600 mt-2">Coming soon...</p>
-                    </div>
+                    <Templates />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/flows"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <Flows />
                   </div>
                 </ProtectedRoute>
               }
@@ -88,13 +100,7 @@ function App() {
               path="/questionnaire"
               element={
                 <ProtectedRoute>
-                  <div className="min-h-screen bg-gray-50">
-                    <Header />
-                    <div className="p-8">
-                      <h1 className="text-2xl font-bold">Questionnaire</h1>
-                      <p className="text-gray-600 mt-2">Coming soon...</p>
-                    </div>
-                  </div>
+                  <Questionnaire />
                 </ProtectedRoute>
               }
             />
@@ -104,10 +110,7 @@ function App() {
                 <ProtectedRoute>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <div className="p-8">
-                      <h1 className="text-2xl font-bold">My Documents</h1>
-                      <p className="text-gray-600 mt-2">Coming soon...</p>
-                    </div>
+                    <Documents />
                   </div>
                 </ProtectedRoute>
               }

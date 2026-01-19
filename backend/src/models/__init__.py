@@ -40,5 +40,9 @@ class VersionMixin:
 # Import models to ensure they're registered with SQLAlchemy
 from .user import User, PasswordResetToken  # noqa: E402, F401
 from .question import QuestionGroup, Question  # noqa: E402, F401
+from .template import Template  # noqa: E402, F401
+from .session import QuestionnaireSession, SessionAnswer  # noqa: E402, F401
+from .document import GeneratedDocument  # noqa: E402, F401
+from .flow import DocumentFlow  # noqa: E402, F401
 
-__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question"]
+__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question", "Template", "QuestionnaireSession", "SessionAnswer", "GeneratedDocument", "DocumentFlow"]

@@ -55,7 +55,7 @@ async def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,  # Set to True in production with HTTPS
+        secure=False,  # Set to True in production with HTTPS
         samesite="lax",
         max_age=3600,  # 1 hour
     )
@@ -64,7 +64,7 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
+        secure=False,  # Set to True in production with HTTPS
         samesite="lax",
         max_age=604800,  # 7 days
     )

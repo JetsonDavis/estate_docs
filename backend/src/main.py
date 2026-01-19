@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .routers import auth, users, question_groups
+from .routers import auth, users, question_groups, templates, sessions, documents, flows
 
 app = FastAPI(
     title="Document Merge System API",
@@ -24,6 +24,10 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(question_groups.router, prefix="/api/v1")
+app.include_router(templates.router, prefix="/api/v1")
+app.include_router(sessions.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
+app.include_router(flows.router, prefix="/api/v1")
 
 
 @app.get("/health")

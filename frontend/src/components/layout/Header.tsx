@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import Button from '../common/Button'
+import './Header.css'
 
 const Header: React.FC = () => {
   const { isAuthenticated, isAdmin, user, logout } = useAuth()
@@ -17,78 +17,56 @@ const Header: React.FC = () => {
   }
 
   return (
-    <header className="bg-white shadow">
-      <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex">
-            <Link to="/" className="flex items-center">
-              <span className="text-xl font-bold text-gray-900">
-                Document Merge System
-              </span>
+    <header className="header">
+      <nav className="header-nav">
+        <div className="header-content">
+          <div className="header-left">
+            <Link to="/" className="header-logo">
+              Estate Planning Document Generator
             </Link>
             {isAuthenticated && (
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+              <div className="header-links">
                 {isAdmin && (
                   <>
-                    <Link
-                      to="/admin/users"
-                      className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600"
-                    >
+                    <Link to="/admin/users" className="header-link">
                       Users
                     </Link>
-                    <Link
-                      to="/admin/question-groups"
-                      className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600"
-                    >
+                    <Link to="/admin/question-groups" className="header-link">
                       Question Groups
                     </Link>
-                    <Link
-                      to="/admin/templates"
-                      className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600"
-                    >
+                    <Link to="/admin/templates" className="header-link">
                       Templates
                     </Link>
                   </>
                 )}
                 {!isAdmin && (
-                  <Link
-                    to="/questionnaire"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600"
-                  >
+                  <Link to="/questionnaire" className="header-link">
                     Questionnaire
                   </Link>
                 )}
               </div>
             )}
           </div>
-          <div className="flex items-center">
+          <div className="header-right">
             {isAuthenticated ? (
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-700">
-                  {user?.username}
-                  {isAdmin && (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      Admin
-                    </span>
-                  )}
-                </span>
-                <Button variant="secondary" size="sm" onClick={handleLogout}>
+              <>
+                <div className="user-info">
+                  <span>{user?.username}</span>
+                  {isAdmin && <span className="admin-badge">Admin</span>}
+                </div>
+                <button className="logout-button" onClick={handleLogout}>
                   Logout
-                </Button>
-              </div>
+                </button>
+              </>
             ) : (
-              <div className="flex items-center space-x-4">
-                <Link to="/login">
-                  <Button variant="secondary" size="sm">
-                    Login
-                  </Button>
+              <>
+                <Link to="/login" className="login-button">
+                  Login
                 </Link>
-                <Link to="/register">
-                  <Button size="sm">
-                    Register
-                  </Button>
+                <Link to="/register" className="register-button">
+                  Register
                 </Link>
-              </div>
+              </>
             )}
           </div>
         </div>
