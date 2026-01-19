@@ -1,4 +1,4 @@
-export interface DocumentFlow {
+export interface QuestionnaireFlow {
   id: number
   name: string
   description: string | null
@@ -9,7 +9,7 @@ export interface DocumentFlow {
   updated_at: string
 }
 
-export interface DocumentFlowWithGroups extends DocumentFlow {
+export interface QuestionnaireFlowWithGroups extends QuestionnaireFlow {
   question_groups: Array<{
     id: number
     name: string
@@ -18,22 +18,22 @@ export interface DocumentFlowWithGroups extends DocumentFlow {
   }>
 }
 
-export interface DocumentFlowCreate {
+export interface QuestionnaireFlowCreate {
   name: string
   description?: string
   starting_group_id?: number
   question_group_ids?: number[]
 }
 
-export interface DocumentFlowUpdate {
+export interface QuestionnaireFlowUpdate {
   name?: string
   description?: string
   starting_group_id?: number
   question_group_ids?: number[]
 }
 
-export interface DocumentFlowListResponse {
-  flows: DocumentFlow[]
+export interface QuestionnaireFlowListResponse {
+  flows: QuestionnaireFlow[]
   total: number
   page: number
   page_size: number

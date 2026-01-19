@@ -7,11 +7,11 @@ from typing import Optional
 from ..database import get_db
 from ..middleware.auth_middleware import require_auth, require_admin
 from ..schemas.flow import (
-    DocumentFlowCreate,
-    DocumentFlowUpdate,
-    DocumentFlowResponse,
-    DocumentFlowWithGroups,
-    DocumentFlowListResponse
+    QuestionnaireFlowCreate,
+    QuestionnaireFlowUpdate,
+    QuestionnaireFlowResponse,
+    QuestionnaireFlowWithGroups,
+    QuestionnaireFlowListResponse
 )
 from ..services.flow_service import FlowService
 
@@ -19,12 +19,12 @@ from ..services.flow_service import FlowService
 router = APIRouter(prefix="/flows", tags=["flows"])
 
 
-@router.post("/", response_model=DocumentFlowResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=QuestionnaireFlowResponse, status_code=status.HTTP_201_CREATED)
 async def create_flow(
-    flow_data: DocumentFlowCreate,
+    flow_data: QuestionnaireFlowCreate,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db)
-) -> DocumentFlowResponse:
+) -> QuestionnaireFlowResponse:
     """
     Create a new document flow (Admin only).
     
@@ -39,17 +39,17 @@ async def create_flow(
         int(current_user["sub"])
     )
     
-    return DocumentFlowResponse.model_validate(flow)
+    return QuestionnaireFlowResponse.model_validate(flow)
 
 
-@router.get("/", response_model=DocumentFlowListResponse)
+@router.get("/", response_model=QuestionnaireFlowListResponse)
 async def list_flows(
     skip: int = 0,
     limit: int = 100,
     search: Optional[str] = None,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentFlowListResponse:
+) -> QuestionnaireFlowListResponse:
     """
     List all document flows.
     
@@ -63,8 +63,8 @@ async def list_flows(
     total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
     current_page = (skip // page_size) + 1 if page_size > 0 else 1
     
-    return DocumentFlowListResponse(
-        flows=[DocumentFlowResponse.model_validate(f) for f in flows],
+    return QuestionnaireFlowListResponse(
+        flows=[QuestionnaireFlowResponse.model_validate(f) for f in flows],
         total=total,
         page=current_page,
         page_size=page_size,
@@ -72,12 +72,12 @@ async def list_flows(
     )
 
 
-@router.get("/{flow_id}", response_model=DocumentFlowWithGroups)
+@router.get("/{flow_id}", response_model=QuestionnaireFlowWithGroups)
 async def get_flow(
     flow_id: int,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentFlowWithGroups:
+) -> QuestionnaireFlowWithGroups:
     """
     Get a specific document flow with associated question groups.
     
@@ -90,16 +90,16 @@ async def get_flow(
             detail="Flow not found"
         )
     
-    return DocumentFlowWithGroups(**flow_data)
+    return QuestionnaireFlowWithGroups(**flow_data)
 
 
-@router.put("/{flow_id}", response_model=DocumentFlowResponse)
+@router.put("/{flow_id}", response_model=QuestionnaireFlowResponse)
 async def update_flow(
     flow_id: int,
-    flow_data: DocumentFlowUpdate,
+    flow_data: QuestionnaireFlowUpdate,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db)
-) -> DocumentFlowResponse:
+) -> QuestionnaireFlowResponse:
     """
     Update a document flow (Admin only).
     
@@ -112,7 +112,7 @@ async def update_flow(
             detail="Flow not found"
         )
     
-    return DocumentFlowResponse.model_validate(flow)
+    return QuestionnaireFlowResponse.model_validate(flow)
 
 
 @router.delete("/{flow_id}", status_code=status.HTTP_204_NO_CONTENT)

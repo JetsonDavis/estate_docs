@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import { flowService } from '../../services/flowService'
-import { questionGroupService } from '../../services/questionGroupService'
-import { DocumentFlow, DocumentFlowCreate, DocumentFlowUpdate } from '../../types/flow'
-import { QuestionGroup } from '../../types/questionGroup'
+import { QuestionnaireFlow, QuestionnaireFlowCreate, QuestionnaireFlowUpdate } from '../../types/flow'
 import './Flows.css'
 
 const Flows: React.FC = () => {
-  const [flows, setFlows] = useState<DocumentFlow[]>([])
-  const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>([])
+  const [flows, setFlows] = useState<QuestionnaireFlow[]>([])
+  const [questionGroups, setQuestionGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
-  const [selectedFlow, setSelectedFlow] = useState<DocumentFlow | null>(null)
+  const [selectedFlow, setSelectedFlow] = useState<QuestionnaireFlow | null>(null)
 
   useEffect(() => {
     loadFlows()
@@ -35,8 +33,8 @@ const Flows: React.FC = () => {
 
   const loadQuestionGroups = async () => {
     try {
-      const response = await questionGroupService.getQuestionGroups()
-      setQuestionGroups(response.question_groups)
+      // TODO: Load question groups when service is available
+      setQuestionGroups([])
     } catch (err: any) {
       console.error('Failed to load question groups:', err)
     }
@@ -55,7 +53,7 @@ const Flows: React.FC = () => {
     }
   }
 
-  const handleEdit = (flow: DocumentFlow) => {
+  const handleEdit = (flow: QuestionnaireFlow) => {
     setSelectedFlow(flow)
     setShowEditModal(true)
   }
@@ -63,7 +61,7 @@ const Flows: React.FC = () => {
   return (
     <div className="flows-container">
       <div className="flows-header">
-        <h1 className="flows-title">Document Flows</h1>
+        <h1 className="flows-title">Questionnaire Flows</h1>
         <div className="flows-actions">
           <input
             type="text"
@@ -169,7 +167,7 @@ const Flows: React.FC = () => {
 }
 
 interface CreateFlowModalProps {
-  questionGroups: QuestionGroup[]
+  questionGroups: any[]
   onClose: () => void
   onSuccess: () => void
 }
@@ -191,7 +189,7 @@ const CreateFlowModal: React.FC<CreateFlowModalProps> = ({ questionGroups, onClo
 
     try {
       setSubmitting(true)
-      const data: DocumentFlowCreate = {
+      const data: QuestionnaireFlowCreate = {
         name,
         description: description || undefined,
         starting_group_id: startingGroupId || undefined,
@@ -291,8 +289,8 @@ const CreateFlowModal: React.FC<CreateFlowModalProps> = ({ questionGroups, onClo
 }
 
 interface EditFlowModalProps {
-  flow: DocumentFlow
-  questionGroups: QuestionGroup[]
+  flow: QuestionnaireFlow
+  questionGroups: any[]
   onClose: () => void
   onSuccess: () => void
 }
@@ -308,7 +306,7 @@ const EditFlowModal: React.FC<EditFlowModalProps> = ({ flow, questionGroups, onC
 
     try {
       setSubmitting(true)
-      const data: DocumentFlowUpdate = {
+      const data: QuestionnaireFlowUpdate = {
         name,
         description: description || undefined,
         starting_group_id: startingGroupId || undefined

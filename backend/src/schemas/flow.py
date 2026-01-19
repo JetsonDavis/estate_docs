@@ -3,24 +3,24 @@ from typing import Optional, List
 from datetime import datetime
 
 
-class DocumentFlowCreate(BaseModel):
-    """Schema for creating a document flow."""
+class QuestionnaireFlowCreate(BaseModel):
+    """Schema for creating a questionnaire flow."""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     starting_group_id: Optional[int] = None
     question_group_ids: Optional[List[int]] = None
 
 
-class DocumentFlowUpdate(BaseModel):
-    """Schema for updating a document flow."""
+class QuestionnaireFlowUpdate(BaseModel):
+    """Schema for updating a questionnaire flow."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     starting_group_id: Optional[int] = None
     question_group_ids: Optional[List[int]] = None
 
 
-class DocumentFlowResponse(BaseModel):
-    """Schema for document flow response."""
+class QuestionnaireFlowResponse(BaseModel):
+    """Schema for questionnaire flow response."""
     id: int
     name: str
     description: Optional[str]
@@ -34,14 +34,14 @@ class DocumentFlowResponse(BaseModel):
         from_attributes = True
 
 
-class DocumentFlowWithGroups(DocumentFlowResponse):
+class QuestionnaireFlowWithGroups(QuestionnaireFlowResponse):
     """Schema for flow with associated question groups."""
     question_groups: List[dict]
 
 
-class DocumentFlowListResponse(BaseModel):
+class QuestionnaireFlowListResponse(BaseModel):
     """Schema for paginated flow list response."""
-    flows: List[DocumentFlowResponse]
+    flows: List[QuestionnaireFlowResponse]
     total: int
     page: int
     page_size: int

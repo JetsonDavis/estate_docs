@@ -72,7 +72,7 @@ const Dashboard: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   <div className="card-content">
-                    <h3 className="card-title">Document Flows</h3>
+                    <h3 className="card-title">Questionnaire Flows</h3>
                     <p className="card-description">Manage questionnaire workflows</p>
                   </div>
                 </div>

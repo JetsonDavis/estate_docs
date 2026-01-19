@@ -1,4 +1,4 @@
-"""create document flows tables
+"""create questionnaire flows tables
 
 Revision ID: 006
 Revises: 005
@@ -17,9 +17,9 @@ depends_on = None
 
 
 def upgrade():
-    # Create document_flows table
+    # Create questionnaire_flows table
     op.execute("""
-        CREATE TABLE document_flows (
+        CREATE TABLE questionnaire_flows (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255) NOT NULL UNIQUE,
             description TEXT,
@@ -31,13 +31,13 @@ def upgrade():
         );
     """)
     
-    op.create_index('ix_document_flows_id', 'document_flows', ['id'], unique=False)
-    op.create_index('ix_document_flows_name', 'document_flows', ['name'], unique=True)
+    op.create_index('ix_questionnaire_flows_id', 'questionnaire_flows', ['id'], unique=False)
+    op.create_index('ix_questionnaire_flows_name', 'questionnaire_flows', ['name'], unique=True)
     
     # Create flow_question_groups association table
     op.execute("""
         CREATE TABLE flow_question_groups (
-            flow_id INTEGER NOT NULL REFERENCES document_flows(id) ON DELETE CASCADE,
+            flow_id INTEGER NOT NULL REFERENCES questionnaire_flows(id) ON DELETE CASCADE,
             question_group_id INTEGER NOT NULL REFERENCES question_groups(id) ON DELETE CASCADE,
             order_index INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (flow_id, question_group_id)
@@ -47,7 +47,7 @@ def upgrade():
     # Add flow_id to questionnaire_sessions
     op.execute("""
         ALTER TABLE questionnaire_sessions
-        ADD COLUMN flow_id INTEGER REFERENCES document_flows(id) ON DELETE SET NULL;
+        ADD COLUMN flow_id INTEGER REFERENCES questionnaire_flows(id) ON DELETE SET NULL;
     """)
 
 
@@ -58,6 +58,6 @@ def downgrade():
     # Drop tables
     op.execute('DROP TABLE flow_question_groups')
     
-    op.drop_index('ix_document_flows_name', table_name='document_flows')
-    op.drop_index('ix_document_flows_id', table_name='document_flows')
-    op.execute('DROP TABLE document_flows')
+    op.drop_index('ix_questionnaire_flows_name', table_name='questionnaire_flows')
+    op.drop_index('ix_questionnaire_flows_id', table_name='questionnaire_flows')
+    op.execute('DROP TABLE questionnaire_flows')

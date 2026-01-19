@@ -43,6 +43,6 @@ from .question import QuestionGroup, Question  # noqa: E402, F401
 from .template import Template  # noqa: E402, F401
 from .session import QuestionnaireSession, SessionAnswer  # noqa: E402, F401
 from .document import GeneratedDocument  # noqa: E402, F401
-from .flow import DocumentFlow  # noqa: E402, F401
+from .flow import QuestionnaireFlow  # noqa: E402, F401
 
-__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question", "Template", "QuestionnaireSession", "SessionAnswer", "GeneratedDocument", "DocumentFlow"]
+__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question", "Template", "QuestionnaireSession", "SessionAnswer", "GeneratedDocument", "QuestionnaireFlow"]

@@ -34,7 +34,7 @@ class SessionService:
         Returns:
             Created questionnaire session
         """
-        from ..models.flow import DocumentFlow
+        from ..models.flow import QuestionnaireFlow
         
         # Determine starting group
         starting_group_id = session_data.starting_group_id
@@ -42,9 +42,9 @@ class SessionService:
         
         # If flow is specified, use its starting group
         if flow_id:
-            flow = db.query(DocumentFlow).filter(
-                DocumentFlow.id == flow_id,
-                DocumentFlow.is_active == True
+            flow = db.query(QuestionnaireFlow).filter(
+                QuestionnaireFlow.id == flow_id,
+                QuestionnaireFlow.is_active == True
             ).first()
             
             if not flow:

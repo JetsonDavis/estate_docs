@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
+import { useState, useEffect, createContext, useContext, ReactNode, useRef } from 'react'
 import apiClient from '../services/api'
 
 interface User {
@@ -28,9 +28,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const hasCheckedAuth = useRef(false)
 
   useEffect(() => {
-    // Check if user is already authenticated on mount
+    // Check if user is already authenticated on mount (only once)
+    if (hasCheckedAuth.current) return
+    
+    hasCheckedAuth.current = true
+    
     const checkAuth = async () => {
       try {
         const response = await apiClient.get('/auth/me')

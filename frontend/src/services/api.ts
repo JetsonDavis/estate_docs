@@ -28,10 +28,8 @@ apiClient.interceptors.response.use(
   },
   (error: AxiosError) => {
     // Handle common error scenarios
-    if (error.response?.status === 401) {
-      // Unauthorized - redirect to login
-      window.location.href = '/login'
-    }
+    // Note: Don't redirect on 401 here - let the auth context and ProtectedRoute handle it
+    // to avoid infinite loops
     
     if (error.response?.status === 403) {
       // Forbidden - show error message
