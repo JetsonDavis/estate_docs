@@ -303,25 +303,56 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           setSavedGroupId(groupId)
           
           // Load questions if they exist
-          if (groupData.questions && groupData.questions.length > 0) {
-            const loadedQuestions: QuestionFormData[] = groupData.questions.map(q => ({
-              id: q.id.toString(),
-              dbId: q.id,
-              question_text: q.question_text,
-              question_type: q.question_type,
-              identifier: q.identifier,
-              is_required: q.is_required,
-              options: q.options || [],
-              person_display_mode: q.person_display_mode || undefined,
-              include_time: q.include_time || false,
-              lastSaved: new Date()
-            }))
-            setQuestions(loadedQuestions)
-          }
+          const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
+            ? groupData.questions.map(q => ({
+                id: q.id.toString(),
+                dbId: q.id,
+                question_text: q.question_text,
+                question_type: q.question_type,
+                identifier: q.identifier,
+                is_required: q.is_required,
+                options: q.options || [],
+                person_display_mode: q.person_display_mode || undefined,
+                include_time: q.include_time || false,
+                lastSaved: new Date()
+              }))
+            : []
+          setQuestions(loadedQuestions)
           
-          // Load question logic if it exists
+          // Load question logic if it exists, and clean up orphaned items
           if (groupData.question_logic && groupData.question_logic.length > 0) {
-            setQuestionLogic(groupData.question_logic)
+            // Create a set of valid question IDs
+            const validQuestionIds = new Set(loadedQuestions.map(q => q.dbId))
+            
+            // Recursively clean orphaned question items from logic
+            const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+              return items.filter(item => {
+                if (item.type === 'question') {
+                  // Keep only if questionId exists in valid questions
+                  return item.questionId && validQuestionIds.has(item.questionId)
+                }
+                return true // Keep conditionals
+              }).map(item => {
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  return {
+                    ...item,
+                    conditional: {
+                      ...item.conditional,
+                      nestedItems: cleanOrphanedItems(item.conditional.nestedItems)
+                    }
+                  }
+                }
+                return item
+              })
+            }
+            
+            const cleanedLogic = cleanOrphanedItems(groupData.question_logic)
+            setQuestionLogic(cleanedLogic)
+            
+            // Save the cleaned logic back to the database if it changed
+            if (JSON.stringify(cleanedLogic) !== JSON.stringify(groupData.question_logic)) {
+              questionGroupService.updateQuestionGroup(groupId, { question_logic: cleanedLogic })
+            }
           }
         } catch (error) {
           console.error('Failed to load group data:', error)
@@ -387,7 +418,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       is_required: false,
       options: []
     }
-    setQuestions([...questions, newQuestion])
+    setQuestions(prev => [...prev, newQuestion])
     return newQuestion
   }
 
@@ -1000,22 +1031,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const getNestedQuestionIds = (items: QuestionLogicItem[]): Set<string> => {
     const nestedIds = new Set<string>()
     
-    const collectIds = (logicItems: QuestionLogicItem[]) => {
+    const collectIds = (logicItems: QuestionLogicItem[], isNested: boolean) => {
       logicItems.forEach(item => {
+        // If we're inside a conditional's nestedItems, track all questions
+        if (isNested && item.type === 'question') {
+          const localId = (item as any).localQuestionId
+          if (localId) nestedIds.add(localId)
+          if (item.questionId) nestedIds.add(item.questionId.toString())
+        }
+        // Recurse into conditionals
         if (item.type === 'conditional' && item.conditional?.nestedItems) {
-          item.conditional.nestedItems.forEach(nestedItem => {
-            if (nestedItem.type === 'question') {
-              const localId = (nestedItem as any).localQuestionId
-              if (localId) nestedIds.add(localId)
-              if (nestedItem.questionId) nestedIds.add(nestedItem.questionId.toString())
-            }
-          })
-          collectIds(item.conditional.nestedItems)
+          collectIds(item.conditional.nestedItems, true)
         }
       })
     }
     
-    collectIds(items)
+    collectIds(items, false)
     return nestedIds
   }
 
@@ -1034,12 +1065,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   ): React.ReactNode => {
     if (depth > 4) return null // Max 4 levels of nesting
 
+    // Filter to only items that have valid questions, and track their display index
+    let questionDisplayIndex = 0
+    
     return nestedItems.map((item, itemIndex) => {
       const currentPath = [...parentPath, itemIndex]
       
       if (item.type === 'question') {
         const nestedQuestion = getQuestionFromLogicItem(item)
         if (!nestedQuestion) return null
+        
+        const currentDisplayIndex = questionDisplayIndex
+        questionDisplayIndex++
 
         return (
           <div key={item.id} style={{ marginBottom: '1rem' }}>
@@ -1052,7 +1089,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
-                  Nested Question ({depth}{itemIndex > 0 ? `-${itemIndex}` : ''})
+                  Nested Question ({depth}{currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''})
                 </span>
                 <button
                   type="button"
@@ -1326,7 +1363,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 {parentPath.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
                       // Add question to parent level (one level up), after the current conditional
                       const parentPathUp = parentPath.slice(0, -1)
                       const insertAfterIndex = parentPath[parentPath.length - 1]
