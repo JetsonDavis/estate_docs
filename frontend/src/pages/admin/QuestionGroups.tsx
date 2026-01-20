@@ -1061,12 +1061,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     nestedItems: QuestionLogicItem[],
     parentPath: number[],
     depth: number,
-    parentQuestion?: QuestionFormData
+    parentQuestion?: QuestionFormData,
+    questionNumberPrefix?: string
   ): React.ReactNode => {
     if (depth > 4) return null // Max 4 levels of nesting
 
     // Filter to only items that have valid questions, and track their display index
     let questionDisplayIndex = 0
+    let conditionalDisplayIndex = 0
     
     return nestedItems.map((item, itemIndex) => {
       const currentPath = [...parentPath, itemIndex]
@@ -1077,6 +1079,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         
         const currentDisplayIndex = questionDisplayIndex
         questionDisplayIndex++
+        
+        // Build the full number string (e.g., "1-1" or "1-1-1")
+        const questionNumber = questionNumberPrefix 
+          ? `${questionNumberPrefix}-${depth}${currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''}`
+          : `${depth}${currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''}`
 
         return (
           <div key={item.id} style={{ marginBottom: '1rem' }}>
@@ -1089,7 +1096,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
-                  Nested Question ({depth}{currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''})
+                  Nested Question ({questionNumber})
                 </span>
                 <button
                   type="button"
@@ -1445,6 +1452,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         if (!prevNestedQuestion) {
           prevNestedQuestion = parentQuestion
         }
+        
+        const currentConditionalIndex = conditionalDisplayIndex
+        conditionalDisplayIndex++
+        
+        // Build the conditional number string (e.g., "1-1" or "1-1-1")
+        const conditionalNumber = questionNumberPrefix 
+          ? `${questionNumberPrefix}-${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
+          : `${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
 
         return (
           <div key={item.id} style={{
@@ -1457,7 +1472,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
-                Conditional ({depth + 1})
+                Conditional ({conditionalNumber})
               </div>
               <button
                 type="button"
@@ -1557,7 +1572,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Nested items */}
               <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
-                  renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion)
+                  renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, questionNumberPrefix)
                 ) : (
                   <div style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db' }}>
                     <p style={{ fontSize: '0.7rem', color: '#6b7280', textAlign: 'center', margin: 0 }}>
@@ -2017,7 +2032,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
-                          Conditional (1)
+                          Conditional ({qIndex + 1}-1)
                         </div>
                         <button
                           type="button"
@@ -2150,7 +2165,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         {/* Nested items */}
                         <div style={{ marginTop: '0.5rem' }}>
                           {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 ? (
-                            renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question)
+                            renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (qIndex + 1).toString())
                           ) : (
                             <div style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db' }}>
                               <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', margin: 0 }}>
