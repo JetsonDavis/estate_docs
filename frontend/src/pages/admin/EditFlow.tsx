@@ -1667,33 +1667,145 @@ const EditFlow: React.FC = () => {
                                                                           <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
                                                                             Equals value
                                                                           </label>
-                                                                          <input
-                                                                            type="text"
-                                                                            value={deepestStep.conditional?.value || ''}
-                                                                            onChange={(e) => {
-                                                                              const updatedDeepestSteps = deeperStep.conditional!.nestedSteps!.map(dst =>
-                                                                                dst.id === deepestStep.id
-                                                                                  ? { ...dst, conditional: { ...dst.conditional!, value: e.target.value } }
-                                                                                  : dst
+                                                                          {(() => {
+                                                                            // Get the question for the selected identifier to determine input type
+                                                                            // Use the parent deeper conditional's target group
+                                                                            const targetGroupId = deeperStep.conditional?.targetGroupId
+
+                                                                            const question = getQuestionByIdentifier(targetGroupId, deepestStep.conditional?.identifier || '')
+                                                                            const isChoiceType = question && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(question.question_type)
+                                                                            const isPersonType = question && question.question_type === 'person'
+
+                                                                            if (isPersonType) {
+                                                                              // Show person type-ahead input
+                                                                              return (
+                                                                                <>
+                                                                                  <input
+                                                                                    type="text"
+                                                                                    value={deepestStep.conditional?.value || ''}
+                                                                                    onChange={async (e) => {
+                                                                                      const updatedDeepestSteps = deeperStep.conditional!.nestedSteps!.map(dst =>
+                                                                                        dst.id === deepestStep.id
+                                                                                          ? { ...dst, conditional: { ...dst.conditional!, value: e.target.value } }
+                                                                                          : dst
+                                                                                      )
+                                                                                      const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
+                                                                                        ds.id === deeperStep.id
+                                                                                          ? { ...ds, conditional: { ...ds.conditional!, nestedSteps: updatedDeepestSteps } }
+                                                                                          : ds
+                                                                                      )
+                                                                                      const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                                                        ns.id === nestedStep.id
+                                                                                          ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
+                                                                                          : ns
+                                                                                      )
+                                                                                      updateStep(step.id, {
+                                                                                        conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                                                      })
+
+                                                                                      // Debounced search for people
+                                                                                      if (personSearchTimeoutRef.current) {
+                                                                                        clearTimeout(personSearchTimeoutRef.current)
+                                                                                      }
+
+                                                                                      const searchValue = e.target.value
+                                                                                      personSearchTimeoutRef.current = setTimeout(async () => {
+                                                                                        if (searchValue.length >= 2) {
+                                                                                          try {
+                                                                                            const response = await personService.getPeople(1, 50, false, searchValue)
+                                                                                            setPeople(response.people)
+                                                                                          } catch (err) {
+                                                                                            console.error('Failed to search people:', err)
+                                                                                          }
+                                                                                        } else {
+                                                                                          setPeople([])
+                                                                                        }
+                                                                                      }, 300)
+                                                                                    }}
+                                                                                    list={`people-list-deepest-${deepestStep.id}`}
+                                                                                    className="form-input"
+                                                                                    style={{ fontSize: '0.8rem' }}
+                                                                                    placeholder="Type to search people..."
+                                                                                  />
+                                                                                  <datalist id={`people-list-deepest-${deepestStep.id}`}>
+                                                                                    {people.map((person) => (
+                                                                                      <option key={person.id} value={person.name} />
+                                                                                    ))}
+                                                                                  </datalist>
+                                                                                </>
                                                                               )
-                                                                              const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
-                                                                                ds.id === deeperStep.id
-                                                                                  ? { ...ds, conditional: { ...ds.conditional!, nestedSteps: updatedDeepestSteps } }
-                                                                                  : ds
+                                                                            } else if (isChoiceType && question.options && Array.isArray(question.options)) {
+                                                                              // Show dropdown for choice-based questions
+                                                                              return (
+                                                                                <select
+                                                                                  value={deepestStep.conditional?.value || ''}
+                                                                                  onChange={(e) => {
+                                                                                    const updatedDeepestSteps = deeperStep.conditional!.nestedSteps!.map(dst =>
+                                                                                      dst.id === deepestStep.id
+                                                                                        ? { ...dst, conditional: { ...dst.conditional!, value: e.target.value } }
+                                                                                        : dst
+                                                                                    )
+                                                                                    const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
+                                                                                      ds.id === deeperStep.id
+                                                                                        ? { ...ds, conditional: { ...ds.conditional!, nestedSteps: updatedDeepestSteps } }
+                                                                                        : ds
+                                                                                    )
+                                                                                    const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                                                      ns.id === nestedStep.id
+                                                                                        ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
+                                                                                        : ns
+                                                                                    )
+                                                                                    updateStep(step.id, {
+                                                                                      conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                                                    })
+                                                                                  }}
+                                                                                  className="form-select"
+                                                                                  style={{ fontSize: '0.8rem' }}
+                                                                                >
+                                                                                  <option value="">Select value...</option>
+                                                                                  {question.options.map((opt: any, idx: number) => {
+                                                                                    const optionValue = opt.value || opt.label
+                                                                                    return (
+                                                                                      <option key={optionValue || `deepest-opt-${idx}`} value={optionValue}>
+                                                                                        {opt.label}
+                                                                                      </option>
+                                                                                    )
+                                                                                  })}
+                                                                                </select>
                                                                               )
-                                                                              const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
-                                                                                ns.id === nestedStep.id
-                                                                                  ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
-                                                                                  : ns
+                                                                            } else {
+                                                                              // Show text input for other question types
+                                                                              return (
+                                                                                <input
+                                                                                  type="text"
+                                                                                  value={deepestStep.conditional?.value || ''}
+                                                                                  onChange={(e) => {
+                                                                                    const updatedDeepestSteps = deeperStep.conditional!.nestedSteps!.map(dst =>
+                                                                                      dst.id === deepestStep.id
+                                                                                        ? { ...dst, conditional: { ...dst.conditional!, value: e.target.value } }
+                                                                                        : dst
+                                                                                    )
+                                                                                    const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
+                                                                                      ds.id === deeperStep.id
+                                                                                        ? { ...ds, conditional: { ...ds.conditional!, nestedSteps: updatedDeepestSteps } }
+                                                                                        : ds
+                                                                                    )
+                                                                                    const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                                                      ns.id === nestedStep.id
+                                                                                        ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
+                                                                                        : ns
+                                                                                    )
+                                                                                    updateStep(step.id, {
+                                                                                      conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                                                    })
+                                                                                  }}
+                                                                                  className="form-input"
+                                                                                  style={{ fontSize: '0.8rem' }}
+                                                                                  placeholder="Enter value"
+                                                                                />
                                                                               )
-                                                                              updateStep(step.id, {
-                                                                                conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
-                                                                              })
-                                                                            }}
-                                                                            className="form-input"
-                                                                            style={{ fontSize: '0.8rem' }}
-                                                                            placeholder="Enter value"
-                                                                          />
+                                                                            }
+                                                                          })()}
                                                                         </div>
 
                                                                         {/* Deepest Then go to group */}
