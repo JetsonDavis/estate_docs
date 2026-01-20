@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { questionGroupService } from '../../services/questionService'
-import { personService } from '../../services/personService'
 import { QuestionGroup, QuestionType, QuestionOption, QuestionLogicItem } from '../../types/question'
-import { Person } from '../../types/person'
+import PersonTypeahead from '../../components/common/PersonTypeahead'
 import './QuestionGroups.css'
 
 const QuestionGroups: React.FC = () => {
@@ -267,12 +266,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const [groupInfoSaved, setGroupInfoSaved] = useState(false)
   const [savedGroupId, setSavedGroupId] = useState<number | null>(groupId || null)
   const [loading, setLoading] = useState(!!groupId)
-  const [people, setPeople] = useState<Person[]>([])
   const displayModeDropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   const nameCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
   const identifierCheckTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
-  const personSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const questionLogicSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isEditMode = !!groupId
 
@@ -2109,43 +2106,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               )
                             } else if (isPersonType) {
                               return (
-                                <>
-                                  <input
-                                    type="text"
-                                    value={logicItem.conditional?.value || ''}
-                                    onChange={async (e) => {
-                                      updateConditionalValue(logicItem.id, 'value', e.target.value)
-                                      
-                                      // Debounced search for people
-                                      if (personSearchTimeoutRef.current) {
-                                        clearTimeout(personSearchTimeoutRef.current)
-                                      }
-                                      
-                                      const searchValue = e.target.value
-                                      personSearchTimeoutRef.current = setTimeout(async () => {
-                                        if (searchValue.length >= 2) {
-                                          try {
-                                            const response = await personService.getPeople(1, 50, false, searchValue)
-                                            setPeople(response.people)
-                                          } catch (err) {
-                                            console.error('Failed to search people:', err)
-                                          }
-                                        } else {
-                                          setPeople([])
-                                        }
-                                      }, 300)
-                                    }}
-                                    list={`people-list-${logicItem.id}`}
-                                    className="form-input"
-                                    style={{ fontSize: '0.875rem' }}
-                                    placeholder="Type to search people..."
-                                  />
-                                  <datalist id={`people-list-${logicItem.id}`}>
-                                    {people.map((person) => (
-                                      <option key={person.id} value={person.name} />
-                                    ))}
-                                  </datalist>
-                                </>
+                                <PersonTypeahead
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(value) => updateConditionalValue(logicItem.id, 'value', value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem' }}
+                                  placeholder="Type to search people..."
+                                  id={`people-list-${logicItem.id}`}
+                                />
                               )
                             } else {
                               return (

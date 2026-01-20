@@ -4,27 +4,27 @@ from datetime import datetime
 from . import Base, TimestampMixin
 
 
-class QuestionnaireSession(Base, TimestampMixin):
-    """Questionnaire session model for tracking client questionnaire progress."""
+class DocumentSession(Base, TimestampMixin):
+    """Document session model for tracking client document progress."""
     
-    __tablename__ = "questionnaire_sessions"
+    __tablename__ = "document_sessions"
     
     id = Column(Integer, primary_key=True, index=True)
     client_identifier = Column(String(255), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    flow_id = Column(Integer, ForeignKey("questionnaire_flows.id", ondelete="SET NULL"), nullable=True)
+    flow_id = Column(Integer, ForeignKey("document_flows.id", ondelete="SET NULL"), nullable=True)
     current_group_id = Column(Integer, ForeignKey("question_groups.id", ondelete="SET NULL"), nullable=True)
     is_completed = Column(Integer, default=False, nullable=False)
     completed_at = Column(DateTime, nullable=True)
     
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
-    flow = relationship("QuestionnaireFlow", foreign_keys=[flow_id])
+    flow = relationship("DocumentFlow", foreign_keys=[flow_id])
     current_group = relationship("QuestionGroup", foreign_keys=[current_group_id])
     answers = relationship("SessionAnswer", back_populates="session", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
-        return f"<QuestionnaireSession(id={self.id}, client='{self.client_identifier}', completed={self.is_completed})>"
+        return f"<DocumentSession(id={self.id}, client='{self.client_identifier}', completed={self.is_completed})>"
     
     def to_dict(self) -> dict:
         """Convert session to dictionary."""
@@ -47,12 +47,12 @@ class SessionAnswer(Base, TimestampMixin):
     __tablename__ = "session_answers"
     
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("questionnaire_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("document_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
     answer_value = Column(Text, nullable=False)
     
     # Relationships
-    session = relationship("QuestionnaireSession", back_populates="answers")
+    session = relationship("DocumentSession", back_populates="answers")
     question = relationship("Question")
     
     def __repr__(self) -> str:

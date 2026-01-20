@@ -93,7 +93,7 @@ const Dashboard: React.FC = () => {
                     <p className="card-description">Begin answering questions</p>
                   </div>
                 </div>
-                <Link to="/questionnaire" className="card-button">
+                <Link to="/document" className="card-button">
                   Start
                 </Link>
               </div>

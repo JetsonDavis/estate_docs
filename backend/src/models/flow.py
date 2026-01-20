@@ -7,16 +7,16 @@ from . import Base, TimestampMixin, SoftDeleteMixin
 flow_question_groups = Table(
     'flow_question_groups',
     Base.metadata,
-    Column('flow_id', Integer, ForeignKey('questionnaire_flows.id', ondelete='CASCADE'), primary_key=True),
+    Column('flow_id', Integer, ForeignKey('document_flows.id', ondelete='CASCADE'), primary_key=True),
     Column('question_group_id', Integer, ForeignKey('question_groups.id', ondelete='CASCADE'), primary_key=True),
     Column('order_index', Integer, nullable=False, default=0)
 )
 
 
-class QuestionnaireFlow(Base, TimestampMixin, SoftDeleteMixin):
-    """Questionnaire flow model for managing multiple questionnaire workflows."""
+class DocumentFlow(Base, TimestampMixin, SoftDeleteMixin):
+    """Document flow model for managing multiple document workflows."""
     
-    __tablename__ = "questionnaire_flows"
+    __tablename__ = "document_flows"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, unique=True, index=True)
@@ -41,7 +41,7 @@ class QuestionnaireFlow(Base, TimestampMixin, SoftDeleteMixin):
     creator = relationship("User", foreign_keys=[created_by])
     
     def __repr__(self) -> str:
-        return f"<QuestionnaireFlow(id={self.id}, name='{self.name}')>"
+        return f"<DocumentFlow(id={self.id}, name='{self.name}')>"
     
     def to_dict(self) -> dict:
         """Convert flow to dictionary."""

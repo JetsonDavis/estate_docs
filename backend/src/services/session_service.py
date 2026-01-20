@@ -1,28 +1,28 @@
-"""Service layer for questionnaire session operations."""
+"""Service layer for document session operations."""
 
 from sqlalchemy.orm import Session
 from typing import Optional, List, Tuple
 from fastapi import HTTPException, status
 from datetime import datetime
 
-from ..models.session import QuestionnaireSession, SessionAnswer
+from ..models.session import DocumentSession, SessionAnswer
 from ..models.question import QuestionGroup, Question
 from ..schemas.session import (
-    QuestionnaireSessionCreate,
-    QuestionnaireSessionUpdate,
+    DocumentSessionCreate,
+    DocumentSessionUpdate,
     SessionAnswerCreate
 )
 
 
 class SessionService:
-    """Service for questionnaire session operations."""
+    """Service for document session operations."""
     
     @staticmethod
     def create_session(
         db: Session,
-        session_data: QuestionnaireSessionCreate,
+        session_data: DocumentSessionCreate,
         user_id: int
-    ) -> QuestionnaireSession:
+    ) -> DocumentSession:
         """
         Create a new questionnaire session.
         
@@ -34,7 +34,7 @@ class SessionService:
         Returns:
             Created questionnaire session
         """
-        from ..models.flow import QuestionnaireFlow
+        from ..models.flow import DocumentFlow
         
         # Determine starting group
         starting_group_id = session_data.starting_group_id
@@ -42,9 +42,9 @@ class SessionService:
         
         # If flow is specified, use its starting group
         if flow_id:
-            flow = db.query(QuestionnaireFlow).filter(
-                QuestionnaireFlow.id == flow_id,
-                QuestionnaireFlow.is_active == True
+            flow = db.query(DocumentFlow).filter(
+                DocumentFlow.id == flow_id,
+                DocumentFlow.is_active == True
             ).first()
             
             if not flow:
@@ -69,7 +69,7 @@ class SessionService:
                 )
             starting_group_id = first_group.id
         
-        session = QuestionnaireSession(
+        session = DocumentSession(
             client_identifier=session_data.client_identifier,
             user_id=user_id,
             flow_id=flow_id,
@@ -84,7 +84,7 @@ class SessionService:
         return session
     
     @staticmethod
-    def get_session(db: Session, session_id: int, user_id: int) -> Optional[QuestionnaireSession]:
+    def get_session(db: Session, session_id: int, user_id: int) -> Optional[DocumentSession]:
         """
         Get session by ID (user can only access their own sessions).
         
@@ -96,9 +96,9 @@ class SessionService:
         Returns:
             Session if found and belongs to user, None otherwise
         """
-        return db.query(QuestionnaireSession).filter(
-            QuestionnaireSession.id == session_id,
-            QuestionnaireSession.user_id == user_id
+        return db.query(DocumentSession).filter(
+            DocumentSession.id == session_id,
+            DocumentSession.user_id == user_id
         ).first()
     
     @staticmethod
@@ -107,7 +107,7 @@ class SessionService:
         user_id: int,
         skip: int = 0,
         limit: int = 100
-    ) -> Tuple[List[QuestionnaireSession], int]:
+    ) -> Tuple[List[DocumentSession], int]:
         """
         List sessions for a user.
         
@@ -120,12 +120,12 @@ class SessionService:
         Returns:
             Tuple of (sessions list, total count)
         """
-        query = db.query(QuestionnaireSession).filter(
-            QuestionnaireSession.user_id == user_id
+        query = db.query(DocumentSession).filter(
+            DocumentSession.user_id == user_id
         )
         
         total = query.count()
-        sessions = query.order_by(QuestionnaireSession.created_at.desc()).offset(skip).limit(limit).all()
+        sessions = query.order_by(DocumentSession.created_at.desc()).offset(skip).limit(limit).all()
         
         return sessions, total
     
@@ -135,7 +135,7 @@ class SessionService:
         session_id: int,
         user_id: int,
         answers: List[SessionAnswerCreate]
-    ) -> QuestionnaireSession:
+    ) -> DocumentSession:
         """
         Submit answers for current question group and navigate to next group.
         
@@ -212,7 +212,7 @@ class SessionService:
     @staticmethod
     def _get_next_group(
         db: Session,
-        session: QuestionnaireSession,
+        session: DocumentSession,
         current_group: QuestionGroup,
         answers: List[SessionAnswerCreate]
     ) -> Optional[int]:

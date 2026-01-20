@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
 import { SessionProgress, QuestionnaireSession } from '../types/session'
+import PersonTypeahead from '../components/common/PersonTypeahead'
 import './Questionnaire.css'
 
 const Questionnaire: React.FC = () => {
@@ -15,8 +16,8 @@ const Questionnaire: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showNewSessionForm, setShowNewSessionForm] = useState(false)
-  const [newClientName, setNewClientName] = useState('')
+  const [documentFor, setDocumentFor] = useState('')
+  const [documentName, setDocumentName] = useState('')
 
   useEffect(() => {
     if (sessionId) {
@@ -45,7 +46,7 @@ const Questionnaire: React.FC = () => {
       setError(null)
       const progress = await sessionService.getSessionProgress(id)
       setCurrentSession(progress)
-      
+
       // Pre-fill answers if returning to a group
       const initialAnswers: Record<number, string> = {}
       if (progress.current_group) {
@@ -64,20 +65,20 @@ const Questionnaire: React.FC = () => {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!newClientName.trim()) {
-      alert('Please enter a client name')
+
+    if (!documentFor.trim() || !documentName.trim()) {
+      alert('Please fill in all fields')
       return
     }
 
     try {
       setSubmitting(true)
       const session = await sessionService.createSession({
-        client_identifier: newClientName
+        client_identifier: `${documentFor} - ${documentName}`
       })
-      navigate(`/questionnaire?session=${session.id}`)
-      setShowNewSessionForm(false)
-      setNewClientName('')
+      navigate(`/document?session=${session.id}`)
+      setDocumentFor('')
+      setDocumentName('')
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to create session')
     } finally {
@@ -102,7 +103,7 @@ const Questionnaire: React.FC = () => {
     // Validate required questions
     const requiredQuestions = currentSession.current_group.questions.filter(q => q.is_required)
     const missingAnswers = requiredQuestions.filter(q => !answers[q.id] || answers[q.id].trim() === '')
-    
+
     if (missingAnswers.length > 0) {
       alert('Please answer all required questions')
       return
@@ -212,60 +213,48 @@ const Questionnaire: React.FC = () => {
         <div className="questionnaire-content">
           <div className="questionnaire-card">
             <div className="questionnaire-header">
-              <h1 className="questionnaire-title">Questionnaires</h1>
-              <p className="questionnaire-subtitle">Start a new questionnaire or continue an existing one</p>
+              <h1 className="questionnaire-title">Documents</h1>
+              <p className="questionnaire-subtitle">Start a new document or continue an existing one</p>
             </div>
 
-            <button
-              onClick={() => setShowNewSessionForm(true)}
-              className="btn btn-primary"
-              style={{ width: '100%', marginBottom: '2rem' }}
-            >
-              Start New Questionnaire
-            </button>
-
-            {showNewSessionForm && (
-              <form onSubmit={handleCreateSession} className="new-session-form" style={{ marginBottom: '2rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Client Name</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    placeholder="Enter client name or identifier"
-                    required
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="submit" disabled={submitting} className="btn btn-primary">
-                    {submitting ? 'Creating...' : 'Create Session'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewSessionForm(false)
-                      setNewClientName('')
-                    }}
-                    className="btn btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
+            <form onSubmit={handleCreateSession} className="new-session-form" style={{ marginBottom: '2rem' }}>
+              <div className="form-group">
+                <label className="form-label">Document For</label>
+                <PersonTypeahead
+                  value={documentFor}
+                  onChange={(value) => setDocumentFor(value)}
+                  placeholder="Enter client name"
+                  className="form-input"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Document Name</label>
+                <input
+                  type="text"
+                  value={documentName}
+                  onChange={(e) => setDocumentName(e.target.value)}
+                  placeholder="Enter document name"
+                  className="form-input"
+                  required
+                />
+              </div>
+              <button type="submit" disabled={submitting || !documentFor.trim() || !documentName.trim()} className="btn btn-primary">
+                {submitting ? 'Creating...' : 'Create Document'}
+              </button>
+            </form>
 
             <div className="session-list">
               {sessions.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#6b7280' }}>
-                  No questionnaires yet. Start a new one to get started.
+                  No documents yet. Start a new one to get started.
                 </p>
               ) : (
                 sessions.map(session => (
                   <div
                     key={session.id}
                     className="session-card"
-                    onClick={() => navigate(`/questionnaire?session=${session.id}`)}
+                    onClick={() => navigate(`/document?session=${session.id}`)}
                   >
                     <div className="session-card-header">
                       <div className="session-client">{session.client_identifier}</div>
@@ -298,7 +287,7 @@ const Questionnaire: React.FC = () => {
               You have successfully completed the questionnaire for {currentSession.session.client_identifier}.
             </p>
             <button
-              onClick={() => navigate('/questionnaire')}
+              onClick={() => navigate('/document')}
               className="btn btn-primary"
             >
               Back to Questionnaires
@@ -345,7 +334,7 @@ const Questionnaire: React.FC = () => {
               <div className="action-buttons">
                 <button
                   type="button"
-                  onClick={() => navigate('/questionnaire')}
+                  onClick={() => navigate('/document')}
                   className="btn btn-secondary"
                 >
                   Save & Exit

@@ -3,8 +3,8 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 
-class QuestionnaireFlowCreate(BaseModel):
-    """Schema for creating a questionnaire flow."""
+class DocumentFlowCreate(BaseModel):
+    """Schema for creating a document flow."""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     flow_logic: Optional[Any] = None
@@ -12,8 +12,8 @@ class QuestionnaireFlowCreate(BaseModel):
     question_group_ids: Optional[List[int]] = None
 
 
-class QuestionnaireFlowUpdate(BaseModel):
-    """Schema for updating a questionnaire flow."""
+class DocumentFlowUpdate(BaseModel):
+    """Schema for updating a document flow."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     flow_logic: Optional[Any] = None
@@ -21,8 +21,8 @@ class QuestionnaireFlowUpdate(BaseModel):
     question_group_ids: Optional[List[int]] = None
 
 
-class QuestionnaireFlowResponse(BaseModel):
-    """Schema for questionnaire flow response."""
+class DocumentFlowResponse(BaseModel):
+    """Schema for document flow response."""
     id: int
     name: str
     description: Optional[str]
@@ -37,14 +37,14 @@ class QuestionnaireFlowResponse(BaseModel):
         from_attributes = True
 
 
-class QuestionnaireFlowWithGroups(QuestionnaireFlowResponse):
+class DocumentFlowWithGroups(DocumentFlowResponse):
     """Schema for flow with associated question groups."""
     question_groups: List[dict]
 
 
-class QuestionnaireFlowListResponse(BaseModel):
+class DocumentFlowListResponse(BaseModel):
     """Schema for paginated flow list response."""
-    flows: List[QuestionnaireFlowResponse]
+    flows: List[DocumentFlowResponse]
     total: int
     page: int
     page_size: int

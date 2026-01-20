@@ -7,9 +7,9 @@ from typing import List
 from ..database import get_db
 from ..middleware.auth_middleware import require_auth
 from ..schemas.session import (
-    QuestionnaireSessionCreate,
-    QuestionnaireSessionResponse,
-    QuestionnaireSessionWithAnswers,
+    DocumentSessionCreate,
+    DocumentSessionResponse,
+    DocumentSessionWithAnswers,
     SubmitAnswersRequest,
     SessionProgressResponse,
     SessionAnswerResponse
@@ -21,12 +21,12 @@ from ..services.question_service import QuestionService
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-@router.post("/", response_model=QuestionnaireSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=DocumentSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(
-    session_data: QuestionnaireSessionCreate,
+    session_data: DocumentSessionCreate,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> QuestionnaireSessionResponse:
+) -> DocumentSessionResponse:
     """
     Create a new questionnaire session.
     
@@ -39,16 +39,16 @@ async def create_session(
         int(current_user["sub"])
     )
     
-    return QuestionnaireSessionResponse.model_validate(session)
+    return DocumentSessionResponse.model_validate(session)
 
 
-@router.get("/", response_model=List[QuestionnaireSessionResponse])
+@router.get("/", response_model=List[DocumentSessionResponse])
 async def list_sessions(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> List[QuestionnaireSessionResponse]:
+) -> List[DocumentSessionResponse]:
     """
     List all questionnaire sessions for the current user.
     
@@ -62,15 +62,15 @@ async def list_sessions(
         limit
     )
     
-    return [QuestionnaireSessionResponse.model_validate(s) for s in sessions]
+    return [DocumentSessionResponse.model_validate(s) for s in sessions]
 
 
-@router.get("/{session_id}", response_model=QuestionnaireSessionWithAnswers)
+@router.get("/{session_id}", response_model=DocumentSessionWithAnswers)
 async def get_session(
     session_id: int,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> QuestionnaireSessionWithAnswers:
+) -> DocumentSessionWithAnswers:
     """
     Get a specific questionnaire session with all answers.
     
@@ -85,7 +85,7 @@ async def get_session(
     
     answers = SessionService.get_session_answers(db, session_id, int(current_user["sub"]))
     
-    return QuestionnaireSessionWithAnswers(
+    return DocumentSessionWithAnswers(
         **session.to_dict(),
         answers=[SessionAnswerResponse.model_validate(a) for a in answers]
     )
@@ -126,7 +126,7 @@ async def get_session_progress(
             }
     
     return SessionProgressResponse(
-        session=QuestionnaireSessionResponse.model_validate(session),
+        session=DocumentSessionResponse.model_validate(session),
         current_group=current_group,
         next_group_id=session.current_group.next_group_id if session.current_group else None,
         is_completed=session.is_completed,
@@ -134,13 +134,13 @@ async def get_session_progress(
     )
 
 
-@router.post("/{session_id}/submit", response_model=QuestionnaireSessionResponse)
+@router.post("/{session_id}/submit", response_model=DocumentSessionResponse)
 async def submit_answers(
     session_id: int,
     answers_data: SubmitAnswersRequest,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> QuestionnaireSessionResponse:
+) -> DocumentSessionResponse:
     """
     Submit answers for the current question group and navigate to next group.
     
@@ -156,7 +156,7 @@ async def submit_answers(
         answers_data.answers
     )
     
-    return QuestionnaireSessionResponse.model_validate(session)
+    return DocumentSessionResponse.model_validate(session)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

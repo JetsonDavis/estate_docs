@@ -25,21 +25,21 @@ class SessionAnswerResponse(SessionAnswerBase):
         from_attributes = True
 
 
-class QuestionnaireSessionCreate(BaseModel):
-    """Schema for creating a questionnaire session."""
+class DocumentSessionCreate(BaseModel):
+    """Schema for creating a document session."""
     client_identifier: str = Field(..., min_length=1, max_length=255)
     flow_id: Optional[int] = None
     starting_group_id: Optional[int] = None
 
 
-class QuestionnaireSessionUpdate(BaseModel):
-    """Schema for updating a questionnaire session."""
+class DocumentSessionUpdate(BaseModel):
+    """Schema for updating a document session."""
     current_group_id: Optional[int] = None
     is_completed: Optional[bool] = None
 
 
-class QuestionnaireSessionResponse(BaseModel):
-    """Schema for questionnaire session response."""
+class DocumentSessionResponse(BaseModel):
+    """Schema for document session response."""
     id: int
     client_identifier: str
     user_id: int
@@ -54,7 +54,7 @@ class QuestionnaireSessionResponse(BaseModel):
         from_attributes = True
 
 
-class QuestionnaireSessionWithAnswers(QuestionnaireSessionResponse):
+class DocumentSessionWithAnswers(DocumentSessionResponse):
     """Schema for session with answers."""
     answers: List[SessionAnswerResponse]
 
@@ -66,7 +66,7 @@ class SubmitAnswersRequest(BaseModel):
 
 class SessionProgressResponse(BaseModel):
     """Schema for session progress response."""
-    session: QuestionnaireSessionResponse
+    session: DocumentSessionResponse
     current_group: Optional[dict]
     next_group_id: Optional[int]
     is_completed: bool

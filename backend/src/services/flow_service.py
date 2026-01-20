@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 from typing import Optional, List, Tuple
 from fastapi import HTTPException, status
 
-from ..models.flow import QuestionnaireFlow, flow_question_groups
+from ..models.flow import DocumentFlow, flow_question_groups
 from ..models.question import QuestionGroup
-from ..schemas.flow import QuestionnaireFlowCreate, QuestionnaireFlowUpdate
+from ..schemas.flow import DocumentFlowCreate, DocumentFlowUpdate
 
 
 class FlowService:
@@ -15,9 +15,9 @@ class FlowService:
     @staticmethod
     def create_flow(
         db: Session,
-        flow_data: QuestionnaireFlowCreate,
+        flow_data: DocumentFlowCreate,
         user_id: int
-    ) -> QuestionnaireFlow:
+    ) -> DocumentFlow:
         """
         Create a new document flow.
         
@@ -30,9 +30,9 @@ class FlowService:
             Created document flow
         """
         # Check if flow name already exists
-        existing = db.query(QuestionnaireFlow).filter(
-            QuestionnaireFlow.name == flow_data.name,
-            QuestionnaireFlow.is_active == True
+        existing = db.query(DocumentFlow).filter(
+            DocumentFlow.name == flow_data.name,
+            DocumentFlow.is_active == True
         ).first()
         
         if existing:
@@ -55,7 +55,7 @@ class FlowService:
                 )
         
         # Create flow
-        flow = QuestionnaireFlow(
+        flow = DocumentFlow(
             name=flow_data.name,
             description=flow_data.description,
             flow_logic=flow_data.flow_logic,
@@ -107,7 +107,7 @@ class FlowService:
         db.commit()
     
     @staticmethod
-    def get_flow(db: Session, flow_id: int) -> Optional[QuestionnaireFlow]:
+    def get_flow(db: Session, flow_id: int) -> Optional[DocumentFlow]:
         """
         Get flow by ID.
         
@@ -118,9 +118,9 @@ class FlowService:
         Returns:
             Flow if found, None otherwise
         """
-        return db.query(QuestionnaireFlow).filter(
-            QuestionnaireFlow.id == flow_id,
-            QuestionnaireFlow.is_active == True
+        return db.query(DocumentFlow).filter(
+            DocumentFlow.id == flow_id,
+            DocumentFlow.is_active == True
         ).first()
     
     @staticmethod
@@ -129,7 +129,7 @@ class FlowService:
         skip: int = 0,
         limit: int = 100,
         search: Optional[str] = None
-    ) -> Tuple[List[QuestionnaireFlow], int]:
+    ) -> Tuple[List[DocumentFlow], int]:
         """
         List document flows.
         
@@ -142,17 +142,17 @@ class FlowService:
         Returns:
             Tuple of (flows list, total count)
         """
-        query = db.query(QuestionnaireFlow).filter(
-            QuestionnaireFlow.is_active == True
+        query = db.query(DocumentFlow).filter(
+            DocumentFlow.is_active == True
         )
         
         if search:
             query = query.filter(
-                QuestionnaireFlow.name.ilike(f"%{search}%")
+                DocumentFlow.name.ilike(f"%{search}%")
             )
         
         total = query.count()
-        flows = query.order_by(QuestionnaireFlow.created_at.desc()).offset(skip).limit(limit).all()
+        flows = query.order_by(DocumentFlow.created_at.desc()).offset(skip).limit(limit).all()
         
         return flows, total
     
@@ -160,8 +160,8 @@ class FlowService:
     def update_flow(
         db: Session,
         flow_id: int,
-        flow_data: QuestionnaireFlowUpdate
-    ) -> Optional[QuestionnaireFlow]:
+        flow_data: DocumentFlowUpdate
+    ) -> Optional[DocumentFlow]:
         """
         Update a document flow.
         
@@ -180,10 +180,10 @@ class FlowService:
         # Update fields
         if flow_data.name is not None:
             # Check name uniqueness
-            existing = db.query(QuestionnaireFlow).filter(
-                QuestionnaireFlow.name == flow_data.name,
-                QuestionnaireFlow.id != flow_id,
-                QuestionnaireFlow.is_active == True
+            existing = db.query(DocumentFlow).filter(
+                DocumentFlow.name == flow_data.name,
+                DocumentFlow.id != flow_id,
+                DocumentFlow.is_active == True
             ).first()
             
             if existing:

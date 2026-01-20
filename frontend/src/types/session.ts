@@ -7,7 +7,7 @@ export interface SessionAnswer {
   updated_at: string
 }
 
-export interface QuestionnaireSession {
+export interface DocumentSession {
   id: number
   client_identifier: string
   user_id: number
@@ -18,9 +18,13 @@ export interface QuestionnaireSession {
   updated_at: string
 }
 
-export interface QuestionnaireSessionWithAnswers extends QuestionnaireSession {
+export interface DocumentSessionWithAnswers extends DocumentSession {
   answers: SessionAnswer[]
 }
+
+// Backwards compatibility aliases
+export type QuestionnaireSession = DocumentSession
+export type QuestionnaireSessionWithAnswers = DocumentSessionWithAnswers
 
 export interface SessionCreate {
   client_identifier: string
@@ -35,7 +39,7 @@ export interface SubmitAnswersRequest {
 }
 
 export interface SessionProgress {
-  session: QuestionnaireSession
+  session: DocumentSession
   current_group: {
     id: number
     name: string

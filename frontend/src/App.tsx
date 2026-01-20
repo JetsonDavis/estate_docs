@@ -13,8 +13,7 @@ import People from './pages/admin/People'
 import QuestionGroups from './pages/admin/QuestionGroups'
 import Templates from './pages/admin/Templates'
 import Flows from './pages/admin/Flows'
-import CreateFlow from './pages/admin/CreateFlow'
-import EditFlow from './pages/admin/EditFlow'
+import FlowBuilder from './pages/admin/FlowBuilder'
 import Questionnaire from './pages/Questionnaire'
 import Documents from './pages/Documents'
 
@@ -147,7 +146,7 @@ function App() {
                 <ProtectedRoute requireAdmin>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <CreateFlow />
+                    <FlowBuilder />
                   </div>
                 </ProtectedRoute>
               }
@@ -158,7 +157,7 @@ function App() {
                 <ProtectedRoute requireAdmin>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <EditFlow />
+                    <FlowBuilder />
                   </div>
                 </ProtectedRoute>
               }
@@ -166,7 +165,7 @@ function App() {
             
             {/* Client routes */}
             <Route
-              path="/questionnaire"
+              path="/document"
               element={
                 <ProtectedRoute>
                   <Questionnaire />

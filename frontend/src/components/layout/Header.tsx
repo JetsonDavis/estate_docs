@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { flowService } from '../../services/flowService'
+import { QuestionnaireFlow } from '../../types/flow'
 import './Header.css'
 
 const Header: React.FC = () => {
@@ -8,6 +10,8 @@ const Header: React.FC = () => {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const [flows, setFlows] = useState<QuestionnaireFlow[]>([])
+  const [selectedFlowId, setSelectedFlowId] = useState<number | ''>('')
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -19,6 +23,24 @@ const Header: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    const loadFlows = async () => {
+      try {
+        const response = await flowService.getFlows(1, 100)
+        setFlows(response.flows || [])
+        // Auto-select first flow if available
+        if (response.flows && response.flows.length > 0) {
+          setSelectedFlowId(response.flows[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to load flows:', err)
+      }
+    }
+    if (isAdmin) {
+      loadFlows()
+    }
+  }, [isAdmin])
 
   const handleLogout = async () => {
     try {
@@ -53,8 +75,34 @@ const Header: React.FC = () => {
                     <Link to="/admin/templates" className="header-link">
                       Templates
                     </Link>
+                    <select
+                      value={selectedFlowId}
+                      onChange={(e) => setSelectedFlowId(e.target.value ? parseInt(e.target.value) : '')}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        backgroundColor: 'white',
+                        cursor: 'pointer',
+                        minWidth: '150px'
+                      }}
+                    >
+                      <option value="">Select Flow...</option>
+                      {flows.map((flow) => (
+                        <option key={flow.id} value={flow.id}>
+                          {flow.name}
+                        </option>
+                      ))}
+                    </select>
                     <button
-                      onClick={() => navigate('/questionnaire')}
+                      onClick={() => {
+                        if (selectedFlowId) {
+                          navigate(`/document?flowId=${selectedFlowId}`)
+                        } else {
+                          alert('Please select a flow first')
+                        }
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -78,7 +126,7 @@ const Header: React.FC = () => {
                   </>
                 )}
                 {!isAdmin && (
-                  <Link to="/questionnaire" className="header-link">
+                  <Link to="/document" className="header-link">
                     Questionnaire
                   </Link>
                 )}

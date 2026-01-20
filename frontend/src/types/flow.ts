@@ -1,4 +1,4 @@
-export interface QuestionnaireFlow {
+export interface DocumentFlow {
   id: number
   name: string
   description: string | null
@@ -10,7 +10,7 @@ export interface QuestionnaireFlow {
   updated_at: string
 }
 
-export interface QuestionnaireFlowWithGroups extends QuestionnaireFlow {
+export interface DocumentFlowWithGroups extends DocumentFlow {
   question_groups: Array<{
     id: number
     name: string
@@ -19,7 +19,7 @@ export interface QuestionnaireFlowWithGroups extends QuestionnaireFlow {
   }>
 }
 
-export interface QuestionnaireFlowCreate {
+export interface DocumentFlowCreate {
   name: string
   description?: string
   flow_logic?: any
@@ -27,7 +27,7 @@ export interface QuestionnaireFlowCreate {
   question_group_ids?: number[]
 }
 
-export interface QuestionnaireFlowUpdate {
+export interface DocumentFlowUpdate {
   name?: string
   description?: string
   flow_logic?: any
@@ -35,10 +35,17 @@ export interface QuestionnaireFlowUpdate {
   question_group_ids?: number[]
 }
 
-export interface QuestionnaireFlowListResponse {
-  flows: QuestionnaireFlow[]
+export interface DocumentFlowListResponse {
+  flows: DocumentFlow[]
   total: number
   page: number
   page_size: number
   total_pages: number
 }
+
+// Backwards compatibility aliases
+export type QuestionnaireFlow = DocumentFlow
+export type QuestionnaireFlowWithGroups = DocumentFlowWithGroups
+export type QuestionnaireFlowCreate = DocumentFlowCreate
+export type QuestionnaireFlowUpdate = DocumentFlowUpdate
+export type QuestionnaireFlowListResponse = DocumentFlowListResponse
