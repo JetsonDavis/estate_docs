@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { userService } from '../../services/userService'
 import { User, UserCreate, UserUpdate } from '../../types/user'
-import Button from '../../components/common/Button'
-import Input from '../../components/common/Input'
-import Modal from '../../components/common/Modal'
-import Alert from '../../components/common/Alert'
+import './Users.css'
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([])
@@ -129,284 +126,269 @@ const Users: React.FC = () => {
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
-              <p className="mt-2 text-sm text-gray-600">
-                Manage system users and their roles
-              </p>
-            </div>
-            <Button onClick={handleCreate}>
-              Create User
-            </Button>
+    <div className="users-container">
+      <div className="users-header">
+        <div>
+          <h1 className="users-title">User Management</h1>
+          <p className="users-subtitle">
+            Manage system users and their roles
+          </p>
+        </div>
+        <button onClick={handleCreate} className="create-button">
+          Create User
+        </button>
+      </div>
+
+      {error && (
+        <div className="alert-container">
+          <div className="alert alert-error">
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="alert-close">&times;</button>
           </div>
         </div>
+      )}
 
-        {error && (
-          <div className="mb-4">
-            <Alert type="error" message={error} onClose={() => setError('')} />
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-4">
-            <Alert type="success" message={success} onClose={() => setSuccess('')} />
-          </div>
-        )}
-
-        <div className="mb-6 bg-white p-4 rounded-lg shadow">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
-              <Input
-                type="text"
-                placeholder="Search by username, email, or name..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value)
-                  setPage(1)
-                }}
-              />
-            </div>
-            <div>
-              <select
-                value={roleFilter}
-                onChange={(e) => {
-                  setRoleFilter(e.target.value as 'all' | 'admin' | 'user')
-                  setPage(1)
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Roles</option>
-                <option value="admin">Admin</option>
-                <option value="user">User</option>
-              </select>
-            </div>
-            <div>
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')
-                  setPage(1)
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
+      {success && (
+        <div className="alert-container">
+          <div className="alert alert-success">
+            <span>{success}</span>
+            <button onClick={() => setSuccess('')} className="alert-close">&times;</button>
           </div>
         </div>
+      )}
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-sm text-gray-600">Loading users...</p>
-          </div>
-        ) : (
-          <>
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Login
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user) => (
-                    <tr key={user.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {user.username}
-                            </div>
-                            {user.full_name && (
-                              <div className="text-sm text-gray-500">{user.full_name}</div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{user.email}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          user.role === 'admin' 
-                            ? 'bg-purple-100 text-purple-800' 
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          user.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {user.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {user.last_login 
-                          ? new Date(user.last_login).toLocaleDateString() 
-                          : 'Never'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="text-blue-600 hover:text-blue-900 mr-4"
-                        >
-                          Edit
+      <div className="filters-card">
+        <div className="filters-grid">
+          <input
+            type="text"
+            placeholder="Search by username, email, or name..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setPage(1)
+            }}
+            className="search-input"
+          />
+          <select
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value as 'all' | 'admin' | 'user')
+              setPage(1)
+            }}
+            className="filter-select"
+          >
+            <option value="all">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="user">User</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')
+              setPage(1)
+            }}
+            className="filter-select"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading-state">
+          <div className="loading-spinner"></div>
+          <p className="loading-text">Loading users...</p>
+        </div>
+      ) : (
+        <>
+          <div className="users-table-container">
+            <table className="users-table">
+              <thead>
+                <tr>
+                  <th>User Name</th>
+                  <th>Full Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Last Login</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id}>
+                    <td>
+                      <div className="user-name">{user.username}</div>
+                    </td>
+                    <td>
+                      <div className="user-fullname">{user.full_name || '-'}</div>
+                    </td>
+                    <td>
+                      <div className="user-email">{user.email}</div>
+                    </td>
+                    <td>
+                      <span className={`badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${user.is_active ? 'badge-active' : 'badge-inactive'}`}>
+                        {user.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                    </td>
+                    <td>
+                      <div className="user-actions">
+                        <button onClick={() => handleEdit(user)} className="action-button edit-button" title="Edit">
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
                         </button>
                         {user.is_active && (
-                          <button
-                            onClick={() => handleDelete(user.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Deactivate
+                          <button onClick={() => handleDelete(user.id)} className="action-button delete-button" title="Deactivate">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                            </svg>
                           </button>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-            {totalPages > 1 && (
-              <div className="mt-4 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} users
-                </div>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage(page - 1)}
-                    disabled={page === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPage(page + 1)}
-                    disabled={page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
+          {totalPages > 1 && (
+            <div className="pagination">
+              <div className="pagination-info">
+                Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} users
               </div>
-            )}
-          </>
-        )}
-
-        <Modal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          title={editingUser ? 'Edit User' : 'Create User'}
-        >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!editingUser && (
-              <>
-                <Input
-                  label="Username"
-                  type="text"
-                  value={(formData as UserCreate).username || ''}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  required
-                  placeholder="Enter username"
-                />
-                <Input
-                  label="Password"
-                  type="password"
-                  value={(formData as UserCreate).password || ''}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                  placeholder="Enter password"
-                  helperText="Min 8 chars, uppercase, lowercase, and digit"
-                />
-              </>
-            )}
-            <Input
-              label="Email"
-              type="email"
-              value={formData.email || ''}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
-              placeholder="user@example.com"
-            />
-            <Input
-              label="Full Name"
-              type="text"
-              value={formData.full_name || ''}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              placeholder="Full name (optional)"
-            />
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Role
-              </label>
-              <select
-                value={formData.role || 'user'}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
+              <div className="pagination-buttons">
+                <button
+                  onClick={() => setPage(page - 1)}
+                  disabled={page === 1}
+                  className="pagination-button"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={page === totalPages}
+                  className="pagination-button"
+                >
+                  Next
+                </button>
+              </div>
             </div>
-            {editingUser && (
-              <div className="flex items-center">
+          )}
+        </>
+      )}
+
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">{editingUser ? 'Edit User' : 'Create User'}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="modal-close">&times;</button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              {!editingUser && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Username</label>
+                    <input
+                      type="text"
+                      value={(formData as UserCreate).username || ''}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      required
+                      placeholder="Enter username"
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Password</label>
+                    <input
+                      type="password"
+                      value={(formData as UserCreate).password || ''}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      required
+                      placeholder="Enter password"
+                      className="form-input"
+                    />
+                    <p className="form-helper">Min 8 chars, uppercase, lowercase, and digit</p>
+                  </div>
+                </>
+              )}
+              <div className="form-group">
+                <label className="form-label">Email</label>
                 <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={(formData as UserUpdate).is_active !== false}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  type="email"
+                  value={formData.email || ''}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                  placeholder="user@example.com"
+                  className="form-input"
                 />
-                <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
-                  Active
-                </label>
               </div>
-            )}
-            <div className="flex justify-end space-x-3 pt-4">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                {editingUser ? 'Update' : 'Create'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      </div>
+              <div className="form-group">
+                <label className="form-label">Full Name</label>
+                <input
+                  type="text"
+                  value={formData.full_name || ''}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder="Full name (optional)"
+                  className="form-input"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select
+                  value={formData.role || 'user'}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
+                  className="form-select"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {editingUser && (
+                <div className="form-group">
+                  <div className="checkbox-group">
+                    <input
+                      type="checkbox"
+                      id="is_active"
+                      checked={(formData as UserUpdate).is_active !== false}
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      className="checkbox-input"
+                    />
+                    <label htmlFor="is_active" className="checkbox-label">
+                      Active
+                    </label>
+                  </div>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="cancel-button"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="submit-button">
+                  {editingUser ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

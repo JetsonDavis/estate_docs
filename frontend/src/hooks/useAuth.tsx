@@ -19,6 +19,7 @@ interface AuthContextType {
   loading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  checkAuth: () => Promise<void>
   isAuthenticated: boolean
   isAdmin: boolean
 }
@@ -30,24 +31,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true)
   const hasCheckedAuth = useRef(false)
 
-  useEffect(() => {
-    // Check if user is already authenticated on mount (only once)
-    if (hasCheckedAuth.current) return
-    
-    hasCheckedAuth.current = true
-    
-    const checkAuth = async () => {
-      try {
-        const response = await apiClient.get('/auth/me')
-        setUser(response.data)
-      } catch (error) {
-        setUser(null)
-      } finally {
+  const checkAuth = async () => {
+    try {
+      const response = await apiClient.get('/auth/me')
+      setUser(response.data)
+    } catch (error) {
+      setUser(null)
+    } finally {
+      if (!hasCheckedAuth.current) {
         setLoading(false)
+        hasCheckedAuth.current = true
       }
     }
+  }
 
+  useEffect(() => {
+    // Initial auth check on mount
     checkAuth()
+
+    // Set up interval to check auth every 30 seconds
+    const intervalId = setInterval(() => {
+      checkAuth()
+    }, 30000)
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId)
   }, [])
 
   const login = async (username: string, password: string) => {
@@ -65,6 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     loading,
     login,
     logout,
+    checkAuth,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin',
   }

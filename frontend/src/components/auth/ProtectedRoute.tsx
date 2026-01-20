@@ -1,5 +1,5 @@
-import React from 'react'
-import { Navigate } from 'react-router-dom'
+import React, { useEffect } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
 interface ProtectedRouteProps {
@@ -8,7 +8,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin = false }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth()
+  const { isAuthenticated, isAdmin, loading, checkAuth } = useAuth()
+  const location = useLocation()
+
+  useEffect(() => {
+    // Check authentication whenever the route changes
+    checkAuth()
+  }, [location.pathname])
 
   if (loading) {
     return (

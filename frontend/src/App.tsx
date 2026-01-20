@@ -9,9 +9,12 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/admin/Users'
+import People from './pages/admin/People'
 import QuestionGroups from './pages/admin/QuestionGroups'
 import Templates from './pages/admin/Templates'
 import Flows from './pages/admin/Flows'
+import CreateFlow from './pages/admin/CreateFlow'
+import EditFlow from './pages/admin/EditFlow'
 import Questionnaire from './pages/Questionnaire'
 import Documents from './pages/Documents'
 
@@ -62,7 +65,51 @@ function App() {
               }
             />
             <Route
+              path="/admin/people"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <People />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/question-groups"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <QuestionGroups />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/question-groups/new"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <QuestionGroups />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/question-groups/:id"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <QuestionGroups />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/question-groups/:id/edit"
               element={
                 <ProtectedRoute requireAdmin>
                   <div className="min-h-screen bg-gray-50">
@@ -90,6 +137,28 @@ function App() {
                   <div className="min-h-screen bg-gray-50">
                     <Header />
                     <Flows />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/flows/new"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <CreateFlow />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/flows/:id/edit"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <EditFlow />
                   </div>
                 </ProtectedRoute>
               }

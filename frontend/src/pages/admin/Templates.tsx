@@ -72,27 +72,42 @@ const Templates: React.FC = () => {
 
   return (
     <div className="templates-container">
-      <div className="templates-header">
-        <h1 className="templates-title">Document Templates</h1>
-        <div className="templates-actions">
-          <input
-            type="text"
-            placeholder="Search templates..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            className="search-input"
-          />
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="create-button"
-          >
-            Create Template
-          </button>
+      <div className="templates-wrapper">
+        <div className="templates-header">
+          <h1 className="templates-title">Document Templates</h1>
+          <div className="templates-actions">
+            <div className="search-wrapper">
+              <input
+                type="text"
+                placeholder="Search templates..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setPage(1)
+                }}
+                className="search-input"
+              />
+              <button
+                onClick={() => loadTemplates()}
+                className="search-icon-button"
+                aria-label="Search"
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="search-icon">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="create-button"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Template
+            </button>
+          </div>
         </div>
-      </div>
 
       {loading && <div className="loading-state">Loading templates...</div>}
       
@@ -198,6 +213,7 @@ const Templates: React.FC = () => {
           }}
         />
       )}
+      </div>
     </div>
   )
 }
@@ -210,10 +226,47 @@ interface CreateTemplateModalProps {
 const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSuccess }) => {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [templateType, setTemplateType] = useState<TemplateType>('direct')
   const [markdownContent, setMarkdownContent] = useState('')
+  const [templateType, setTemplateType] = useState<TemplateType>('direct')
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState(false)
+  const [nameError, setNameError] = useState('')
+  const [checkingName, setCheckingName] = useState(false)
+
+  const isFormValid = name.trim() !== '' && !nameError && (markdownContent.trim() !== '' || uploadedFile)
+
+  useEffect(() => {
+    const checkNameExists = async () => {
+      if (!name.trim()) {
+        setNameError('')
+        return
+      }
+
+      const timeoutId = setTimeout(async () => {
+        try {
+          setCheckingName(true)
+          const response = await templateService.getTemplates(1, 100)
+          const exists = response.templates.some(
+            (template) => template.name.toLowerCase() === name.trim().toLowerCase()
+          )
+          if (exists) {
+            setNameError('A template with this name already exists')
+          } else {
+            setNameError('')
+          }
+        } catch (err) {
+          // Silently fail on check error
+        } finally {
+          setCheckingName(false)
+        }
+      }, 500)
+
+      return () => clearTimeout(timeoutId)
+    }
+
+    checkNameExists()
+  }, [name])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -223,16 +276,7 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
       setUploading(true)
       const response = await templateService.uploadFile(file)
       setMarkdownContent(response.markdown_content)
-      
-      // Determine template type from file
-      const ext = file.name.split('.').pop()?.toLowerCase()
-      if (ext === 'docx' || ext === 'doc') {
-        setTemplateType('word')
-      } else if (ext === 'pdf') {
-        setTemplateType('pdf')
-      } else if (['jpg', 'jpeg', 'png', 'tiff', 'tif'].includes(ext || '')) {
-        setTemplateType('image')
-      }
+      setUploadedFile(true)
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to upload file')
     } finally {
@@ -242,7 +286,7 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name || !markdownContent) {
       alert('Please provide a name and content')
       return
@@ -256,10 +300,14 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
         template_type: templateType,
         markdown_content: markdownContent
       }
+      console.log('Submitting template data:', data)
       await templateService.createTemplate(data)
       onSuccess()
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create template')
+      console.error('Template creation error:', err)
+      console.error('Error response:', err.response)
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to create template'
+      alert(errorMessage)
     } finally {
       setSubmitting(false)
     }
@@ -275,30 +323,20 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Upload File (Optional)</label>
-            <div className="file-upload" onClick={() => document.getElementById('file-input')?.click()}>
-              <input
-                id="file-input"
-                type="file"
-                accept=".docx,.pdf,.jpg,.jpeg,.png,.tiff,.tif"
-                onChange={handleFileUpload}
-              />
-              <div className="upload-icon">📄</div>
-              <div className="upload-text">
-                {uploading ? 'Uploading...' : 'Click to upload Word, PDF, or Image file'}
-              </div>
-            </div>
-          </div>
-
-          <div className="form-group">
             <label className="form-label">Name *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="form-input"
-              required
+              style={{ borderColor: nameError ? '#dc2626' : undefined }}
             />
+            {checkingName && (
+              <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.25rem' }}>Checking name...</p>
+            )}
+            {nameError && !checkingName && (
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>{nameError}</p>
+            )}
           </div>
 
           <div className="form-group">
@@ -312,29 +350,30 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
           </div>
 
           <div className="form-group">
-            <label className="form-label">Template Type *</label>
-            <select
-              value={templateType}
-              onChange={(e) => setTemplateType(e.target.value as TemplateType)}
-              className="form-select"
-            >
-              <option value="direct">Direct Text</option>
-              <option value="word">Word Document</option>
-              <option value="pdf">PDF</option>
-              <option value="image">Image</option>
-            </select>
+            <label className="form-label">Upload File</label>
+            <div className="file-upload" onClick={() => document.getElementById('file-input')?.click()}>
+              <input
+                id="file-input"
+                type="file"
+                accept=".docx,.pdf,.txt,.jpg,.jpeg,.png,.tiff,.tif"
+                onChange={handleFileUpload}
+              />
+              <div className="upload-icon">📄</div>
+              <div className="upload-text">
+                {uploading ? 'Uploading...' : 'Click to upload Word, PDF, Text, or Image file'}
+              </div>
+            </div>
           </div>
 
           <div className="form-group">
             <label className="form-label">
-              Markdown Content * (Use {'<<identifier>>'} for placeholders)
+              Text (Use {'<<identifier>>'} for placeholders)
             </label>
             <textarea
               value={markdownContent}
               onChange={(e) => setMarkdownContent(e.target.value)}
               className="form-textarea"
               placeholder="Enter your template content here...&#10;&#10;Example:&#10;Name: <<client_name>>&#10;Date of Birth: <<dob>>"
-              required
             />
           </div>
 
@@ -342,7 +381,7 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
             <button type="button" onClick={onClose} className="cancel-button">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="submit-button">
+            <button type="submit" disabled={submitting || !isFormValid} className="submit-button">
               {submitting ? 'Creating...' : 'Create Template'}
             </button>
           </div>
@@ -414,7 +453,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ template, onClose
 
           <div className="form-group">
             <label className="form-label">
-              Markdown Content * (Use {'<<identifier>>'} for placeholders)
+              Text (Use {'<<identifier>>'} for placeholders)
             </label>
             <textarea
               value={markdownContent}

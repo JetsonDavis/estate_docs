@@ -1,4 +1,4 @@
-export type QuestionType = 'multiple_choice' | 'free_text' | 'database_dropdown'
+export type QuestionType = 'multiple_choice' | 'free_text' | 'database_dropdown' | 'checkbox_group' | 'dropdown' | 'person' | 'date'
 
 export interface QuestionOption {
   value: string
@@ -18,6 +18,8 @@ export interface Question {
   database_table: string | null
   database_value_column: string | null
   database_label_column: string | null
+  person_display_mode: string | null
+  include_time: boolean | null
   validation_rules: Record<string, any> | null
   created_at: string
   updated_at: string
@@ -36,6 +38,8 @@ export interface QuestionCreate {
   database_table?: string
   database_value_column?: string
   database_label_column?: string
+  person_display_mode?: string
+  include_time?: boolean
   validation_rules?: Record<string, any>
 }
 
@@ -49,6 +53,8 @@ export interface QuestionUpdate {
   database_table?: string
   database_value_column?: string
   database_label_column?: string
+  person_display_mode?: string
+  include_time?: boolean
   validation_rules?: Record<string, any>
   is_active?: boolean
 }

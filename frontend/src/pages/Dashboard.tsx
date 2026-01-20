@@ -27,12 +27,12 @@ const Dashboard: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
                   <div className="card-content">
-                    <h3 className="card-title">User Management</h3>
-                    <p className="card-description">Manage system users and roles</p>
+                    <h3 className="card-title">People</h3>
+                    <p className="card-description">Manage people and their information</p>
                   </div>
                 </div>
-                <Link to="/admin/users" className="card-button secondary">
-                  Manage Users
+                <Link to="/admin/people" className="card-button secondary">
+                  Manage People
                 </Link>
               </div>
 
@@ -121,7 +121,7 @@ const Dashboard: React.FC = () => {
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
           <div className="info-content">
-            <h3 className="info-title">Welcome to Estate Planning Document Generator</h3>
+            <h3 className="info-title">Welcome to Estate Doc(tor)</h3>
             <p className="info-text">
               {isAdmin 
                 ? 'As an administrator, you can manage users, create question groups, design document templates, and configure document flows.'

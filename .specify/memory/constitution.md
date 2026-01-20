@@ -11,7 +11,7 @@ Sync Impact Report:
 - Follow-up TODOs: None
 -->
 
-# Estate Planning Document Generator Constitution
+# Estate Doc(tor) Constitution
 
 ## Core Principles
 

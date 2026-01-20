@@ -2,6 +2,7 @@ export interface QuestionnaireFlow {
   id: number
   name: string
   description: string | null
+  flow_logic?: any
   starting_group_id: number | null
   created_by: number | null
   is_active: boolean
@@ -21,6 +22,7 @@ export interface QuestionnaireFlowWithGroups extends QuestionnaireFlow {
 export interface QuestionnaireFlowCreate {
   name: string
   description?: string
+  flow_logic?: any
   starting_group_id?: number
   question_group_ids?: number[]
 }
@@ -28,6 +30,7 @@ export interface QuestionnaireFlowCreate {
 export interface QuestionnaireFlowUpdate {
   name?: string
   description?: string
+  flow_logic?: any
   starting_group_id?: number
   question_group_ids?: number[]
 }
