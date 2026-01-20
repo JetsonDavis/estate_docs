@@ -689,8 +689,22 @@ const EditFlow: React.FC = () => {
                                   const question = getQuestionByIdentifier(previousGroupId, step.conditional?.identifier || '')
                                   const isChoiceType = question && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(question.question_type)
                                   const isPersonType = question && question.question_type === 'person'
+                                  const isDateType = question && question.question_type === 'date'
 
-                                  if (isChoiceType && question.options && Array.isArray(question.options)) {
+                                  if (isDateType) {
+                                    // Show date input for date type questions
+                                    return (
+                                      <input
+                                        type="date"
+                                        value={step.conditional?.value || ''}
+                                        onChange={(e) => updateStep(step.id, {
+                                          conditional: { ...step.conditional!, value: e.target.value }
+                                        })}
+                                        className="form-input"
+                                        style={{ fontSize: '0.875rem' }}
+                                      />
+                                    )
+                                  } else if (isChoiceType && question.options && Array.isArray(question.options)) {
                                     // Show dropdown for choice-based questions
                                     return (
                                       <select
@@ -907,7 +921,7 @@ const EditFlow: React.FC = () => {
                                         }}>
                                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
-                                              Nested Conditional
+                                              Nested Conditional (1)
                                             </div>
                                             <button
                                               type="button"
@@ -980,8 +994,29 @@ const EditFlow: React.FC = () => {
                                                 const question = getQuestionByIdentifier(targetGroupId, nestedStep.conditional?.identifier || '')
                                                 const isChoiceType = question && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(question.question_type)
                                                 const isPersonType = question && question.question_type === 'person'
+                                                const isDateType = question && question.question_type === 'date'
 
-                                                if (isChoiceType && question.options && Array.isArray(question.options)) {
+                                                if (isDateType) {
+                                                  // Show date input for date type questions
+                                                  return (
+                                                    <input
+                                                      type="date"
+                                                      value={nestedStep.conditional?.value || ''}
+                                                      onChange={(e) => {
+                                                        const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                          ns.id === nestedStep.id
+                                                            ? { ...ns, conditional: { ...ns.conditional!, value: e.target.value } }
+                                                            : ns
+                                                        )
+                                                        updateStep(step.id, {
+                                                          conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                        })
+                                                      }}
+                                                      className="form-input"
+                                                      style={{ fontSize: '0.8rem' }}
+                                                    />
+                                                  )
+                                                } else if (isChoiceType && question.options && Array.isArray(question.options)) {
                                                   // Show dropdown for choice-based questions
                                                   return (
                                                     <select
@@ -1228,8 +1263,8 @@ const EditFlow: React.FC = () => {
                                                         backgroundColor: '#faf5ff'
                                                       }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#7c3aed' }}>
-                                                            Deeper Nested Conditional
+                                                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
+                                                            Nested Conditional (2)
                                                           </div>
                                                           <button
                                                             type="button"
@@ -1253,7 +1288,7 @@ const EditFlow: React.FC = () => {
                                                             }}
                                                             title="Remove deeper nested conditional"
                                                           >
-                                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.875rem', height: '0.875rem' }}>
+                                                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
                                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                             </svg>
                                                           </button>
@@ -1309,8 +1344,34 @@ const EditFlow: React.FC = () => {
                                                               const question = getQuestionByIdentifier(targetGroupId, deeperStep.conditional?.identifier || '')
                                                               const isChoiceType = question && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(question.question_type)
                                                               const isPersonType = question && question.question_type === 'person'
+                                                              const isDateType = question && question.question_type === 'date'
 
-                                                              if (isPersonType) {
+                                                              if (isDateType) {
+                                                                // Show date input for date type questions
+                                                                return (
+                                                                  <input
+                                                                    type="date"
+                                                                    value={deeperStep.conditional?.value || ''}
+                                                                    onChange={(e) => {
+                                                                      const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
+                                                                        ds.id === deeperStep.id
+                                                                          ? { ...ds, conditional: { ...ds.conditional!, value: e.target.value } }
+                                                                          : ds
+                                                                      )
+                                                                      const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                                        ns.id === nestedStep.id
+                                                                          ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
+                                                                          : ns
+                                                                      )
+                                                                      updateStep(step.id, {
+                                                                        conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                                      })
+                                                                    }}
+                                                                    className="form-input"
+                                                                    style={{ fontSize: '0.8rem' }}
+                                                                  />
+                                                                )
+                                                              } else if (isPersonType) {
                                                                 // Show person type-ahead input
                                                                 return (
                                                                   <>
@@ -1584,8 +1645,8 @@ const EditFlow: React.FC = () => {
                                                                       backgroundColor: '#faf5ff'
                                                                     }}>
                                                                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                                        <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#7c3aed' }}>
-                                                                          Deepest Nested Conditional (Level 4 - Max)
+                                                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
+                                                                          Nested Conditional (3)
                                                                         </div>
                                                                         <button
                                                                           type="button"
@@ -1614,7 +1675,7 @@ const EditFlow: React.FC = () => {
                                                                           }}
                                                                           title="Remove deepest nested conditional"
                                                                         >
-                                                                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                                                                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                                           </svg>
                                                                         </button>
@@ -1675,8 +1736,39 @@ const EditFlow: React.FC = () => {
                                                                             const question = getQuestionByIdentifier(targetGroupId, deepestStep.conditional?.identifier || '')
                                                                             const isChoiceType = question && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(question.question_type)
                                                                             const isPersonType = question && question.question_type === 'person'
+                                                                            const isDateType = question && question.question_type === 'date'
 
-                                                                            if (isPersonType) {
+                                                                            if (isDateType) {
+                                                                              // Show date input for date type questions
+                                                                              return (
+                                                                                <input
+                                                                                  type="date"
+                                                                                  value={deepestStep.conditional?.value || ''}
+                                                                                  onChange={(e) => {
+                                                                                    const updatedDeepestSteps = deeperStep.conditional!.nestedSteps!.map(dst =>
+                                                                                      dst.id === deepestStep.id
+                                                                                        ? { ...dst, conditional: { ...dst.conditional!, value: e.target.value } }
+                                                                                        : dst
+                                                                                    )
+                                                                                    const updatedDeeperSteps = nestedStep.conditional!.nestedSteps!.map(ds =>
+                                                                                      ds.id === deeperStep.id
+                                                                                        ? { ...ds, conditional: { ...ds.conditional!, nestedSteps: updatedDeepestSteps } }
+                                                                                        : ds
+                                                                                    )
+                                                                                    const updatedNestedSteps = step.conditional!.nestedSteps!.map(ns =>
+                                                                                      ns.id === nestedStep.id
+                                                                                        ? { ...ns, conditional: { ...ns.conditional!, nestedSteps: updatedDeeperSteps } }
+                                                                                        : ns
+                                                                                    )
+                                                                                    updateStep(step.id, {
+                                                                                      conditional: { ...step.conditional!, nestedSteps: updatedNestedSteps }
+                                                                                    })
+                                                                                  }}
+                                                                                  className="form-input"
+                                                                                  style={{ fontSize: '0.8rem' }}
+                                                                                />
+                                                                              )
+                                                                            } else if (isPersonType) {
                                                                               // Show person type-ahead input
                                                                               return (
                                                                                 <>
