@@ -10,7 +10,7 @@ class GeneratedDocument(Base, TimestampMixin):
     __tablename__ = "generated_documents"
     
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("questionnaire_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("document_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     template_id = Column(Integer, ForeignKey("templates.id", ondelete="SET NULL"), nullable=True)
     document_name = Column(String(255), nullable=False)
     
@@ -26,7 +26,7 @@ class GeneratedDocument(Base, TimestampMixin):
     generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     
     # Relationships
-    session = relationship("QuestionnaireSession")
+    session = relationship("DocumentSession")
     template = relationship("Template")
     generator = relationship("User", foreign_keys=[generated_by])
     

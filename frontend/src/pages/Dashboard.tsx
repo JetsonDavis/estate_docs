@@ -72,12 +72,42 @@ const Dashboard: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   <div className="card-content">
-                    <h3 className="card-title">Questionnaire Flows</h3>
-                    <p className="card-description">Manage questionnaire workflows</p>
+                    <h3 className="card-title">Document Flows</h3>
+                    <p className="card-description">Manage document workflows</p>
                   </div>
                 </div>
                 <Link to="/admin/flows" className="card-button secondary">
                   Manage Flows
+                </Link>
+              </div>
+
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <svg className="card-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <div className="card-content">
+                    <h3 className="card-title">Document Sessions</h3>
+                    <p className="card-description">View and manage active sessions</p>
+                  </div>
+                </div>
+                <Link to="/document" className="card-button secondary">
+                  View Sessions
+                </Link>
+              </div>
+
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <svg className="card-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="card-content">
+                    <h3 className="card-title">Completed Documents</h3>
+                    <p className="card-description">View generated documents</p>
+                  </div>
+                </div>
+                <Link to="/documents" className="card-button secondary">
+                  View Documents
                 </Link>
               </div>
             </>
@@ -123,7 +153,7 @@ const Dashboard: React.FC = () => {
           <div className="info-content">
             <h3 className="info-title">Welcome to Estate Doc(tor)</h3>
             <p className="info-text">
-              {isAdmin 
+              {isAdmin
                 ? 'As an administrator, you can manage users, create question groups, design document templates, and configure document flows.'
                 : 'Complete questionnaires to generate personalized estate documents based on your answers.'}
             </p>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { flowService } from '../../services/flowService'
-import { QuestionnaireFlowCreate } from '../../types/flow'
+import { DocumentFlowCreate } from '../../types/flow'
 import './Flows.css'
 
 const CreateFlow: React.FC = () => {
@@ -57,7 +57,7 @@ const CreateFlow: React.FC = () => {
 
     try {
       setSubmitting(true)
-      const data: QuestionnaireFlowCreate = {
+      const data: DocumentFlowCreate = {
         name,
         description: description || undefined
       }

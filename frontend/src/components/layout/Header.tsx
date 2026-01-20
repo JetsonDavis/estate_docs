@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { flowService } from '../../services/flowService'
-import { QuestionnaireFlow } from '../../types/flow'
+import { DocumentFlow } from '../../types/flow'
 import './Header.css'
 
 const Header: React.FC = () => {
@@ -10,7 +10,7 @@ const Header: React.FC = () => {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const [flows, setFlows] = useState<QuestionnaireFlow[]>([])
+  const [flows, setFlows] = useState<DocumentFlow[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<number | ''>('')
 
   useEffect(() => {

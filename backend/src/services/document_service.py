@@ -8,7 +8,7 @@ from datetime import datetime
 
 from ..models.document import GeneratedDocument
 from ..models.template import Template
-from ..models.session import QuestionnaireSession, SessionAnswer
+from ..models.session import DocumentSession, SessionAnswer
 from ..models.question import Question
 from ..schemas.document import GenerateDocumentRequest
 
@@ -46,9 +46,9 @@ class DocumentService:
             )
         
         # Get session (verify user owns it)
-        session = db.query(QuestionnaireSession).filter(
-            QuestionnaireSession.id == request.session_id,
-            QuestionnaireSession.user_id == user_id
+        session = db.query(DocumentSession).filter(
+            DocumentSession.id == request.session_id,
+            DocumentSession.user_id == user_id
         ).first()
         
         if not session:
@@ -175,9 +175,9 @@ class DocumentService:
             )
         
         # Get session
-        session = db.query(QuestionnaireSession).filter(
-            QuestionnaireSession.id == session_id,
-            QuestionnaireSession.user_id == user_id
+        session = db.query(DocumentSession).filter(
+            DocumentSession.id == session_id,
+            DocumentSession.user_id == user_id
         ).first()
         
         if not session:
@@ -234,11 +234,11 @@ class DocumentService:
             Generated document if found and user has access
         """
         return db.query(GeneratedDocument).join(
-            QuestionnaireSession,
-            GeneratedDocument.session_id == QuestionnaireSession.id
+            DocumentSession,
+            GeneratedDocument.session_id == DocumentSession.id
         ).filter(
             GeneratedDocument.id == document_id,
-            QuestionnaireSession.user_id == user_id
+            DocumentSession.user_id == user_id
         ).first()
     
     @staticmethod
@@ -261,10 +261,10 @@ class DocumentService:
             Tuple of (documents list, total count)
         """
         query = db.query(GeneratedDocument).join(
-            QuestionnaireSession,
-            GeneratedDocument.session_id == QuestionnaireSession.id
+            DocumentSession,
+            GeneratedDocument.session_id == DocumentSession.id
         ).filter(
-            QuestionnaireSession.user_id == user_id
+            DocumentSession.user_id == user_id
         )
         
         total = query.count()

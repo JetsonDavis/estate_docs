@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { flowService } from '../../services/flowService'
-import { QuestionnaireFlow } from '../../types/flow'
+import { DocumentFlow } from '../../types/flow'
 import './Flows.css'
 
 const Flows: React.FC = () => {
   const navigate = useNavigate()
-  const [flows, setFlows] = useState<QuestionnaireFlow[]>([])
+  const [flows, setFlows] = useState<DocumentFlow[]>([])
   const [questionGroups, setQuestionGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +52,7 @@ const Flows: React.FC = () => {
     }
   }
 
-  const handleEdit = (flow: QuestionnaireFlow) => {
+  const handleEdit = (flow: DocumentFlow) => {
     navigate(`/admin/flows/${flow.id}/edit`)
   }
 
@@ -60,7 +60,7 @@ const Flows: React.FC = () => {
     <div className="flows-container">
       <div className="flows-wrapper">
         <div className="flows-header">
-          <h1 className="flows-title">Questionnaire Flows</h1>
+          <h1 className="flows-title">Document Flows</h1>
           <div className="flows-actions">
             <input
               type="text"
@@ -72,9 +72,9 @@ const Flows: React.FC = () => {
             <button
               onClick={() => navigate('/admin/flows/new')}
               className="create-button"
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              style={{
+                display: 'flex',
+                alignItems: 'center',
                 gap: '0.5rem',
                 whiteSpace: 'nowrap',
                 minWidth: '140px'
@@ -124,7 +124,7 @@ const Flows: React.FC = () => {
                 {flows.map((flow) => (
                   <tr key={flow.id}>
                     <td className="flow-name">
-                      <span 
+                      <span
                         onClick={() => handleEdit(flow)}
                         style={{ cursor: 'pointer', color: '#2563eb' }}
                       >
@@ -144,7 +144,7 @@ const Flows: React.FC = () => {
                         <button
                           onClick={() => handleEdit(flow)}
                           className="action-button edit-button"
-                          style={{ 
+                          style={{
                             background: 'none',
                             border: 'none',
                             padding: '0.25rem',
@@ -170,7 +170,7 @@ const Flows: React.FC = () => {
                         <button
                           onClick={() => handleDelete(flow.id)}
                           className="action-button delete-button"
-                          style={{ 
+                          style={{
                             background: 'none',
                             border: 'none',
                             padding: '0.25rem',

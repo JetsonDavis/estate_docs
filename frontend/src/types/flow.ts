@@ -44,8 +44,8 @@ export interface DocumentFlowListResponse {
 }
 
 // Backwards compatibility aliases
-export type QuestionnaireFlow = DocumentFlow
-export type QuestionnaireFlowWithGroups = DocumentFlowWithGroups
-export type QuestionnaireFlowCreate = DocumentFlowCreate
-export type QuestionnaireFlowUpdate = DocumentFlowUpdate
-export type QuestionnaireFlowListResponse = DocumentFlowListResponse
+export type DocumentFlow = DocumentFlow
+export type DocumentFlowWithGroups = DocumentFlowWithGroups
+export type DocumentFlowCreate = DocumentFlowCreate
+export type DocumentFlowUpdate = DocumentFlowUpdate
+export type DocumentFlowListResponse = DocumentFlowListResponse
