@@ -702,6 +702,51 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
+  // Add question at a specific index within nested items
+  const addQuestionToLogicAtIndex = (afterIndex: number, parentPath?: number[]) => {
+    const newQuestion = addQuestion()
+    if (!newQuestion) return
+    
+    const newLogicItem: QuestionLogicItem = {
+      id: Date.now().toString(),
+      type: 'question',
+      questionId: undefined,
+      depth: parentPath ? parentPath.length : 0
+    }
+    
+    ;(newLogicItem as any).localQuestionId = newQuestion.id
+    
+    if (parentPath && parentPath.length > 0) {
+      // Add to nested items at specific index
+      const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+        if (depth >= path.length) {
+          // Insert after the specified index
+          return [...items.slice(0, afterIndex + 1), newLogicItem, ...items.slice(afterIndex + 1)]
+        }
+        return items.map((item, idx) => {
+          if (idx === path[depth] && item.conditional) {
+            return {
+              ...item,
+              conditional: {
+                ...item.conditional,
+                nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+              }
+            }
+          }
+          return item
+        })
+      }
+      const newLogic = updateNestedItems(questionLogic, parentPath, 0)
+      setQuestionLogic(newLogic)
+      saveQuestionLogic(newLogic)
+    } else {
+      // Add to root level at specific index
+      const newLogic = [...questionLogic.slice(0, afterIndex + 1), newLogicItem, ...questionLogic.slice(afterIndex + 1)]
+      setQuestionLogic(newLogic)
+      saveQuestionLogic(newLogic)
+    }
+  }
+
   const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
     console.log('addConditionalToLogic called:', { afterIndex, parentPath, targetQuestion, questionLogicLength: questionLogic.length })
     
@@ -1282,9 +1327,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <button
                     type="button"
                     onClick={() => {
-                      // Add question to parent level (one level up)
+                      // Add question to parent level (one level up), after the current conditional
                       const parentPathUp = parentPath.slice(0, -1)
-                      addQuestionToLogic(undefined, parentPathUp.length > 0 ? parentPathUp : undefined)
+                      const insertAfterIndex = parentPath[parentPath.length - 1]
+                      addQuestionToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined)
                     }}
                     style={{
                       display: 'flex',
