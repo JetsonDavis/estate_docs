@@ -243,7 +243,7 @@ class QuestionService:
     
     @staticmethod
     def delete_question(db: Session, question_id: int) -> bool:
-        """Soft delete a question."""
+        """Hard delete a question."""
         question = db.query(Question).filter(Question.id == question_id).first()
         if not question:
             raise HTTPException(
@@ -251,7 +251,7 @@ class QuestionService:
                 detail="Question not found"
             )
         
-        question.is_active = False
+        db.delete(question)
         db.commit()
         
         return True

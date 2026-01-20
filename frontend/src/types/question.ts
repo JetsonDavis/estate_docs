@@ -63,10 +63,12 @@ export interface QuestionLogicItem {
   id: string
   type: 'question' | 'conditional'
   questionId?: number
+  stopFlow?: boolean
   conditional?: {
     ifIdentifier: string
     value: string
     nestedItems: QuestionLogicItem[]
+    endFlow?: boolean
   }
   depth?: number
 }

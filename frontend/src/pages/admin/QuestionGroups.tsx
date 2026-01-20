@@ -547,6 +547,30 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         setQuestions(prev => prev.map(q => 
           q.id === question.id ? { ...q, dbId: created.id } : q
         ))
+        
+        // Also update the questionId in questionLogic if this is a nested question
+        setQuestionLogic(prev => {
+          const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+            return items.map(item => {
+              if (item.type === 'question' && (item as any).localQuestionId === question.id) {
+                return { ...item, questionId: created.id }
+              }
+              if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                return {
+                  ...item,
+                  conditional: {
+                    ...item.conditional,
+                    nestedItems: updateLogicItems(item.conditional.nestedItems)
+                  }
+                }
+              }
+              return item
+            })
+          }
+          const updated = updateLogicItems(prev)
+          saveQuestionLogic(updated)
+          return updated
+        })
       }
 
       // Mark as saved
@@ -561,7 +585,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  const removeQuestion = (id: string) => {
+  const removeQuestion = async (id: string) => {
+    const questionToRemove = questions.find(q => q.id === id)
+    
+    // If the question has a dbId, delete it from the database
+    if (questionToRemove?.dbId) {
+      try {
+        await questionGroupService.deleteQuestion(questionToRemove.dbId)
+      } catch (err) {
+        console.error('Failed to delete question from database:', err)
+      }
+    }
+    
     setQuestions(questions.filter(q => q.id !== id))
   }
 
@@ -667,52 +702,72 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  const addConditionalToLogic = (afterIndex: number, parentPath?: number[]) => {
-    // Get the previous question to use as the "if" condition
-    let previousQuestion: QuestionFormData | undefined
+  const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
+    console.log('addConditionalToLogic called:', { afterIndex, parentPath, targetQuestion, questionLogicLength: questionLogic.length })
     
-    if (parentPath && parentPath.length > 0) {
-      // Find the previous item in nested context
-      const getItemsAtPath = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
-        if (depth >= path.length) return items
-        const item = items[path[depth]]
-        if (item?.conditional?.nestedItems) {
-          return getItemsAtPath(item.conditional.nestedItems, path, depth + 1)
+    // Get the previous question to use as the "if" condition
+    // If targetQuestion is passed, get the latest version from questions state
+    let previousQuestion: QuestionFormData | undefined = targetQuestion 
+      ? questions.find(q => q.id === targetQuestion.id) || targetQuestion
+      : undefined
+    
+    if (!previousQuestion) {
+      if (parentPath && parentPath.length > 0) {
+        // Find the previous item in nested context
+        const getItemsAtPath = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+          if (depth >= path.length) return items
+          const item = items[path[depth]]
+          if (item?.conditional?.nestedItems) {
+            return getItemsAtPath(item.conditional.nestedItems, path, depth + 1)
+          }
+          return []
         }
-        return []
-      }
-      const itemsAtPath = getItemsAtPath(questionLogic, parentPath, 0)
-      // Find the last question item before this position
-      for (let i = itemsAtPath.length - 1; i >= 0; i--) {
-        const item = itemsAtPath[i]
-        if (item.type === 'question') {
-          const localId = (item as any).localQuestionId
-          previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
-          break
+        const itemsAtPath = getItemsAtPath(questionLogic, parentPath, 0)
+        // Find the last question item before this position
+        for (let i = itemsAtPath.length - 1; i >= 0; i--) {
+          const item = itemsAtPath[i]
+          if (item.type === 'question') {
+            const localId = (item as any).localQuestionId
+            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            break
+          }
         }
-      }
-    } else {
-      // Find the previous question at root level
-      for (let i = afterIndex; i >= 0; i--) {
-        const item = questionLogic[i]
-        if (item.type === 'question') {
-          const localId = (item as any).localQuestionId
-          previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
-          break
+      } else {
+        // Find the previous question at root level
+        for (let i = afterIndex; i >= 0; i--) {
+          const item = questionLogic[i]
+          if (item.type === 'question') {
+            const localId = (item as any).localQuestionId
+            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            break
+          }
         }
       }
     }
     
+    // Create a new nested question to go inside the conditional
+    const nestedQuestion = addQuestion()
+    const nestedQuestionLogicItem: QuestionLogicItem = {
+      id: Date.now().toString() + '_nested_q',
+      type: 'question',
+      questionId: undefined,
+      depth: (parentPath ? parentPath.length : 0) + 1
+    }
+    // Store the local question ID for reference
+    ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestion.id
+
     const newConditional: QuestionLogicItem = {
       id: Date.now().toString() + '_cond',
       type: 'conditional',
       conditional: {
         ifIdentifier: previousQuestion?.identifier || '',
         value: '',
-        nestedItems: []
+        nestedItems: [nestedQuestionLogicItem]
       },
       depth: parentPath ? parentPath.length : 0
     }
+    
+    console.log('Creating conditional:', { newConditional, previousQuestion, nestedQuestion })
     
     if (parentPath && parentPath.length > 0) {
       // Add to nested items
@@ -737,8 +792,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       setQuestionLogic(newLogic)
       saveQuestionLogic(newLogic)
     } else {
-      // Add to root level
-      const newLogic = [...questionLogic.slice(0, afterIndex + 1), newConditional, ...questionLogic.slice(afterIndex + 1)]
+      // Add to root level - if afterIndex is -1 or invalid, just append to the end
+      const insertIndex = afterIndex >= 0 ? afterIndex + 1 : questionLogic.length
+      const newLogic = [...questionLogic.slice(0, insertIndex), newConditional, ...questionLogic.slice(insertIndex)]
       setQuestionLogic(newLogic)
       saveQuestionLogic(newLogic)
     }
@@ -793,6 +849,61 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     saveQuestionLogic(newLogic)
   }
 
+  const toggleEndFlow = (itemId: string) => {
+    const updateItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+      return items.map(item => {
+        if (item.id === itemId && item.conditional) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              endFlow: !item.conditional.endFlow
+            }
+          }
+        }
+        if (item.conditional?.nestedItems) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: updateItem(item.conditional.nestedItems)
+            }
+          }
+        }
+        return item
+      })
+    }
+    const newLogic = updateItem(questionLogic)
+    setQuestionLogic(newLogic)
+    saveQuestionLogic(newLogic)
+  }
+
+  const toggleStopFlow = (itemId: string) => {
+    const updateItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+      return items.map(item => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            stopFlow: !item.stopFlow
+          }
+        }
+        if (item.conditional?.nestedItems) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: updateItem(item.conditional.nestedItems)
+            }
+          }
+        }
+        return item
+      })
+    }
+    const newLogic = updateItem(questionLogic)
+    setQuestionLogic(newLogic)
+    saveQuestionLogic(newLogic)
+  }
+
   const getQuestionByIdentifier = (identifier: string): QuestionFormData | undefined => {
     return questions.find(q => q.identifier === identifier)
   }
@@ -840,6 +951,35 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return questions.find(q => q.id === localId || q.dbId === item.questionId)
   }
 
+  // Helper to collect all nested question IDs from conditionals
+  const getNestedQuestionIds = (items: QuestionLogicItem[]): Set<string> => {
+    const nestedIds = new Set<string>()
+    
+    const collectIds = (logicItems: QuestionLogicItem[]) => {
+      logicItems.forEach(item => {
+        if (item.type === 'conditional' && item.conditional?.nestedItems) {
+          item.conditional.nestedItems.forEach(nestedItem => {
+            if (nestedItem.type === 'question') {
+              const localId = (nestedItem as any).localQuestionId
+              if (localId) nestedIds.add(localId)
+              if (nestedItem.questionId) nestedIds.add(nestedItem.questionId.toString())
+            }
+          })
+          collectIds(item.conditional.nestedItems)
+        }
+      })
+    }
+    
+    collectIds(items)
+    return nestedIds
+  }
+
+  // Get questions that are NOT nested inside conditionals (main level only)
+  const mainLevelQuestions = questions.filter(q => {
+    const nestedIds = getNestedQuestionIds(questionLogic)
+    return !nestedIds.has(q.id) && !nestedIds.has(q.dbId?.toString() || '')
+  })
+
   // Recursive function to render nested items within a conditional
   const renderNestedItems = (
     nestedItems: QuestionLogicItem[],
@@ -847,7 +987,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     depth: number,
     parentQuestion?: QuestionFormData
   ): React.ReactNode => {
-    if (depth >= 4) return null // Max 4 levels of nesting
+    if (depth > 4) return null // Max 4 levels of nesting
 
     return nestedItems.map((item, itemIndex) => {
       const currentPath = [...parentPath, itemIndex]
@@ -866,14 +1006,53 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               backgroundColor: 'white'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>
-                  Nested Question (Level {depth + 1})
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
+                  Nested Question ({depth}{itemIndex > 0 ? `-${itemIndex}` : ''})
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    removeLogicItem(item.id)
-                    removeQuestion(nestedQuestion.id)
+                  onClick={async () => {
+                    // First remove from database if it has a dbId
+                    if (nestedQuestion.dbId) {
+                      try {
+                        await questionGroupService.deleteQuestion(nestedQuestion.dbId)
+                      } catch (err) {
+                        console.error('Failed to delete nested question from database:', err)
+                      }
+                    }
+                    // Remove the old question from state
+                    setQuestions(prev => prev.filter(q => q.id !== nestedQuestion.id))
+                    
+                    // Create a new empty question to replace it
+                    const newQuestion = addQuestion()
+                    
+                    // Update the logic item to point to the new question
+                    setQuestionLogic(prev => {
+                      const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+                        return items.map(logicItem => {
+                          if (logicItem.id === item.id) {
+                            return {
+                              ...logicItem,
+                              questionId: undefined,
+                              localQuestionId: newQuestion.id
+                            } as QuestionLogicItem
+                          }
+                          if (logicItem.conditional?.nestedItems) {
+                            return {
+                              ...logicItem,
+                              conditional: {
+                                ...logicItem.conditional,
+                                nestedItems: updateLogicItems(logicItem.conditional.nestedItems)
+                              }
+                            }
+                          }
+                          return logicItem
+                        })
+                      }
+                      const updated = updateLogicItems(prev)
+                      saveQuestionLogic(updated)
+                      return updated
+                    })
                   }}
                   style={{
                     background: 'none',
@@ -891,92 +1070,172 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
               {/* Identifier */}
-              <div className="form-group" style={{ marginBottom: '0.5rem' }}>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Identifier *</label>
+              <div className="form-group">
+                <label className="form-label">Identifier *</label>
                 <input
                   type="text"
                   value={nestedQuestion.identifier}
                   onChange={(e) => updateQuestion(nestedQuestion.id, 'identifier', e.target.value)}
                   className="form-input"
-                  style={{ fontSize: '0.875rem' }}
                   placeholder="e.g., nested_field"
                 />
               </div>
 
               {/* Question Text */}
-              <div className="form-group" style={{ marginBottom: '0.5rem' }}>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Question Text *</label>
+              <div className="question-text-section">
+                <label className="form-label">Question Text *</label>
                 <textarea
                   value={nestedQuestion.question_text}
                   onChange={(e) => updateQuestion(nestedQuestion.id, 'question_text', e.target.value)}
                   className="form-textarea"
-                  rows={2}
-                  style={{ fontSize: '0.875rem' }}
-                  placeholder="Enter your question..."
+                  rows={1.5}
+                  placeholder="Enter your question here..."
                 />
               </div>
 
-              {/* Answer Type */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>Answer Type</label>
-                <select
-                  value={nestedQuestion.question_type}
-                  onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
-                  className="form-select"
-                  style={{ fontSize: '0.875rem' }}
-                >
-                  <option value="free_text">Text Input</option>
-                  <option value="multiple_choice">Single Choice (Radio)</option>
-                  <option value="checkbox_group">Multiple Choice (Checkbox)</option>
-                  <option value="dropdown">Dropdown</option>
-                  <option value="person">Person</option>
-                  <option value="date">Date</option>
-                </select>
-              </div>
-
-              {/* Options for choice types */}
-              {['multiple_choice', 'checkbox_group', 'dropdown'].includes(nestedQuestion.question_type) && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>Options</label>
-                  {nestedQuestion.options.map((opt, optIdx) => (
-                    <div key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              {/* Answer Type and Options - matching main level styling */}
+              <div className="question-type-options-container">
+                <div className="question-type-section">
+                  <label className="form-label">Answer Type</label>
+                  <div className="radio-group">
+                    <label className="radio-option">
                       <input
-                        type="text"
-                        value={opt.label}
-                        onChange={(e) => updateOption(nestedQuestion.id, optIdx, 'label', e.target.value)}
-                        className="form-input"
-                        style={{ fontSize: '0.75rem', width: '50%' }}
-                        placeholder={`Option ${optIdx + 1}`}
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="free_text"
+                        checked={nestedQuestion.question_type === 'free_text'}
+                        onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
                       />
+                      <span>Text Input Field</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="multiple_choice"
+                        checked={nestedQuestion.question_type === 'multiple_choice'}
+                        onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
+                      />
+                      <span>Single Choice (Radio Buttons)</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="checkbox_group"
+                        checked={nestedQuestion.question_type === 'checkbox_group'}
+                        onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
+                      />
+                      <span>Multiple Choice (Checkboxes)</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="dropdown"
+                        checked={nestedQuestion.question_type === 'dropdown'}
+                        onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
+                      />
+                      <span>Dropdown Menu</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="person"
+                        checked={nestedQuestion.question_type === 'person'}
+                        onChange={(e) => {
+                          updateQuestion(nestedQuestion.id, 'question_type', e.target.value)
+                          if (!nestedQuestion.person_display_mode) {
+                            updateQuestion(nestedQuestion.id, 'person_display_mode', 'autocomplete')
+                          }
+                        }}
+                      />
+                      <span>Person</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="date"
+                        checked={nestedQuestion.question_type === 'date'}
+                        onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
+                      />
+                      <span>Date</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="options-section">
+                  {['multiple_choice', 'checkbox_group', 'dropdown'].includes(nestedQuestion.question_type) && (
+                    <div className="options-list">
+                      <label className="form-label">Options</label>
+                      {nestedQuestion.options.map((opt, optIdx) => (
+                        <div key={optIdx} className="option-row">
+                          <input
+                            type="text"
+                            value={opt.label}
+                            onChange={(e) => updateOption(nestedQuestion.id, optIdx, 'label', e.target.value)}
+                            onBlur={() => {
+                              const q = questions.find(q => q.id === nestedQuestion.id)
+                              if (q) triggerAutoSave(q)
+                            }}
+                            className="form-input option-input"
+                            placeholder={`Option ${optIdx + 1}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeOption(nestedQuestion.id, optIdx)
+                              // Trigger auto-save after removing option
+                              setTimeout(() => {
+                                const q = questions.find(q => q.id === nestedQuestion.id)
+                                if (q) triggerAutoSave(q)
+                              }, 100)
+                            }}
+                            className="remove-option-button"
+                            title="Remove option"
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '16px', height: '16px' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
                       <button
                         type="button"
-                        onClick={() => removeOption(nestedQuestion.id, optIdx)}
-                        className="remove-option-button"
-                        title="Remove option"
+                        onClick={() => {
+                          addOption(nestedQuestion.id)
+                          // Trigger auto-save after adding option
+                          setTimeout(() => {
+                            const q = questions.find(q => q.id === nestedQuestion.id)
+                            if (q) triggerAutoSave(q)
+                          }, 100)
+                        }}
+                        className="add-option-button"
                       >
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '16px', height: '16px' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
+                        Add Option
                       </button>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => addOption(nestedQuestion.id)}
-                    style={{ fontSize: '0.75rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    + Add Option
-                  </button>
+                  )}
+                  {nestedQuestion.question_type === 'free_text' && (
+                    <div className="empty-options">
+                      <p style={{ color: '#6b7280', fontSize: '0.875rem', fontStyle: 'italic' }}>No options needed for text input</p>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Action buttons after nested question */}
-            {depth < 3 && (
+            {depth <= 4 && (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginLeft: '1rem' }}>
                 <button
                   type="button"
-                  onClick={() => addQuestionToLogic(itemIndex, currentPath)}
+                  onClick={() => addQuestionToLogic(itemIndex, parentPath)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -993,29 +1252,96 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Add Nested Question
+                  Add Follow-on Question
                 </button>
-                <button
-                  type="button"
-                  onClick={() => addConditionalToLogic(itemIndex, currentPath)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.25rem 0.5rem',
-                    fontSize: '0.7rem',
-                    background: '#7c3aed',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Add Conditional
-                </button>
+                {depth < 4 && (
+                  <button
+                    type="button"
+                    onClick={() => addConditionalToLogic(itemIndex, parentPath, nestedQuestion)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.7rem',
+                      background: '#7c3aed',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Add Conditional
+                  </button>
+                )}
+                {/* Add question at parent level (one less indent) */}
+                {parentPath.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Add question to parent level (one level up)
+                      const parentPathUp = parentPath.slice(0, -1)
+                      addQuestionToLogic(undefined, parentPathUp.length > 0 ? parentPathUp : undefined)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.7rem',
+                      background: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Add question at parent level"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                )}
+                {(() => {
+                  // Find parent conditional to get its endFlow state
+                  const getParentConditional = (path: number[]): QuestionLogicItem | undefined => {
+                    if (path.length === 0) return undefined
+                    let current: QuestionLogicItem[] = questionLogic
+                    for (let i = 0; i < path.length; i++) {
+                      const item = current[path[i]]
+                      if (i === path.length - 1) return item
+                      if (item?.conditional?.nestedItems) {
+                        current = item.conditional.nestedItems
+                      }
+                    }
+                    return undefined
+                  }
+                  const parentConditional = getParentConditional(parentPath)
+                  const isEndFlow = parentConditional?.conditional?.endFlow || false
+                  return parentConditional ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleEndFlow(parentConditional.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.7rem',
+                        background: isEndFlow ? '#dc2626' : 'white',
+                        color: isEndFlow ? 'white' : '#dc2626',
+                        border: '1px solid #dc2626',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      End Flow
+                    </button>
+                  ) : null
+                })()}
               </div>
             )}
           </div>
@@ -1038,14 +1364,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         return (
           <div key={item.id} style={{
             marginBottom: '1rem',
+            marginLeft: '2rem',
             padding: '1rem',
             border: '1px solid #e5e7eb',
             borderRadius: '0.5rem',
-            backgroundColor: depth === 0 ? '#faf5ff' : depth === 1 ? '#f0fdf4' : depth === 2 ? '#fef3c7' : '#fee2e2'
+            backgroundColor: depth === 1 ? '#faf5ff' : depth === 2 ? '#f0fdf4' : depth === 3 ? '#fef3c7' : '#fee2e2'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
-                Nested Conditional ({depth + 1})
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
+                Conditional ({depth + 1})
               </div>
               <button
                 type="button"
@@ -1143,7 +1470,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
               {/* Nested items */}
-              <div style={{ marginTop: '0.5rem', marginLeft: '1rem', borderLeft: '2px solid #e5e7eb', paddingLeft: '1rem' }}>
+              <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
                   renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion)
                 ) : (
@@ -1156,22 +1483,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
             </div>
             
-            {/* Add Question button below the conditional block - main level size */}
-            {depth < 3 && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <button
-                  type="button"
-                  onClick={() => addQuestionToLogic(undefined, [...currentPath])}
-                  className="add-question-button"
-                  style={{ fontSize: '0.875rem' }}
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Question
-                </button>
-              </div>
-            )}
           </div>
         )
       }
@@ -1312,7 +1623,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             <h2 className="form-section-title">Questions</h2>
           </div>
 
-          {questions.map((question, qIndex) => (
+          {mainLevelQuestions.map((question, qIndex) => (
             <div key={question.id} className="question-builder">
               <div className="question-builder-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1573,29 +1884,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', marginLeft: '1rem' }}>
                 <button
                   type="button"
-                  onClick={() => addQuestionToLogic(qIndex)}
-                  className="action-button"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.375rem 0.75rem',
-                    fontSize: '0.75rem',
-                    background: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer'
+                  onClick={() => {
+                    console.log('Add Conditional button clicked for question:', question)
+                    // Find the logic index for this question
+                    const logicIndex = questionLogic.findIndex(item => 
+                      item.type === 'question' && 
+                      ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+                    )
+                    console.log('logicIndex:', logicIndex, 'qIndex:', qIndex)
+                    addConditionalToLogic(logicIndex >= 0 ? logicIndex : qIndex, undefined, question)
                   }}
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.875rem', height: '0.875rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Question
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addConditionalToLogic(qIndex)}
                   className="action-button"
                   style={{
                     display: 'flex',
@@ -1617,22 +1915,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </button>
               </div>
 
-              {/* Render conditionals that follow this question */}
+              {/* Render conditionals that are associated with this question */}
               {questionLogic.map((logicItem, logicIndex) => {
-                // Only render conditionals that come after this question's logic item
-                const questionLogicItem = questionLogic.find(item => 
-                  item.type === 'question' && 
-                  ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
-                )
-                const questionLogicIndex = questionLogicItem ? questionLogic.indexOf(questionLogicItem) : -1
-                
-                // Only render if this conditional immediately follows the question
-                if (logicItem.type === 'conditional' && logicIndex === questionLogicIndex + 1) {
+                // Render conditionals whose ifIdentifier matches this question's identifier
+                if (logicItem.type === 'conditional' && 
+                    logicItem.conditional?.ifIdentifier === question.identifier) {
                   return (
                     <React.Fragment key={logicItem.id}>
                     <div style={{ 
-                      marginLeft: '2rem', 
                       marginTop: '0.75rem',
+                      marginLeft: '2rem',
                       padding: '1rem',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -1640,7 +1932,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
-                          Conditional
+                          Conditional (1)
                         </div>
                         <button
                           type="button"
@@ -1771,7 +2063,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </div>
 
                         {/* Nested items */}
-                        <div style={{ marginTop: '0.5rem', marginLeft: '1rem', borderLeft: '2px solid #e5e7eb', paddingLeft: '1rem' }}>
+                        <div style={{ marginTop: '0.5rem' }}>
                           {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 ? (
                             renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question)
                           ) : (
@@ -1785,19 +2077,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       </div>
                     </div>
                       
-                    {/* Add Question button below the conditional block - main level size */}
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => addQuestionToLogic(undefined, [logicIndex])}
-                        className="add-question-button"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Question
-                      </button>
-                    </div>
                     </React.Fragment>
                   )
                 }
