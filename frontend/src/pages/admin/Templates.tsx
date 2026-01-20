@@ -125,7 +125,16 @@ const Templates: React.FC = () => {
               <tbody>
                 {templates.map((template) => (
                   <tr key={template.id}>
-                    <td className="template-name">{template.name}</td>
+                    <td className="template-name">
+                      <span
+                        onClick={() => handleEdit(template)}
+                        style={{ cursor: 'pointer', color: '#2563eb', textDecoration: 'none' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                      >
+                        {template.name}
+                      </span>
+                    </td>
                     <td>
                       <span className={getTypeBadgeClass(template.template_type)}>
                         {template.template_type}
