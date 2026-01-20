@@ -8,27 +8,20 @@ const Templates: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
 
-  const pageSize = 10
-
   useEffect(() => {
     loadTemplates()
-  }, [page, search])
+  }, [search])
 
   const loadTemplates = async () => {
     try {
       setLoading(true)
       setError(null)
-      const response = await templateService.getTemplates(page, pageSize, search || undefined)
+      const response = await templateService.getTemplates(1, 100, search || undefined)
       setTemplates(response.templates)
-      setTotal(response.total)
-      setTotalPages(response.total_pages)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load templates')
     } finally {
@@ -81,10 +74,7 @@ const Templates: React.FC = () => {
                 type="text"
                 placeholder="Search templates..."
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setPage(1)
-                }}
+                onChange={(e) => setSearch(e.target.value)}
                 className="search-input"
               />
               <button
@@ -144,18 +134,26 @@ const Templates: React.FC = () => {
                     <td>{template.description || '-'}</td>
                     <td>{new Date(template.created_at).toLocaleDateString()}</td>
                     <td>
-                      <div className="template-actions">
+                      <div className="template-actions" style={{ justifyContent: 'flex-start' }}>
                         <button
                           onClick={() => handleEdit(template)}
-                          className="action-button edit-button"
+                          className="action-icon-button"
+                          title="Edit"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: '#2563eb' }}
                         >
-                          Edit
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
                         </button>
                         <button
                           onClick={() => handleDelete(template.id)}
-                          className="action-button delete-button"
+                          className="action-icon-button"
+                          title="Delete"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: '#dc2626' }}
                         >
-                          Delete
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       </div>
                     </td>
@@ -163,28 +161,6 @@ const Templates: React.FC = () => {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="pagination">
-            <div className="pagination-info">
-              Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} templates
-            </div>
-            <div className="pagination-buttons">
-              <button
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1}
-                className="pagination-button"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(page + 1)}
-                disabled={page >= totalPages}
-                className="pagination-button"
-              >
-                Next
-              </button>
-            </div>
           </div>
         </>
       )}
