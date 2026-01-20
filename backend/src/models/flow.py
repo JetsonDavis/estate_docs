@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
 from . import Base, TimestampMixin, SoftDeleteMixin
 
@@ -21,6 +21,9 @@ class QuestionnaireFlow(Base, TimestampMixin, SoftDeleteMixin):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
+    
+    # Flow logic stored as JSON (list of steps with groups and conditionals)
+    flow_logic = Column(JSON, nullable=True)
     
     # Starting question group for this flow
     starting_group_id = Column(Integer, ForeignKey("question_groups.id", ondelete="SET NULL"), nullable=True)
@@ -46,6 +49,7 @@ class QuestionnaireFlow(Base, TimestampMixin, SoftDeleteMixin):
             "id": self.id,
             "name": self.name,
             "description": self.description,
+            "flow_logic": self.flow_logic,
             "starting_group_id": self.starting_group_id,
             "created_by": self.created_by,
             "is_active": bool(self.is_active),

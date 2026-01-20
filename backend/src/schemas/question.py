@@ -12,7 +12,7 @@ class QuestionOption(BaseModel):
 class QuestionBase(BaseModel):
     """Base question schema."""
     question_text: str = Field(..., min_length=1, max_length=1000)
-    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown)$")
+    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
     identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9_]+$")
     display_order: int = Field(default=0, ge=0)
     is_required: bool = Field(default=True)
@@ -21,6 +21,8 @@ class QuestionBase(BaseModel):
     database_table: Optional[str] = Field(None, max_length=100)
     database_value_column: Optional[str] = Field(None, max_length=100)
     database_label_column: Optional[str] = Field(None, max_length=100)
+    person_display_mode: Optional[str] = Field(None, pattern="^(autocomplete|dropdown)$")
+    include_time: Optional[bool] = Field(None)
     validation_rules: Optional[Dict[str, Any]] = None
 
 
@@ -56,7 +58,7 @@ class QuestionCreate(QuestionBase):
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
     question_text: Optional[str] = Field(None, min_length=1, max_length=1000)
-    question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown)$")
+    question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
     display_order: Optional[int] = Field(None, ge=0)
     is_required: Optional[bool] = None
     help_text: Optional[str] = Field(None, max_length=500)
@@ -64,6 +66,8 @@ class QuestionUpdate(BaseModel):
     database_table: Optional[str] = Field(None, max_length=100)
     database_value_column: Optional[str] = Field(None, max_length=100)
     database_label_column: Optional[str] = Field(None, max_length=100)
+    person_display_mode: Optional[str] = Field(None, pattern="^(autocomplete|dropdown)$")
+    include_time: Optional[bool] = Field(None)
     validation_rules: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
@@ -82,6 +86,8 @@ class QuestionResponse(BaseModel):
     database_table: Optional[str]
     database_value_column: Optional[str]
     database_label_column: Optional[str]
+    person_display_mode: Optional[str]
+    include_time: Optional[bool]
     validation_rules: Optional[Dict[str, Any]]
     created_at: datetime
     updated_at: datetime
@@ -121,7 +127,7 @@ class QuestionGroupResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_active: bool
-    question_count: int
+    question_count: Optional[int] = 0
     
     model_config = {"from_attributes": True}
 

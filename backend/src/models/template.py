@@ -21,7 +21,7 @@ class Template(Base, TimestampMixin, SoftDeleteMixin):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    template_type = Column(Enum(TemplateType), nullable=False)
+    template_type = Column(String(50), nullable=False)
     
     # Original file information
     original_filename = Column(String(255), nullable=True)

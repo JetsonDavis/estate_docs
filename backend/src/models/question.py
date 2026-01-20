@@ -9,6 +9,8 @@ class QuestionType(str, enum.Enum):
     MULTIPLE_CHOICE = "multiple_choice"
     FREE_TEXT = "free_text"
     DATABASE_DROPDOWN = "database_dropdown"
+    PERSON = "person"
+    DATE = "date"
 
 
 class QuestionGroup(Base, TimestampMixin, SoftDeleteMixin):
@@ -56,7 +58,7 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
     id = Column(Integer, primary_key=True, index=True)
     question_group_id = Column(Integer, ForeignKey("question_groups.id"), nullable=False, index=True)
     question_text = Column(Text, nullable=False)
-    question_type = Column(Enum(QuestionType), nullable=False)
+    question_type = Column(String(50), nullable=False)  # Validated by Pydantic schema
     identifier = Column(String(100), unique=True, nullable=False, index=True)
     display_order = Column(Integer, default=0, nullable=False)
     is_required = Column(Boolean, default=True, nullable=False)
@@ -69,6 +71,12 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
     database_table = Column(String(100), nullable=True)
     database_value_column = Column(String(100), nullable=True)
     database_label_column = Column(String(100), nullable=True)
+    
+    # For person type questions
+    person_display_mode = Column(String(20), nullable=True)  # 'autocomplete' or 'dropdown'
+    
+    # For date type questions
+    include_time = Column(Boolean, default=False, nullable=True)  # Whether to include time of day
     
     # Validation rules
     validation_rules = Column(JSON, nullable=True)  # {"min_length": 5, "max_length": 100, "pattern": "regex"}
@@ -94,6 +102,8 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
             "database_table": self.database_table,
             "database_value_column": self.database_value_column,
             "database_label_column": self.database_label_column,
+            "person_display_mode": self.person_display_mode,
+            "include_time": self.include_time,
             "validation_rules": self.validation_rules,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),

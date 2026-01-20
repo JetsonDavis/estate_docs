@@ -35,7 +35,19 @@ async def list_question_groups(
     )
     
     return QuestionGroupListResponse(
-        question_groups=[QuestionGroupResponse.model_validate(g) for g in groups],
+        question_groups=[
+            QuestionGroupResponse(
+                id=g.id,
+                name=g.name,
+                description=g.description,
+                identifier=g.identifier,
+                display_order=g.display_order,
+                created_at=g.created_at,
+                updated_at=g.updated_at,
+                is_active=g.is_active,
+                question_count=len(g.questions) if hasattr(g, 'questions') else 0
+            ) for g in groups
+        ],
         total=total,
         page=page,
         page_size=page_size

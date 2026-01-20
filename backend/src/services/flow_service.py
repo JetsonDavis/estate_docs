@@ -58,6 +58,7 @@ class FlowService:
         flow = QuestionnaireFlow(
             name=flow_data.name,
             description=flow_data.description,
+            flow_logic=flow_data.flow_logic,
             starting_group_id=flow_data.starting_group_id,
             created_by=user_id,
             is_active=True
@@ -195,6 +196,9 @@ class FlowService:
         
         if flow_data.description is not None:
             flow.description = flow_data.description
+        
+        if flow_data.flow_logic is not None:
+            flow.flow_logic = flow_data.flow_logic
         
         if flow_data.starting_group_id is not None:
             flow.starting_group_id = flow_data.starting_group_id

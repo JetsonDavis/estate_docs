@@ -78,44 +78,60 @@ class DocumentProcessor:
     def image_to_markdown(file_path: str, ocr_text: str) -> str:
         """
         Convert OCR'd image text to Markdown.
-        
+
         Args:
             file_path: Path to the image file
             ocr_text: OCR extracted text from AWS Textract or similar service
-            
+
         Returns:
             Markdown text content
         """
         # For now, just format the OCR text as paragraphs
         # In production, this would use AWS Textract response structure
         markdown_lines = []
-        
+
         paragraphs = ocr_text.split('\n\n')
         for para in paragraphs:
             cleaned = para.strip()
             if cleaned:
                 markdown_lines.append(cleaned)
                 markdown_lines.append("")
-        
+
         return "\n".join(markdown_lines)
+
+    @staticmethod
+    def text_to_markdown(file_path: str) -> str:
+        """
+        Convert plain text file to Markdown.
+
+        Args:
+            file_path: Path to the text file
+
+        Returns:
+            Markdown text content
+        """
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return content
     
     @staticmethod
     def validate_markdown(content: str) -> bool:
         """
         Validate that the content is valid Markdown.
-        
+
         Args:
             content: Markdown content to validate
-            
+
         Returns:
             True if valid, False otherwise
         """
-        try:
-            # Try to convert to HTML to validate
-            markdown2.markdown(content)
-            return True
-        except Exception:
+        # Simple validation - just check that content exists and is not empty
+        # Any text is valid markdown, so we don't need strict validation
+        if not content or not content.strip():
             return False
+
+        return True
     
     @staticmethod
     def extract_identifiers(content: str) -> list[str]:
@@ -166,20 +182,22 @@ class DocumentProcessor:
     def get_file_type(filename: str) -> Optional[str]:
         """
         Determine file type from filename extension.
-        
+
         Args:
             filename: Name of the file
-            
+
         Returns:
-            File type: 'word', 'pdf', 'image', or None
+            File type: 'word', 'pdf', 'image', 'text', or None
         """
         ext = os.path.splitext(filename)[1].lower()
-        
+
         if ext in ['.doc', '.docx']:
             return 'word'
         elif ext == '.pdf':
             return 'pdf'
         elif ext in ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp']:
             return 'image'
-        
+        elif ext == '.txt':
+            return 'text'
+
         return None

@@ -36,7 +36,7 @@ class TemplateService:
         template = Template(
             name=template_data.name,
             description=template_data.description,
-            template_type=TemplateType(template_data.template_type),
+            template_type=template_data.template_type,  # Pass the string directly, SQLAlchemy will handle it
             markdown_content=template_data.markdown_content,
             original_filename=template_data.original_filename,
             original_file_path=template_data.original_file_path,
@@ -175,7 +175,7 @@ class TemplateService:
         if not file_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unsupported file type. Supported: .docx, .pdf, .jpg, .png, .tiff"
+                detail="Unsupported file type. Supported: .docx, .pdf, .txt, .jpg, .png, .tiff"
             )
         
         # Read file content
@@ -191,6 +191,8 @@ class TemplateService:
                 markdown_content = DocumentProcessor.word_to_markdown(file_path)
             elif file_type == 'pdf':
                 markdown_content = DocumentProcessor.pdf_to_markdown(file_path)
+            elif file_type == 'text':
+                markdown_content = DocumentProcessor.text_to_markdown(file_path)
             elif file_type == 'image':
                 # For images, we would call AWS Textract here
                 # For now, return placeholder

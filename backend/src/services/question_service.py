@@ -174,7 +174,7 @@ class QuestionService:
         new_question = Question(
             question_group_id=question_data.question_group_id,
             question_text=question_data.question_text,
-            question_type=QuestionType(question_data.question_type),
+            question_type=question_data.question_type,
             identifier=question_data.identifier,
             display_order=question_data.display_order,
             is_required=question_data.is_required,
@@ -210,7 +210,7 @@ class QuestionService:
         if question_data.question_text is not None:
             question.question_text = question_data.question_text
         if question_data.question_type is not None:
-            question.question_type = QuestionType(question_data.question_type)
+            question.question_type = question_data.question_type
         if question_data.display_order is not None:
             question.display_order = question_data.display_order
         if question_data.is_required is not None:
