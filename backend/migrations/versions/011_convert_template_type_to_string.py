@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '011_convert_template_type_to_string'
-down_revision = '010_create_questionnaire_flows'
+revision = '011'
+down_revision = '45d06c3d7248'
 branch_labels = None
 depends_on = None
 
