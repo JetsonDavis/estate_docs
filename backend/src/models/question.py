@@ -24,6 +24,10 @@ class QuestionGroup(Base, TimestampMixin, SoftDeleteMixin):
     identifier = Column(String(100), unique=True, nullable=False, index=True)
     display_order = Column(Integer, default=0, nullable=False)
     
+    # Question logic stored as JSON (list of question items with conditionals)
+    # Structure: [{ type: 'question', questionId: 123 }, { type: 'conditional', ifIdentifier: 'prev_q', value: 'yes', nestedItems: [...] }]
+    question_logic = Column(JSON, nullable=True)
+    
     # Relationships
     questions = relationship(
         "Question",
@@ -43,6 +47,7 @@ class QuestionGroup(Base, TimestampMixin, SoftDeleteMixin):
             "description": self.description,
             "identifier": self.identifier,
             "display_order": self.display_order,
+            "question_logic": self.question_logic,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "is_active": self.is_active,

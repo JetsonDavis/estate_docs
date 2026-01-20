@@ -90,6 +90,8 @@ class QuestionGroupService:
             group.description = group_data.description
         if group_data.display_order is not None:
             group.display_order = group_data.display_order
+        if group_data.question_logic is not None:
+            group.question_logic = group_data.question_logic
         if group_data.is_active is not None:
             group.is_active = group_data.is_active
         
@@ -100,7 +102,7 @@ class QuestionGroupService:
     
     @staticmethod
     def delete_question_group(db: Session, group_id: int) -> bool:
-        """Soft delete a question group."""
+        """Hard delete a question group and its questions."""
         group = db.query(QuestionGroup).filter(QuestionGroup.id == group_id).first()
         if not group:
             raise HTTPException(
@@ -108,7 +110,11 @@ class QuestionGroupService:
                 detail="Question group not found"
             )
         
-        group.is_active = False
+        # Delete all questions in this group first
+        db.query(Question).filter(Question.question_group_id == group_id).delete()
+        
+        # Delete the group
+        db.delete(group)
         db.commit()
         
         return True

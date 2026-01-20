@@ -59,12 +59,25 @@ export interface QuestionUpdate {
   is_active?: boolean
 }
 
+export interface QuestionLogicItem {
+  id: string
+  type: 'question' | 'conditional'
+  questionId?: number
+  conditional?: {
+    ifIdentifier: string
+    value: string
+    nestedItems: QuestionLogicItem[]
+  }
+  depth?: number
+}
+
 export interface QuestionGroup {
   id: number
   name: string
   description: string | null
   identifier: string
   display_order: number
+  question_logic: QuestionLogicItem[] | null
   created_at: string
   updated_at: string
   is_active: boolean
@@ -82,6 +95,7 @@ export interface QuestionGroupUpdate {
   name?: string
   description?: string
   display_order?: number
+  question_logic?: QuestionLogicItem[]
   is_active?: boolean
 }
 

@@ -114,6 +114,7 @@ class QuestionGroupUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     display_order: Optional[int] = Field(None, ge=0)
+    question_logic: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
 
 
@@ -124,6 +125,7 @@ class QuestionGroupResponse(BaseModel):
     description: Optional[str]
     identifier: str
     display_order: int
+    question_logic: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
     updated_at: datetime
     is_active: bool
