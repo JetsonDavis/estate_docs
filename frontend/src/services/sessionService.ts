@@ -1,7 +1,7 @@
 import apiClient from './api'
 import {
-  QuestionnaireSession,
-  QuestionnaireSessionWithAnswers,
+  DocumentSession,
+  DocumentSessionWithAnswers,
   SessionCreate,
   SubmitAnswersRequest,
   SessionProgress,
@@ -12,26 +12,26 @@ import {
 
 export const sessionService = {
   /**
-   * Create a new questionnaire session
+   * Create a new document session
    */
-  createSession: async (data: SessionCreate): Promise<QuestionnaireSession> => {
-    const response = await apiClient.post<QuestionnaireSession>('/sessions/', data)
+  createSession: async (data: SessionCreate): Promise<DocumentSession> => {
+    const response = await apiClient.post<DocumentSession>('/sessions/', data)
     return response.data
   },
 
   /**
    * Get all sessions for the current user
    */
-  getSessions: async (): Promise<QuestionnaireSession[]> => {
-    const response = await apiClient.get<QuestionnaireSession[]>('/sessions/')
+  getSessions: async (): Promise<DocumentSession[]> => {
+    const response = await apiClient.get<DocumentSession[]>('/sessions/')
     return response.data
   },
 
   /**
    * Get a specific session with all answers
    */
-  getSession: async (sessionId: number): Promise<QuestionnaireSessionWithAnswers> => {
-    const response = await apiClient.get<QuestionnaireSessionWithAnswers>(`/sessions/${sessionId}`)
+  getSession: async (sessionId: number): Promise<DocumentSessionWithAnswers> => {
+    const response = await apiClient.get<DocumentSessionWithAnswers>(`/sessions/${sessionId}`)
     return response.data
   },
 
@@ -68,8 +68,8 @@ export const sessionService = {
   /**
    * Navigate to next or previous group
    */
-  navigate: async (sessionId: number, data: NavigateRequest): Promise<QuestionnaireSession> => {
-    const response = await apiClient.post<QuestionnaireSession>(
+  navigate: async (sessionId: number, data: NavigateRequest): Promise<DocumentSession> => {
+    const response = await apiClient.post<DocumentSession>(
       `/sessions/${sessionId}/navigate`,
       data
     )
@@ -82,8 +82,8 @@ export const sessionService = {
   submitAnswers: async (
     sessionId: number,
     answers: SubmitAnswersRequest
-  ): Promise<QuestionnaireSession> => {
-    const response = await apiClient.post<QuestionnaireSession>(
+  ): Promise<DocumentSession> => {
+    const response = await apiClient.post<DocumentSession>(
       `/sessions/${sessionId}/submit`,
       answers
     )

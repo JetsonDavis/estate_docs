@@ -185,9 +185,13 @@ class TemplateService:
         # Read file content
         content = await file.read()
 
-        # Save file to storage
-        upload_dir = settings.upload_dir
-        file_path = DocumentProcessor.save_uploaded_file(content, file.filename, upload_dir)
+        # Save file to temp storage - resolve path relative to estate_docs root
+        from pathlib import Path
+        backend_root = Path(__file__).parent.parent.parent  # backend/
+        estate_docs_root = backend_root.parent  # estate_docs/
+        upload_dir = estate_docs_root / settings.upload_dir.lstrip('./')
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path = DocumentProcessor.save_uploaded_file(content, file.filename, str(upload_dir))
 
         # Convert to markdown based on file type
         try:

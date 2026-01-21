@@ -5,7 +5,7 @@ from .routers import auth, users, question_groups, templates, sessions, document
 
 app = FastAPI(
     title="Document Merge System API",
-    description="RESTful API for estate document generation with questionnaire workflows",
+    description="RESTful API for estate document generation with document workflows",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"

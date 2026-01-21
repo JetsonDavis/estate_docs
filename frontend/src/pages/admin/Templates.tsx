@@ -219,6 +219,22 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
   const [nameError, setNameError] = useState('')
   const [checkingName, setCheckingName] = useState(false)
 
+  // Prevent browser default drag-and-drop behavior globally when modal is open
+  useEffect(() => {
+    const preventGlobalDrop = (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
+    document.addEventListener('dragover', preventGlobalDrop)
+    document.addEventListener('drop', preventGlobalDrop)
+    
+    return () => {
+      document.removeEventListener('dragover', preventGlobalDrop)
+      document.removeEventListener('drop', preventGlobalDrop)
+    }
+  }, [])
+
   const isFormValid = name.trim() !== '' && !nameError && (markdownContent.trim() !== '' || uploadedFile)
 
   useEffect(() => {
@@ -312,9 +328,35 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
     }
   }
 
+  // Prevent browser from opening dropped files
+  const preventDefaults = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    preventDefaults(e)
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      const file = files[0]
+      // Create a synthetic event to reuse handleFileUpload logic
+      const syntheticEvent = {
+        target: { files: [file], value: '' }
+      } as unknown as React.ChangeEvent<HTMLInputElement>
+      await handleFileUpload(syntheticEvent)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()}
+        onDragEnter={preventDefaults}
+        onDragOver={preventDefaults}
+        onDragLeave={preventDefaults}
+        onDrop={handleDrop}
+      >
         <div className="modal-header">
           <h2 className="modal-title">Create Template</h2>
           <button onClick={onClose} className="modal-close">&times;</button>

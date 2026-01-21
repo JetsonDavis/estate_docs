@@ -2,7 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, StaticPool
 from sqlalchemy.orm import sessionmaker
 from io import BytesIO
 
@@ -13,29 +13,32 @@ from src.models.user import User, UserRole
 from src.utils.security import hash_password
 
 
-# Test database setup
+# Test database setup - use StaticPool to share connection across threads
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    SQLALCHEMY_TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    """Override database dependency for testing."""
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
 
 
 @pytest.fixture(scope="function")
 def test_db():
     """Create test database."""
     Base.metadata.create_all(bind=engine)
+    
+    def override_get_db():
+        """Override database dependency for testing."""
+        try:
+            db = TestingSessionLocal()
+            yield db
+        finally:
+            db.close()
+    
+    app.dependency_overrides[get_db] = override_get_db
     yield
+    app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
 
 
@@ -53,7 +56,7 @@ def admin_user(test_db):
         username="admin",
         email="admin@test.com",
         hashed_password=hash_password("password"),
-        role=UserRole.ADMIN,
+        role=UserRole.admin,
         is_active=True
     )
     db.add(user)
@@ -327,7 +330,7 @@ class TestTemplateAPI:
     
     def test_upload_file_unsupported_type(self, client, admin_token):
         """Test uploading unsupported file type."""
-        files = {"file": ("test.txt", BytesIO(b"test content"), "text/plain")}
+        files = {"file": ("test.csv", BytesIO(b"col1,col2\nval1,val2"), "text/csv")}
         response = client.post("/api/v1/templates/upload", files=files)
         
         assert response.status_code == 400

@@ -74,7 +74,7 @@ class SessionProgressResponse(BaseModel):
 
 
 class QuestionToDisplay(BaseModel):
-    """Schema for a question to display in the questionnaire."""
+    """Schema for a question to display in the document."""
     id: int
     identifier: str
     question_text: str

@@ -42,10 +42,3 @@ export interface DocumentFlowListResponse {
   page_size: number
   total_pages: number
 }
-
-// Backwards compatibility aliases
-export type DocumentFlow = DocumentFlow
-export type DocumentFlowWithGroups = DocumentFlowWithGroups
-export type DocumentFlowCreate = DocumentFlowCreate
-export type DocumentFlowUpdate = DocumentFlowUpdate
-export type DocumentFlowListResponse = DocumentFlowListResponse

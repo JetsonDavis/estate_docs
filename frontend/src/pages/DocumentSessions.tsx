@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
-import { QuestionnaireSession, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
+import { DocumentSession, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
-import './Questionnaire.css'
+import './DocumentSessions.css'
 
 const QUESTIONS_PER_PAGE = 5
 
-const Questionnaire: React.FC = () => {
+const DocumentSessions: React.FC = () => {
   const [searchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
   const navigate = useNavigate()
 
   // Session list state
-  const [sessions, setSessions] = useState<QuestionnaireSession[]>([])
+  const [sessions, setSessions] = useState<DocumentSession[]>([])
 
-  // Current session questionnaire state
+  // Current session document state
   const [sessionData, setSessionData] = useState<SessionQuestionsResponse | null>(null)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [personAnswers, setPersonAnswers] = useState<Record<number, string[]>>({}) // For multiple person fields
@@ -523,7 +523,7 @@ const Questionnaire: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="questionnaire-container">
+      <div className="document-sessions-container">
         <div className="loading-state">Loading...</div>
       </div>
     )
@@ -531,7 +531,7 @@ const Questionnaire: React.FC = () => {
 
   if (error) {
     return (
-      <div className="questionnaire-container">
+      <div className="document-sessions-container">
         <div className="error-state">{error}</div>
       </div>
     )
@@ -540,12 +540,12 @@ const Questionnaire: React.FC = () => {
   // Show session list if no active session
   if (!sessionId) {
     return (
-      <div className="questionnaire-container">
-        <div className="questionnaire-wrapper">
-          <div className="questionnaire-header">
+      <div className="document-sessions-container">
+        <div className="document-sessions-wrapper">
+          <div className="document-sessions-header">
             <div>
-              <h1 className="questionnaire-title">Documents</h1>
-              <p className="questionnaire-subtitle">Start a new document or continue an existing one</p>
+              <h1 className="document-sessions-title">Documents</h1>
+              <p className="document-sessions-subtitle">Start a new document or continue an existing one</p>
             </div>
             <button
               onClick={() => navigate('/document/new')}
@@ -590,7 +590,7 @@ const Questionnaire: React.FC = () => {
                       </span>
                     </div>
                     <div className="session-date">
-                      Started: {new Date(session.created_at).toLocaleDateString()}
+                      Started: {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
                     </div>
                   </div>
                 ))
@@ -604,13 +604,13 @@ const Questionnaire: React.FC = () => {
   // Show completion screen
   if (isCompleted && sessionData) {
     return (
-      <div className="questionnaire-container">
-        <div className="questionnaire-content">
-          <div className="questionnaire-card completion-card">
+      <div className="document-sessions-container">
+        <div className="document-sessions-content">
+          <div className="document-sessions-card completion-card">
             <div className="completion-icon">✅</div>
-            <h1 className="completion-title">Questionnaire Complete!</h1>
+            <h1 className="completion-title">Document Complete!</h1>
             <p className="completion-message">
-              You have successfully completed the questionnaire for {sessionData.client_identifier}.
+              You have successfully completed the document for {sessionData.client_identifier}.
             </p>
             <button
               onClick={() => navigate('/document')}
@@ -626,15 +626,15 @@ const Questionnaire: React.FC = () => {
 
   // Show current question group
   return (
-    <div className="questionnaire-container">
-      <div className="questionnaire-content">
-        <div className="questionnaire-card">
-          <div className="questionnaire-header">
-            <h1 className="questionnaire-title">
+    <div className="document-sessions-container">
+      <div className="document-sessions-content">
+        <div className="document-sessions-card">
+          <div className="document-sessions-header">
+            <h1 className="document-sessions-title">
               {sessionData?.client_identifier}
             </h1>
             {sessionData?.flow_name && (
-              <p className="questionnaire-subtitle">{sessionData.flow_name}</p>
+              <p className="document-sessions-subtitle">{sessionData.flow_name}</p>
             )}
           </div>
 
@@ -723,4 +723,4 @@ const Questionnaire: React.FC = () => {
   )
 }
 
-export default Questionnaire
+export default DocumentSessions

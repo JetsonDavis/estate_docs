@@ -119,7 +119,7 @@ const Dashboard: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   <div className="card-content">
-                    <h3 className="card-title">Start Questionnaire</h3>
+                    <h3 className="card-title">Start Document</h3>
                     <p className="card-description">Begin answering questions</p>
                   </div>
                 </div>
@@ -155,7 +155,7 @@ const Dashboard: React.FC = () => {
             <p className="info-text">
               {isAdmin
                 ? 'As an administrator, you can manage users, create question groups, design document templates, and configure document flows.'
-                : 'Complete questionnaires to generate personalized estate documents based on your answers.'}
+                : 'Complete documents to generate personalized estate documents based on your answers.'}
             </p>
           </div>
         </div>

@@ -1,20 +1,20 @@
-.questionnaire-container {
+.document-sessions-container {
   min-height: 100vh;
   background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
   padding: 3rem 1rem;
 }
 
-.questionnaire-wrapper {
+.document-sessions-wrapper {
   max-width: 1400px;
   margin: 0 auto;
 }
 
-.questionnaire-content {
+.document-sessions-content {
   max-width: 900px;
   margin: 0 auto;
 }
 
-.questionnaire-card {
+.document-sessions-card {
   background: white;
   border-radius: 1rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -22,7 +22,7 @@
   margin-bottom: 2rem;
 }
 
-.questionnaire-header {
+.document-sessions-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -33,14 +33,14 @@
   padding: 1.5rem;
 }
 
-.questionnaire-title {
+.document-sessions-title {
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
   margin: 0;
 }
 
-.questionnaire-subtitle {
+.document-sessions-subtitle {
   margin-top: 0.5rem;
   font-size: 0.875rem;
   color: #6b7280;

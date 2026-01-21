@@ -27,7 +27,7 @@ async def generate_document(
     """
     Generate a document by merging session answers into a template.
     
-    - **session_id**: Questionnaire session ID
+    - **session_id**: Document session ID
     - **template_id**: Document template ID
     - **document_name**: Optional custom document name
     
@@ -53,7 +53,7 @@ async def preview_document(
     """
     Preview a document merge without saving.
     
-    - **session_id**: Questionnaire session ID
+    - **session_id**: Document session ID
     - **template_id**: Document template ID
     
     Returns the merged content and lists any missing identifiers that

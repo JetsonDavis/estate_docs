@@ -90,15 +90,17 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
     question_group = relationship("QuestionGroup", back_populates="questions")
     
     def __repr__(self) -> str:
-        return f"<Question(id={self.id}, identifier='{self.identifier}', type='{self.question_type.value}')>"
+        qt = self.question_type.value if hasattr(self.question_type, 'value') else self.question_type
+        return f"<Question(id={self.id}, identifier='{self.identifier}', type='{qt}')>"
     
     def to_dict(self) -> dict:
         """Convert question to dictionary."""
+        qt = self.question_type.value if hasattr(self.question_type, 'value') else self.question_type
         return {
             "id": self.id,
             "question_group_id": self.question_group_id,
             "question_text": self.question_text,
-            "question_type": self.question_type.value,
+            "question_type": qt,
             "identifier": self.identifier,
             "display_order": self.display_order,
             "is_required": self.is_required,

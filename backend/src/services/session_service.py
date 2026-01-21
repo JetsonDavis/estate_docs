@@ -28,7 +28,7 @@ class SessionService:
         user_id: int
     ) -> DocumentSession:
         """
-        Create a new questionnaire session.
+        Create a new document session.
         
         Args:
             db: Database session
@@ -36,7 +36,7 @@ class SessionService:
             user_id: User ID creating the session
             
         Returns:
-            Created questionnaire session
+            Created document session
         """
         from ..models.flow import DocumentFlow
         
@@ -232,22 +232,32 @@ class SessionService:
         Returns:
             Next group ID or None if completed
         """
-        # Check if current group has conditional flows
-        if current_group.conditional_flows:
-            # Evaluate conditional flows
-            for flow in current_group.conditional_flows:
-                question_id = flow.get('question_id')
-                expected_value = flow.get('expected_value')
-                next_group_id = flow.get('next_group_id')
-                
-                # Find the answer for this question
-                for answer in answers:
-                    if answer.question_id == question_id:
-                        if answer.answer_value == expected_value:
-                            return next_group_id
+        # Build answer lookup by question identifier
+        answer_by_question_id = {a.question_id: a.answer_value for a in answers}
         
-        # If no conditional flow matched, use default next group
-        return current_group.next_group_id
+        # Check if current group has question logic with conditionals
+        if current_group.question_logic:
+            for item in current_group.question_logic:
+                if item.get('type') == 'conditional':
+                    cond = item.get('conditional', {})
+                    if_identifier = cond.get('ifIdentifier')
+                    expected_value = cond.get('value')
+                    next_group_id = cond.get('nextGroupId')
+                    
+                    # Find question by identifier to get its ID
+                    for q in current_group.questions:
+                        if q.identifier == if_identifier:
+                            if answer_by_question_id.get(q.id) == expected_value:
+                                if next_group_id:
+                                    return next_group_id
+                                break
+        
+        # If no conditional flow matched, find next group by display_order
+        next_group = db.query(QuestionGroup).filter(
+            QuestionGroup.display_order > current_group.display_order
+        ).order_by(QuestionGroup.display_order).first()
+        
+        return next_group.id if next_group else None
     
     @staticmethod
     def get_session_answers(

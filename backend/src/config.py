@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     email_from: str = "noreply@example.com"
     
     # File Storage
-    upload_dir: str = "/var/app/storage/uploads"
-    generated_dir: str = "/var/app/storage/generated"
+    upload_dir: str = "./temp_uploads"
+    generated_dir: str = "./generated"
+    document_uploads_dir: str = "./document_uploads"
     max_upload_size_mb: int = 10
     
     # Environment

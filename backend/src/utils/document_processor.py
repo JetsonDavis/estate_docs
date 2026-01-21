@@ -25,6 +25,13 @@ class DocumentProcessor:
         Returns:
             Markdown text content
         """
+        # Check if it's an old .doc format (not supported)
+        if file_path.lower().endswith('.doc') and not file_path.lower().endswith('.docx'):
+            raise ValueError(
+                "Old .doc format is not supported. Please convert to .docx format first. "
+                "You can do this by opening the file in Microsoft Word and saving as .docx"
+            )
+        
         try:
             # Try mammoth first for better conversion
             with open(file_path, "rb") as docx_file:

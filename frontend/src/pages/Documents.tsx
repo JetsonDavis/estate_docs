@@ -3,13 +3,13 @@ import { documentService } from '../services/documentService'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
 import { GeneratedDocument, DocumentPreview } from '../types/document'
-import { QuestionnaireSession } from '../types/session'
+import { DocumentSession } from '../types/session'
 import { Template } from '../types/template'
 import './Documents.css'
 
 const Documents: React.FC = () => {
   const [documents, setDocuments] = useState<GeneratedDocument[]>([])
-  const [sessions, setSessions] = useState<QuestionnaireSession[]>([])
+  const [sessions, setSessions] = useState<DocumentSession[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

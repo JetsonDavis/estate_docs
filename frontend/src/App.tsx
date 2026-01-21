@@ -14,7 +14,7 @@ import QuestionGroups from './pages/admin/QuestionGroups'
 import Templates from './pages/admin/Templates'
 import Flows from './pages/admin/Flows'
 import FlowBuilder from './pages/admin/FlowBuilder'
-import Questionnaire from './pages/Questionnaire'
+import DocumentSessions from './pages/DocumentSessions'
 import DocumentNew from './pages/DocumentNew'
 import Documents from './pages/Documents'
 
@@ -171,7 +171,7 @@ function App() {
                 <ProtectedRoute>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <Questionnaire />
+                    <DocumentSessions />
                   </div>
                 </ProtectedRoute>
               }

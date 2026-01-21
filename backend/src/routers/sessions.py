@@ -1,4 +1,4 @@
-"""API endpoints for questionnaire session management."""
+"""API endpoints for document session management."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -18,7 +18,7 @@ from ..schemas.session import (
     NavigateRequest
 )
 from ..services.session_service import SessionService
-from ..services.question_service import QuestionService
+from ..services.question_service import QuestionGroupService
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -31,7 +31,7 @@ async def create_session(
     db: Session = Depends(get_db)
 ) -> DocumentSessionResponse:
     """
-    Create a new questionnaire session.
+    Create a new document session.
     
     - **client_identifier**: Identifier for the client (e.g., name, case number)
     - **starting_group_id**: Optional starting question group ID (defaults to first group)
@@ -53,7 +53,7 @@ async def list_sessions(
     db: Session = Depends(get_db)
 ) -> List[DocumentSessionResponse]:
     """
-    List all questionnaire sessions for the current user.
+    List all document sessions for the current user.
     
     - **skip**: Number of records to skip (default: 0)
     - **limit**: Maximum number of records to return (default: 100)
@@ -75,7 +75,7 @@ async def get_session(
     db: Session = Depends(get_db)
 ) -> DocumentSessionWithAnswers:
     """
-    Get a specific questionnaire session with all answers.
+    Get a specific document session with all answers.
     
     - **session_id**: Session ID
     """
@@ -101,7 +101,7 @@ async def get_session_progress(
     db: Session = Depends(get_db)
 ) -> SessionProgressResponse:
     """
-    Get current progress of a questionnaire session.
+    Get current progress of a document session.
     
     - **session_id**: Session ID
     
@@ -119,7 +119,7 @@ async def get_session_progress(
     # Get current group details
     current_group = None
     if session.current_group_id and not session.is_completed:
-        group = QuestionService.get_question_group(db, session.current_group_id)
+        group = QuestionGroupService.get_question_group_by_id(db, session.current_group_id)
         if group:
             current_group = {
                 "id": group.id,
@@ -131,7 +131,7 @@ async def get_session_progress(
     return SessionProgressResponse(
         session=DocumentSessionResponse.model_validate(session),
         current_group=current_group,
-        next_group_id=session.current_group.next_group_id if session.current_group else None,
+        next_group_id=None,  # Next group is determined dynamically based on answers
         is_completed=session.is_completed,
         total_answers=len(answers)
     )
@@ -169,7 +169,7 @@ async def delete_session(
     db: Session = Depends(get_db)
 ):
     """
-    Delete a questionnaire session.
+    Delete a document session.
     
     - **session_id**: Session ID
     """

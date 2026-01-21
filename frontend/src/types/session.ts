@@ -22,10 +22,6 @@ export interface DocumentSessionWithAnswers extends DocumentSession {
   answers: SessionAnswer[]
 }
 
-// Backwards compatibility aliases
-export type QuestionnaireSession = DocumentSession
-export type QuestionnaireSessionWithAnswers = DocumentSessionWithAnswers
-
 export interface SessionCreate {
   client_identifier: string
   starting_group_id?: number

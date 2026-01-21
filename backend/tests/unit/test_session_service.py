@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from datetime import datetime
 
 from src.services.session_service import SessionService
-from src.models.session import QuestionnaireSession, SessionAnswer
+from src.models.session import DocumentSession, SessionAnswer
 from src.models.question import QuestionGroup, Question
-from src.schemas.session import QuestionnaireSessionCreate, SessionAnswerCreate
+from src.schemas.session import DocumentSessionCreate, SessionAnswerCreate
 
 
 class TestSessionService:
@@ -17,7 +17,7 @@ class TestSessionService:
     
     def test_create_session_success(self, db_session: Session, sample_question_group):
         """Test successful session creation."""
-        session_data = QuestionnaireSessionCreate(
+        session_data = DocumentSessionCreate(
             client_identifier="John Doe",
             starting_group_id=sample_question_group.id
         )
@@ -31,7 +31,7 @@ class TestSessionService:
     
     def test_create_session_default_starting_group(self, db_session: Session, sample_question_group):
         """Test session creation with default starting group."""
-        session_data = QuestionnaireSessionCreate(
+        session_data = DocumentSessionCreate(
             client_identifier="Jane Doe"
         )
         
@@ -41,7 +41,7 @@ class TestSessionService:
     
     def test_create_session_no_groups_available(self, db_session: Session):
         """Test session creation when no question groups exist."""
-        session_data = QuestionnaireSessionCreate(
+        session_data = DocumentSessionCreate(
             client_identifier="Test Client"
         )
         
@@ -69,7 +69,7 @@ class TestSessionService:
         """Test listing sessions for a user."""
         # Create multiple sessions
         for i in range(3):
-            session_data = QuestionnaireSessionCreate(
+            session_data = DocumentSessionCreate(
                 client_identifier=f"Client {i}",
                 starting_group_id=sample_question_group.id
             )
@@ -84,7 +84,7 @@ class TestSessionService:
         """Test listing sessions with pagination."""
         # Create 5 sessions
         for i in range(5):
-            session_data = QuestionnaireSessionCreate(
+            session_data = DocumentSessionCreate(
                 client_identifier=f"Client {i}",
                 starting_group_id=sample_question_group.id
             )
@@ -189,8 +189,8 @@ class TestSessionService:
             answers
         )
         
-        # Should navigate to the conditional next group
-        assert updated_session.current_group_id == 2  # Based on conditional flow
+        # Since there's no next group, session should complete
+        assert updated_session.is_completed == True
     
     def test_default_flow_navigation(self, db_session: Session, sample_session, sample_questions):
         """Test default flow navigation when no condition matches."""
@@ -205,15 +205,8 @@ class TestSessionService:
             answers
         )
         
-        # Should use default next_group_id
-        current_group = db_session.query(QuestionGroup).filter(
-            QuestionGroup.id == sample_session.current_group_id
-        ).first()
-        
-        if current_group.next_group_id:
-            assert updated_session.current_group_id == current_group.next_group_id
-        else:
-            assert updated_session.is_completed == True
+        # Should complete since there's no next group
+        assert updated_session.is_completed == True
     
     def test_session_completion(self, db_session: Session, sample_session_last_group, sample_questions):
         """Test session completion when no next group."""
@@ -262,8 +255,8 @@ class TestSessionService:
         assert success == True
         
         # Verify session is deleted
-        deleted = db_session.query(QuestionnaireSession).filter(
-            QuestionnaireSession.id == sample_session.id
+        deleted = db_session.query(DocumentSession).filter(
+            DocumentSession.id == sample_session.id
         ).first()
         assert deleted is None
     
@@ -297,8 +290,8 @@ def sample_question_group(db_session):
     group = QuestionGroup(
         name="Test Group",
         description="Test Description",
-        order_index=1,
-        is_active=True
+        identifier="test_group",
+        display_order=1
     )
     db_session.add(group)
     db_session.commit()
@@ -312,13 +305,12 @@ def sample_questions(db_session, sample_question_group):
     questions = []
     for i in range(3):
         question = Question(
-            group_id=sample_question_group.id,
+            question_group_id=sample_question_group.id,
             identifier=f"test_q{i}",
             question_text=f"Test Question {i}",
             question_type="free_text",
-            order_index=i,
-            is_required=True,
-            is_active=True
+            display_order=i,
+            is_required=True
         )
         db_session.add(question)
         questions.append(question)
@@ -333,7 +325,7 @@ def sample_questions(db_session, sample_question_group):
 @pytest.fixture
 def sample_session(db_session, sample_question_group):
     """Create a sample session."""
-    session = QuestionnaireSession(
+    session = DocumentSession(
         client_identifier="Test Client",
         user_id=1,
         current_group_id=sample_question_group.id,
@@ -348,17 +340,26 @@ def sample_session(db_session, sample_question_group):
 @pytest.fixture
 def sample_session_with_flow(db_session, sample_question_group, sample_questions):
     """Create a session with conditional flow."""
-    # Add conditional flow to group
-    sample_question_group.conditional_flows = [
+    # Add question logic to group
+    sample_question_group.question_logic = [
         {
-            "question_id": sample_questions[0].id,
-            "expected_value": "Male",
-            "next_group_id": 2
+            "type": "question",
+            "questionId": sample_questions[0].id
+        },
+        {
+            "type": "conditional",
+            "conditional": {
+                "ifIdentifier": sample_questions[0].identifier,
+                "value": "Male",
+                "nestedItems": [
+                    {"type": "question", "questionId": sample_questions[1].id}
+                ]
+            }
         }
     ]
     db_session.commit()
     
-    session = QuestionnaireSession(
+    session = DocumentSession(
         client_identifier="Flow Test Client",
         user_id=1,
         current_group_id=sample_question_group.id,
@@ -376,7 +377,7 @@ def sample_session_last_group(db_session, sample_question_group):
     sample_question_group.next_group_id = None
     db_session.commit()
     
-    session = QuestionnaireSession(
+    session = DocumentSession(
         client_identifier="Last Group Client",
         user_id=1,
         current_group_id=sample_question_group.id,

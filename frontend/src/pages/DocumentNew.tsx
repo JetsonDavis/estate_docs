@@ -4,7 +4,7 @@ import { sessionService } from '../services/sessionService'
 import { Person } from '../types/person'
 import PersonTypeahead from '../components/common/PersonTypeahead'
 import PersonFormModal from '../components/common/PersonFormModal'
-import './Questionnaire.css'
+import './DocumentSessions.css'
 
 const DocumentNew: React.FC = () => {
   const navigate = useNavigate()
@@ -37,12 +37,12 @@ const DocumentNew: React.FC = () => {
   }
 
   return (
-    <div className="questionnaire-container">
-      <div className="questionnaire-content">
-        <div className="questionnaire-card">
-          <div className="questionnaire-header">
-            <h1 className="questionnaire-title">New Document</h1>
-            <p className="questionnaire-subtitle">Create a new document</p>
+    <div className="document-sessions-container">
+      <div className="document-sessions-content">
+        <div className="document-sessions-card">
+          <div className="document-sessions-header">
+            <h1 className="document-sessions-title">New Document</h1>
+            <p className="document-sessions-subtitle">Create a new document</p>
           </div>
 
           <form onSubmit={handleCreateSession} className="new-session-form">

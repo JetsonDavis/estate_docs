@@ -82,6 +82,10 @@ logs/
 
 # File uploads and generated documents
 /var/app/storage/
+document_uploads/*
+!document_uploads/.gitkeep
+temp_uploads/
+generated/
 
 # Coverage reports
 coverage/

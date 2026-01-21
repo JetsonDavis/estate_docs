@@ -85,7 +85,7 @@ const QuestionGroups: React.FC = () => {
         <div>
           <h1 className="question-groups-title">Question Groups</h1>
           <p className="question-groups-subtitle">
-            Create and manage question groups for questionnaires
+            Create and manage question groups for documents
           </p>
         </div>
         <button onClick={() => navigate('/admin/question-groups/new')} className="create-button">

@@ -9,7 +9,7 @@ import {
 
 export const flowService = {
   /**
-   * Create a new questionnaire flow
+   * Create a new document flow
    */
   createFlow: async (data: DocumentFlowCreate): Promise<DocumentFlow> => {
     const response = await apiClient.post<DocumentFlow>('/flows/', data)
@@ -17,7 +17,7 @@ export const flowService = {
   },
 
   /**
-   * Get all questionnaire flows
+   * Get all document flows
    */
   getFlows: async (page: number = 1, pageSize: number = 100, search?: string): Promise<DocumentFlowListResponse> => {
     const skip = (page - 1) * pageSize
@@ -36,7 +36,7 @@ export const flowService = {
   },
 
   /**
-   * Update a questionnaire flow
+   * Update a document flow
    */
   updateFlow: async (flowId: number, data: DocumentFlowUpdate): Promise<DocumentFlow> => {
     const response = await apiClient.put<DocumentFlow>(`/flows/${flowId}`, data)
@@ -44,7 +44,7 @@ export const flowService = {
   },
 
   /**
-   * Delete a questionnaire flow
+   * Delete a document flow
    */
   deleteFlow: async (flowId: number): Promise<void> => {
     await apiClient.delete(`/flows/${flowId}`)

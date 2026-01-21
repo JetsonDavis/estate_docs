@@ -1,19 +1,22 @@
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, StaticPool
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
-from src.database import Base
+from src.database import Base, get_db
 from src.main import app
-from src.config import settings
 
-# Test database URL
-TEST_DATABASE_URL = settings.test_database_url
+# Use SQLite in-memory for tests with StaticPool to share connection
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def engine():
     """Create test database engine."""
-    engine = create_engine(TEST_DATABASE_URL)
+    engine = create_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool
+    )
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
