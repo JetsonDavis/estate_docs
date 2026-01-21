@@ -6,7 +6,7 @@ FROM --platform=linux/amd64 python:3.11-slim-bullseye
 RUN addgroup --system app && adduser --system --group app
 
 WORKDIR /app/
-EXPOSE 80
+EXPOSE 88
 EXPOSE 8000
 
 # Environment variables
@@ -58,9 +58,16 @@ RUN --mount=type=cache,target=/var/cache/apt \
          python3-pip \
          libffi-dev \
          libpq-dev \
-         postgresql-client \
          nginx \
-         pandoc && \
+         pandoc \
+         gnupg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Add PostgreSQL 15 repository and install client
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends postgresql-client-15 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm
@@ -114,7 +121,7 @@ set -e\n\
 echo "Starting Estate Docs application..."\n\
 \n\
 # Start nginx as root\n\
-echo "Starting nginx on port 80..."\n\
+echo "Starting nginx on port 88..."\n\
 nginx\n\
 echo "Nginx started"\n\
 \n\

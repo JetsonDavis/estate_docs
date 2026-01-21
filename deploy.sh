@@ -41,7 +41,7 @@ fi
 # Pull the latest image from Docker Hub
 echo ""
 echo "Pulling latest image from Docker Hub..."
-docker pull "$IMAGE_NAME":latest
+docker pull "$IMAGE_NAME":amd
 
 # Run the container
 echo ""
@@ -49,11 +49,11 @@ echo "Starting container..."
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
-    -p 80:80 \
+    -p 88:88 \
     -e DATABASE_URL="${DATABASE_URL:-postgresql://postgres:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs}" \
     -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
     -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
-    "$IMAGE_NAME":latest
+    "$IMAGE_NAME":amd
 
 echo ""
 echo "Container started successfully!"
