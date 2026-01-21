@@ -168,7 +168,10 @@ function App() {
               path="/document"
               element={
                 <ProtectedRoute>
-                  <Questionnaire />
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <Questionnaire />
+                  </div>
                 </ProtectedRoute>
               }
             />

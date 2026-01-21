@@ -40,6 +40,12 @@ const Questionnaire: React.FC = () => {
   const [personSuggestions, setPersonSuggestions] = useState<Record<number, Person[]>>({})
   const personSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Ref for debouncing answer changes that might affect conditionals
+  const conditionalRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Ref for debouncing person answer saves
+  const personAnswerSaveTimeoutRef = useRef<Record<number, NodeJS.Timeout | null>>({})
+
   useEffect(() => {
     if (sessionId) {
       loadSessionQuestions(parseInt(sessionId), 1)
@@ -153,10 +159,109 @@ const Questionnaire: React.FC = () => {
   }
 
   const handleAnswerChange = (questionId: number, value: string) => {
+    const previousValue = answers[questionId]
+
     setAnswers(prev => ({
       ...prev,
       [questionId]: value
     }))
+
+    // If the value actually changed, check if we need to refresh for conditionals
+    if (previousValue !== value && sessionData) {
+      // Find the question to get its identifier
+      const question = sessionData.questions.find(q => q.id === questionId)
+      if (question) {
+        // Debounce the save and refresh to avoid too many API calls
+        if (conditionalRefreshTimeoutRef.current) {
+          clearTimeout(conditionalRefreshTimeoutRef.current)
+        }
+
+        conditionalRefreshTimeoutRef.current = setTimeout(async () => {
+          try {
+            // Save the answer to the database
+            await sessionService.saveAnswers(sessionData.session_id, {
+              answers: [{ question_id: questionId, answer_value: value }]
+            })
+
+            // Refresh questions to re-evaluate conditionals
+            // Don't show loading state to avoid UI flicker
+            const data = await sessionService.getSessionQuestions(
+              sessionData.session_id,
+              currentPage,
+              QUESTIONS_PER_PAGE
+            )
+
+            // Update session data with new questions
+            setSessionData(data)
+
+            // Use functional updates to get current state and merge with new data
+            setAnswers(currentAnswers => {
+              const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: value }
+
+              data.questions.forEach(q => {
+                // Only set from existing_answers if we don't have a local answer
+                if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
+                  newAnswers[q.id] = data.existing_answers[q.id]
+                }
+              })
+
+              return newAnswers
+            })
+
+            setPersonAnswers(currentPersonAnswers => {
+              const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
+
+              data.questions.forEach(q => {
+                if (q.question_type === 'person') {
+                  if (!(q.id in newPersonAnswers) && data.existing_answers[q.id]) {
+                    try {
+                      const parsed = JSON.parse(data.existing_answers[q.id])
+                      if (Array.isArray(parsed)) {
+                        newPersonAnswers[q.id] = parsed
+                      } else {
+                        newPersonAnswers[q.id] = [data.existing_answers[q.id]]
+                      }
+                    } catch {
+                      newPersonAnswers[q.id] = [data.existing_answers[q.id]]
+                    }
+                  } else if (!(q.id in newPersonAnswers)) {
+                    newPersonAnswers[q.id] = ['']
+                  }
+                }
+              })
+
+              return newPersonAnswers
+            })
+          } catch (err) {
+            console.error('Failed to refresh questions after answer change:', err)
+          }
+        }, 500) // 500ms debounce
+      }
+    }
+  }
+
+  const savePersonAnswer = (questionId: number, values: string[]) => {
+    if (!sessionData) return
+
+    // Clear existing timeout for this question
+    if (personAnswerSaveTimeoutRef.current[questionId]) {
+      clearTimeout(personAnswerSaveTimeoutRef.current[questionId]!)
+    }
+
+    // Debounce the save
+    personAnswerSaveTimeoutRef.current[questionId] = setTimeout(async () => {
+      try {
+        // Filter out empty values and save as JSON array
+        const filteredValues = values.filter(v => v.trim() !== '')
+        const answerValue = JSON.stringify(filteredValues)
+
+        await sessionService.saveAnswers(sessionData.session_id, {
+          answers: [{ question_id: questionId, answer_value: answerValue }]
+        })
+      } catch (err) {
+        console.error('Failed to save person answer:', err)
+      }
+    }, 500)
   }
 
   const handlePersonAnswerChange = (questionId: number, index: number, value: string) => {
@@ -164,6 +269,10 @@ const Questionnaire: React.FC = () => {
       const current = prev[questionId] || ['']
       const updated = [...current]
       updated[index] = value
+
+      // Trigger save
+      savePersonAnswer(questionId, updated)
+
       return { ...prev, [questionId]: updated }
     })
   }
@@ -171,7 +280,8 @@ const Questionnaire: React.FC = () => {
   const addPersonField = (questionId: number) => {
     setPersonAnswers(prev => {
       const current = prev[questionId] || ['']
-      return { ...prev, [questionId]: [...current, ''] }
+      const updated = [...current, '']
+      return { ...prev, [questionId]: updated }
     })
   }
 
@@ -180,6 +290,10 @@ const Questionnaire: React.FC = () => {
       const current = prev[questionId] || ['']
       if (current.length <= 1) return prev
       const updated = current.filter((_, i) => i !== index)
+
+      // Trigger save after removal
+      savePersonAnswer(questionId, updated)
+
       return { ...prev, [questionId]: updated }
     })
   }
@@ -305,19 +419,23 @@ const Questionnaire: React.FC = () => {
       case 'multiple_choice':
         return (
           <div className="radio-group">
-            {question.options?.map((option, index) => (
-              <div key={index} className="radio-option">
-                <input
-                  type="radio"
-                  id={`q${question.id}-${index}`}
-                  name={`question-${question.id}`}
-                  value={option.value}
-                  checked={value === option.value}
-                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                />
-                <label htmlFor={`q${question.id}-${index}`}>{option.label}</label>
-              </div>
-            ))}
+            {question.options?.map((option, index) => {
+              // Use label as value if value is empty
+              const optionValue = option.value || option.label
+              return (
+                <div key={index} className="radio-option">
+                  <input
+                    type="radio"
+                    id={`q${question.id}-${index}`}
+                    name={`question-${question.id}`}
+                    value={optionValue}
+                    checked={value === optionValue}
+                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                  />
+                  <label htmlFor={`q${question.id}-${index}`}>{option.label}</label>
+                </div>
+              )
+            })}
           </div>
         )
 
@@ -610,18 +728,6 @@ const Questionnaire: React.FC = () => {
               </div>
 
               <div className="action-buttons">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await saveCurrentAnswers()
-                    navigate('/document')
-                  }}
-                  className="btn btn-secondary"
-                  disabled={submitting}
-                >
-                  Save & Exit
-                </button>
-                
                 <div className="nav-buttons">
                   {sessionData.can_go_back && (
                     <button
@@ -633,7 +739,7 @@ const Questionnaire: React.FC = () => {
                       ← Back
                     </button>
                   )}
-                  
+
                   <button
                     type="button"
                     onClick={() => handleNavigate('forward')}
@@ -642,7 +748,7 @@ const Questionnaire: React.FC = () => {
                   >
                     {submitting ? 'Saving...' : (
                       sessionData.is_last_group && currentPage >= sessionData.total_pages
-                        ? 'Complete'
+                        ? 'Exit'
                         : 'Next →'
                     )}
                   </button>
