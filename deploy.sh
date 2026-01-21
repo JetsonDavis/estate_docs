@@ -2,14 +2,14 @@
 set -e
 
 # Estate Docs EC2 Deployment Script
-# This script stops running containers, pulls the latest image, and starts the application
+# This script stops running containers, pulls the latest image from Docker Hub, and starts the application
 
-CONTAINER_NAME="estate-docs"
-IMAGE_NAME="estate-docs"
+CONTAINER_NAME="estate-doctor"
+IMAGE_NAME="jetsondavis/estate-doctor"
 DOCUMENT_UPLOADS_DIR="/home/ubuntu/document_uploads"
 
 echo "=========================================="
-echo "Estate Docs Deployment Script"
+echo "Estate Doctor Deployment Script"
 echo "=========================================="
 
 # Create document uploads directory if it doesn't exist
@@ -38,17 +38,10 @@ if docker ps -aq -f name="$CONTAINER_NAME" | grep -q .; then
     echo "Container removed."
 fi
 
-# Pull the latest image (if using a registry)
-# Uncomment the following lines if pushing to a registry like ECR or Docker Hub
-# echo ""
-# echo "Pulling latest image..."
-# docker pull $IMAGE_NAME:latest
-
-# Build the image locally (comment out if using a registry)
+# Pull the latest image from Docker Hub
 echo ""
-echo "Building Docker image..."
-cd /home/ubuntu/estate_docs
-docker build -t "$IMAGE_NAME" .
+echo "Pulling latest image from Docker Hub..."
+docker pull "$IMAGE_NAME":latest
 
 # Run the container
 echo ""
@@ -60,7 +53,7 @@ docker run -d \
     -e DATABASE_URL="${DATABASE_URL:-postgresql://postgres:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs}" \
     -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
     -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
-    "$IMAGE_NAME"
+    "$IMAGE_NAME":latest
 
 echo ""
 echo "Container started successfully!"
