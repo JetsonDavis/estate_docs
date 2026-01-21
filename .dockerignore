@@ -1,0 +1,30 @@
+.git
+.gitignore
+*.md
+.vscode
+.idea
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+backend/venv
+backend/.env
+backend/.env.local
+
+# Node
+frontend/node_modules
+frontend/dist
+frontend/.env.local
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Tests (optional - remove if you want tests in image)
+backend/tests
+frontend/tests
