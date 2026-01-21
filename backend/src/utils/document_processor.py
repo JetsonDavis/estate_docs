@@ -6,7 +6,9 @@ from docx import Document
 import PyPDF2
 import pdfplumber
 import markdown2
+import mammoth
 from pathlib import Path
+from datetime import datetime
 
 
 class DocumentProcessor:
@@ -15,36 +17,54 @@ class DocumentProcessor:
     @staticmethod
     def word_to_markdown(file_path: str) -> str:
         """
-        Convert Word document to Markdown text.
-        
+        Convert Word document to Markdown text using mammoth for better conversion.
+
         Args:
             file_path: Path to the Word document
-            
+
         Returns:
             Markdown text content
         """
-        doc = Document(file_path)
-        markdown_lines = []
-        
-        for paragraph in doc.paragraphs:
-            text = paragraph.text.strip()
-            if not text:
-                continue
-                
-            # Check paragraph style for headings
-            if paragraph.style.name.startswith('Heading'):
-                level = paragraph.style.name.replace('Heading ', '')
-                try:
-                    level_num = int(level)
-                    markdown_lines.append(f"{'#' * level_num} {text}")
-                except ValueError:
+        try:
+            # Try mammoth first for better conversion
+            with open(file_path, "rb") as docx_file:
+                result = mammoth.convert_to_markdown(docx_file)
+                markdown_content = result.value
+
+                # Clean up the markdown
+                lines = markdown_content.split('\n')
+                cleaned_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped:
+                        cleaned_lines.append(stripped)
+                        cleaned_lines.append("")  # Add blank line
+
+                return "\n".join(cleaned_lines).strip()
+        except Exception as e:
+            # Fallback to python-docx if mammoth fails
+            doc = Document(file_path)
+            markdown_lines = []
+
+            for paragraph in doc.paragraphs:
+                text = paragraph.text.strip()
+                if not text:
+                    continue
+
+                # Check paragraph style for headings
+                if paragraph.style.name.startswith('Heading'):
+                    level = paragraph.style.name.replace('Heading ', '')
+                    try:
+                        level_num = int(level)
+                        markdown_lines.append(f"{'#' * level_num} {text}")
+                    except ValueError:
+                        markdown_lines.append(text)
+                else:
                     markdown_lines.append(text)
-            else:
-                markdown_lines.append(text)
-            
-            markdown_lines.append("")  # Add blank line between paragraphs
-        
-        return "\n".join(markdown_lines)
+
+                markdown_lines.append("")  # Add blank line between paragraphs
+
+            return "\n".join(markdown_lines)
     
     @staticmethod
     def pdf_to_markdown(file_path: str) -> str:
@@ -201,3 +221,42 @@ class DocumentProcessor:
             return 'text'
 
         return None
+
+    @staticmethod
+    def save_markdown_file(
+        markdown_content: str,
+        template_name: str,
+        username: str,
+        base_dir: str = "document_uploads"
+    ) -> str:
+        """
+        Save markdown content to a file with proper naming convention.
+
+        Args:
+            markdown_content: The markdown content to save
+            template_name: Name of the template
+            username: Username of the user uploading
+            base_dir: Base directory for uploads (default: document_uploads)
+
+        Returns:
+            Path to the saved markdown file
+        """
+        # Create document_uploads directory at root level if it doesn't exist
+        root_dir = Path(__file__).parent.parent.parent.parent  # Go up to project root
+        upload_dir = root_dir / base_dir
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate filename: templatename_username_timestamp.md
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Clean template name for filename (remove special characters)
+        clean_template_name = "".join(c for c in template_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        clean_template_name = clean_template_name.replace(' ', '_')
+        filename = f"{clean_template_name}_{username}_{timestamp}.md"
+
+        file_path = upload_dir / filename
+
+        # Save the markdown content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(markdown_content)
+
+        return str(file_path)

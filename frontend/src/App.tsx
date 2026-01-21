@@ -15,6 +15,7 @@ import Templates from './pages/admin/Templates'
 import Flows from './pages/admin/Flows'
 import FlowBuilder from './pages/admin/FlowBuilder'
 import Questionnaire from './pages/Questionnaire'
+import DocumentNew from './pages/DocumentNew'
 import Documents from './pages/Documents'
 
 const queryClient = new QueryClient({
@@ -171,6 +172,17 @@ function App() {
                   <div className="min-h-screen bg-gray-50">
                     <Header />
                     <Questionnaire />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/document/new"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <DocumentNew />
                   </div>
                 </ProtectedRoute>
               }

@@ -17,3 +17,5 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 markdown2==2.4.12
 aiofiles==23.2.1
+mammoth==1.11.0
+pypandoc==1.12

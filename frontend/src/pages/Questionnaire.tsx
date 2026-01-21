@@ -4,7 +4,6 @@ import { sessionService } from '../services/sessionService'
 import { QuestionnaireSession, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
-import PersonTypeahead from '../components/common/PersonTypeahead'
 import PersonFormModal from '../components/common/PersonFormModal'
 import './Questionnaire.css'
 
@@ -30,10 +29,7 @@ const Questionnaire: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [isCompleted, setIsCompleted] = useState(false)
 
-  // New session form state
-  const [documentFor, setDocumentFor] = useState('')
-  const [documentName, setDocumentName] = useState('')
-  const [showNewPersonModal, setShowNewPersonModal] = useState(false)
+  // Modal state for person-type questions
   const [personModalForQuestion, setPersonModalForQuestion] = useState<number | null>(null)
 
   // Person search state for person type questions
@@ -132,29 +128,6 @@ const Questionnaire: React.FC = () => {
       }
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleCreateSession = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!documentFor.trim() || !documentName.trim()) {
-      alert('Please fill in all fields')
-      return
-    }
-
-    try {
-      setSubmitting(true)
-      const session = await sessionService.createSession({
-        client_identifier: `${documentFor} - ${documentName}`
-      })
-      navigate(`/document?session=${session.id}`)
-      setDocumentFor('')
-      setDocumentName('')
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create session')
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -568,63 +541,37 @@ const Questionnaire: React.FC = () => {
   if (!sessionId) {
     return (
       <div className="questionnaire-container">
-        <div className="questionnaire-content">
-          <div className="questionnaire-card">
-            <div className="questionnaire-header">
+        <div className="questionnaire-wrapper">
+          <div className="questionnaire-header">
+            <div>
               <h1 className="questionnaire-title">Documents</h1>
               <p className="questionnaire-subtitle">Start a new document or continue an existing one</p>
             </div>
+            <button
+              onClick={() => navigate('/document/new')}
+              className="btn btn-primary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                backgroundColor: '#2563eb',
+                color: 'white',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                padding: '0.625rem 1.25rem',
+                border: 'none',
+                borderRadius: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Document
+            </button>
+          </div>
 
-            <form onSubmit={handleCreateSession} className="new-session-form" style={{ marginBottom: '2rem' }}>
-              <div className="form-group">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <label className="form-label" style={{ margin: 0 }}>Document For:</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPersonModal(true)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.75rem',
-                      backgroundColor: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '9999px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    + New Person
-                  </button>
-                </div>
-                <PersonTypeahead
-                  value={documentFor}
-                  onChange={(value) => setDocumentFor(value)}
-                  placeholder="Enter client name"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Document Name:</label>
-                <input
-                  type="text"
-                  value={documentName}
-                  onChange={(e) => setDocumentName(e.target.value)}
-                  placeholder="Enter document name"
-                  className="form-input"
-                  required
-                  disabled={!documentFor.trim()}
-                />
-              </div>
-              <button type="submit" disabled={submitting || !documentFor.trim() || !documentName.trim()} className="btn btn-primary">
-                {submitting ? 'Creating...' : 'Create Document'}
-              </button>
-            </form>
-
-            <div className="session-list">
+          <div className="session-list" style={{ background: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', padding: '1rem' }}>
               {sessions.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#6b7280' }}>
                   No documents yet. Start a new one to get started.
@@ -649,16 +596,7 @@ const Questionnaire: React.FC = () => {
                 ))
               )}
             </div>
-          </div>
         </div>
-
-        <PersonFormModal
-          isOpen={showNewPersonModal}
-          onClose={() => setShowNewPersonModal(false)}
-          onSave={(person: Person) => {
-            setDocumentFor(person.name)
-          }}
-        />
       </div>
     )
   }

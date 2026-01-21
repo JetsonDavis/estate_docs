@@ -80,6 +80,7 @@ const QuestionGroups: React.FC = () => {
   // Render list view
   return (
     <div className="question-groups-container">
+      <div className="question-groups-wrapper">
       <div className="question-groups-header">
         <div>
           <h1 className="question-groups-title">Question Groups</h1>
@@ -254,6 +255,7 @@ const QuestionGroups: React.FC = () => {
           )}
         </>
       )}
+      </div>
     </div>
   )
 }
@@ -562,7 +564,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Auto-save if identifier is present, or if question text is present
     if (hasIdentifier || hasQuestionText) {
       autoSaveTimeoutRefs.current[question.id] = setTimeout(() => {
-        autoSaveQuestion(question)
+        // Get the latest version of the question from state
+        setQuestions(prev => {
+          const latestQuestion = prev.find(q => q.id === question.id)
+          if (latestQuestion) {
+            autoSaveQuestion(latestQuestion)
+          }
+          return prev // Don't modify state, just read it
+        })
       }, 1000) // 1 second debounce
     }
   }

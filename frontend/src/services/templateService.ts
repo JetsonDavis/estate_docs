@@ -12,10 +12,13 @@ export const templateService = {
   /**
    * Upload a file and convert to markdown
    */
-  uploadFile: async (file: File): Promise<FileUploadResponse> => {
+  uploadFile: async (file: File, templateName?: string): Promise<FileUploadResponse> => {
     const formData = new FormData()
     formData.append('file', file)
-    
+    if (templateName) {
+      formData.append('template_name', templateName)
+    }
+
     const response = await apiClient.post<FileUploadResponse>(
       '/templates/upload',
       formData,

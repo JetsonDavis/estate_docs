@@ -257,9 +257,23 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Check if file is an image
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif']
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif']
+    const isImage = imageTypes.includes(file.type) ||
+                    imageExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
+
+    if (isImage) {
+      alert('File type not yet implemented')
+      e.target.value = '' // Reset the file input
+      return
+    }
+
     try {
       setUploading(true)
-      const response = await templateService.uploadFile(file)
+      // Pass the template name if available for Word/PDF files
+      const templateNameForUpload = name.trim() || file.name.replace(/\.[^/.]+$/, '')
+      const response = await templateService.uploadFile(file, templateNameForUpload)
       setMarkdownContent(response.markdown_content)
       setUploadedFile(true)
     } catch (err: any) {

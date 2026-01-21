@@ -158,15 +158,19 @@ class TemplateService:
     @staticmethod
     async def process_uploaded_file(
         file: UploadFile,
-        created_by: int
+        created_by: int,
+        db: Session = None,
+        template_name: str = None
     ) -> dict:
         """
         Process uploaded file and convert to markdown.
-        
+
         Args:
             file: Uploaded file
             created_by: User ID uploading the file
-            
+            db: Database session (optional, for fetching user info)
+            template_name: Template name for markdown file naming (optional)
+
         Returns:
             Dictionary with file info and markdown content
         """
@@ -177,14 +181,14 @@ class TemplateService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unsupported file type. Supported: .docx, .pdf, .txt, .jpg, .png, .tiff"
             )
-        
+
         # Read file content
         content = await file.read()
-        
+
         # Save file to storage
         upload_dir = settings.upload_dir
         file_path = DocumentProcessor.save_uploaded_file(content, file.filename, upload_dir)
-        
+
         # Convert to markdown based on file type
         try:
             if file_type == 'word':
@@ -202,6 +206,22 @@ class TemplateService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Unsupported file type"
                 )
+
+            # Save markdown file to document_uploads if Word, PDF, or Text
+            markdown_file_path = None
+            if file_type in ['word', 'pdf', 'text'] and db and template_name:
+                # Get username from database
+                from ..models.user import User
+                user = db.query(User).filter(User.id == created_by).first()
+                username = user.username if user else f"user_{created_by}"
+
+                # Save markdown file
+                markdown_file_path = DocumentProcessor.save_markdown_file(
+                    markdown_content,
+                    template_name,
+                    username
+                )
+
         except Exception as e:
             # Clean up file if processing fails
             if os.path.exists(file_path):
@@ -210,12 +230,13 @@ class TemplateService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error processing file: {str(e)}"
             )
-        
+
         return {
             "filename": file.filename,
             "file_path": file_path,
             "file_type": file_type,
-            "markdown_content": markdown_content
+            "markdown_content": markdown_content,
+            "markdown_file_path": markdown_file_path
         }
     
     @staticmethod

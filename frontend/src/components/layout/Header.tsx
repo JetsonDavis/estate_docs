@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { flowService } from '../../services/flowService'
-import { DocumentFlow } from '../../types/flow'
 import './Header.css'
 
 const Header: React.FC = () => {
@@ -10,8 +8,6 @@ const Header: React.FC = () => {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const [flows, setFlows] = useState<DocumentFlow[]>([])
-  const [selectedFlowId, setSelectedFlowId] = useState<number | ''>('')
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -23,24 +19,6 @@ const Header: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  useEffect(() => {
-    const loadFlows = async () => {
-      try {
-        const response = await flowService.getFlows(1, 100)
-        setFlows(response.flows || [])
-        // Auto-select first flow if available
-        if (response.flows && response.flows.length > 0) {
-          setSelectedFlowId(response.flows[0].id)
-        }
-      } catch (err) {
-        console.error('Failed to load flows:', err)
-      }
-    }
-    if (isAdmin) {
-      loadFlows()
-    }
-  }, [isAdmin])
 
   const handleLogout = async () => {
     try {
@@ -75,60 +53,29 @@ const Header: React.FC = () => {
                     <Link to="/admin/templates" className="header-link">
                       Templates
                     </Link>
-                    <select
-                      value={selectedFlowId}
-                      onChange={(e) => setSelectedFlowId(e.target.value ? parseInt(e.target.value) : '')}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        fontSize: '0.875rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '0.375rem',
-                        backgroundColor: 'white',
-                        cursor: 'pointer',
-                        minWidth: '150px'
-                      }}
-                    >
-                      <option value="">Select Flow...</option>
-                      {flows.map((flow) => (
-                        <option key={flow.id} value={flow.id}>
-                          {flow.name}
-                        </option>
-                      ))}
-                    </select>
+                    <Link to="/document" className="header-link">
+                      Document Sessions
+                    </Link>
                     <button
-                      onClick={() => {
-                        if (selectedFlowId) {
-                          navigate(`/document?flowId=${selectedFlowId}`)
-                        } else {
-                          alert('Please select a flow first')
-                        }
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        background: '#2563eb',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '0.375rem',
-                        padding: '0.5rem 1rem',
-                        fontSize: '0.875rem',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
+                      onClick={() => alert('Not yet implemented')}
+                      className="header-link header-link-button"
                     >
-                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      New Doc
+                      Merge Documents
                     </button>
                   </>
                 )}
                 {!isAdmin && (
-                  <Link to="/document" className="header-link">
-                    Questionnaire
-                  </Link>
+                  <>
+                    <Link to="/document" className="header-link">
+                      Document Sessions
+                    </Link>
+                    <button
+                      onClick={() => alert('Not yet implemented')}
+                      className="header-link header-link-button"
+                    >
+                      Merge Documents
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -144,8 +91,8 @@ const Header: React.FC = () => {
                 </div>
                 <div className="header-actions">
                   <div className="dropdown-container" ref={dropdownRef}>
-                    <button 
-                      className="icon-button gear-button" 
+                    <button
+                      className="icon-button gear-button"
                       onClick={() => setShowDropdown(!showDropdown)}
                       title="Settings"
                     >
@@ -156,7 +103,7 @@ const Header: React.FC = () => {
                     </button>
                     {showDropdown && (
                       <div className="dropdown-menu">
-                        <button 
+                        <button
                           className="dropdown-item"
                           onClick={() => {
                             setShowDropdown(false)
@@ -165,7 +112,7 @@ const Header: React.FC = () => {
                         >
                           Users
                         </button>
-                        <button 
+                        <button
                           className="dropdown-item"
                           onClick={() => {
                             setShowDropdown(false)

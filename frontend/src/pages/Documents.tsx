@@ -138,7 +138,7 @@ const Documents: React.FC = () => {
                 <div className="document-header">
                   <h3 className="document-name">{doc.document_name}</h3>
                   <span className="document-date">
-                    {new Date(doc.generated_at).toLocaleDateString()}
+                    {new Date(doc.generated_at).toLocaleDateString()} {new Date(doc.generated_at).toLocaleTimeString()}
                   </span>
                 </div>
                 <div className="document-preview">
@@ -188,7 +188,7 @@ const Documents: React.FC = () => {
                   <option value="">Choose a session...</option>
                   {sessions.map(session => (
                     <option key={session.id} value={session.id}>
-                      {session.client_identifier} - {new Date(session.created_at).toLocaleDateString()}
+                      {session.client_identifier} - {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
                     </option>
                   ))}
                 </select>

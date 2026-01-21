@@ -22,16 +22,23 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
+    template_name: Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db)
 ) -> FileUploadResponse:
     """
     Upload a file (Word, PDF, or image) and convert to Markdown.
-    
+
     - **file**: File to upload (.docx, .pdf, .jpg, .png, .tiff)
+    - **template_name**: Optional template name for markdown file naming
     """
-    result = await TemplateService.process_uploaded_file(file, int(current_user["sub"]))
-    
+    result = await TemplateService.process_uploaded_file(
+        file,
+        int(current_user["sub"]),
+        db,
+        template_name
+    )
+
     return FileUploadResponse(
         filename=result["filename"],
         file_path=result["file_path"],
