@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from . import Base, TimestampMixin
@@ -14,7 +14,7 @@ class DocumentSession(Base, TimestampMixin):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     flow_id = Column(Integer, ForeignKey("document_flows.id", ondelete="SET NULL"), nullable=True)
     current_group_id = Column(Integer, ForeignKey("question_groups.id", ondelete="SET NULL"), nullable=True)
-    is_completed = Column(Integer, default=False, nullable=False)
+    is_completed = Column(Boolean, default=False, nullable=False)
     completed_at = Column(DateTime, nullable=True)
     
     # Relationships
@@ -34,7 +34,7 @@ class DocumentSession(Base, TimestampMixin):
             "user_id": self.user_id,
             "flow_id": self.flow_id,
             "current_group_id": self.current_group_id,
-            "is_completed": bool(self.is_completed),
+            "is_completed": self.is_completed,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),

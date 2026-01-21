@@ -12,7 +12,10 @@ from ..schemas.session import (
     DocumentSessionWithAnswers,
     SubmitAnswersRequest,
     SessionProgressResponse,
-    SessionAnswerResponse
+    SessionAnswerResponse,
+    SessionQuestionsResponse,
+    SaveAnswersRequest,
+    NavigateRequest
 )
 from ..services.session_service import SessionService
 from ..services.question_service import QuestionService
@@ -176,3 +179,75 @@ async def delete_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found"
         )
+
+
+@router.get("/{session_id}/questions", response_model=SessionQuestionsResponse)
+async def get_session_questions(
+    session_id: int,
+    page: int = 1,
+    questions_per_page: int = 5,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+) -> SessionQuestionsResponse:
+    """
+    Get questions to display for a session based on flow_logic and question_logic.
+    
+    - **session_id**: Session ID
+    - **page**: Current page number (1-indexed, default: 1)
+    - **questions_per_page**: Number of questions per page (default: 5)
+    
+    Returns paginated questions with navigation info.
+    """
+    return SessionService.get_session_questions(
+        db,
+        session_id,
+        int(current_user["sub"]),
+        page,
+        questions_per_page
+    )
+
+
+@router.post("/{session_id}/save-answers", status_code=status.HTTP_204_NO_CONTENT)
+async def save_answers(
+    session_id: int,
+    answers_data: SaveAnswersRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """
+    Save answers without navigating to next group.
+    
+    - **session_id**: Session ID
+    - **answers**: List of answers to save
+    """
+    SessionService.save_answers(
+        db,
+        session_id,
+        int(current_user["sub"]),
+        answers_data.answers
+    )
+
+
+@router.post("/{session_id}/navigate", response_model=DocumentSessionResponse)
+async def navigate_session(
+    session_id: int,
+    navigate_data: NavigateRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+) -> DocumentSessionResponse:
+    """
+    Navigate to next or previous group in the flow.
+    
+    - **session_id**: Session ID
+    - **direction**: 'forward' or 'backward'
+    - **answers**: Optional answers to save before navigating
+    """
+    session = SessionService.navigate_session(
+        db,
+        session_id,
+        int(current_user["sub"]),
+        navigate_data.direction,
+        navigate_data.answers
+    )
+    
+    return DocumentSessionResponse.model_validate(session)

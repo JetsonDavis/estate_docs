@@ -1,16 +1,20 @@
 """Service layer for document session operations."""
 
 from sqlalchemy.orm import Session
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 from fastapi import HTTPException, status
 from datetime import datetime
+import math
 
 from ..models.session import DocumentSession, SessionAnswer
 from ..models.question import QuestionGroup, Question
+from ..models.flow import DocumentFlow, flow_question_groups
 from ..schemas.session import (
     DocumentSessionCreate,
     DocumentSessionUpdate,
-    SessionAnswerCreate
+    SessionAnswerCreate,
+    QuestionToDisplay,
+    SessionQuestionsResponse
 )
 
 
@@ -60,7 +64,7 @@ class SessionService:
         if not starting_group_id:
             first_group = db.query(QuestionGroup).filter(
                 QuestionGroup.is_active == True
-            ).order_by(QuestionGroup.order_index).first()
+            ).order_by(QuestionGroup.display_order).first()
             
             if not first_group:
                 raise HTTPException(
@@ -294,3 +298,382 @@ class SessionService:
         db.commit()
         
         return True
+    
+    @staticmethod
+    def get_session_questions(
+        db: Session,
+        session_id: int,
+        user_id: int,
+        page: int = 1,
+        questions_per_page: int = 5
+    ) -> SessionQuestionsResponse:
+        """
+        Get questions to display for a session based on flow_logic and question_logic.
+        
+        Args:
+            db: Database session
+            session_id: Session ID
+            user_id: User ID
+            page: Current page number (1-indexed)
+            questions_per_page: Number of questions per page
+            
+        Returns:
+            SessionQuestionsResponse with questions and navigation info
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        if session.is_completed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session is already completed"
+            )
+        
+        # Get flow and its groups
+        flow = None
+        flow_name = None
+        ordered_groups = []
+        
+        if session.flow_id:
+            flow = db.query(DocumentFlow).filter(
+                DocumentFlow.id == session.flow_id
+            ).first()
+            if flow:
+                flow_name = flow.name
+                # Get groups from flow_logic
+                if flow.flow_logic:
+                    ordered_groups = SessionService._get_groups_from_flow_logic(
+                        db, flow.flow_logic, session_id
+                    )
+        
+        # If no flow or no groups from flow_logic, use current_group_id
+        if not ordered_groups and session.current_group_id:
+            group = db.query(QuestionGroup).filter(
+                QuestionGroup.id == session.current_group_id
+            ).first()
+            if group:
+                ordered_groups = [group]
+        
+        if not ordered_groups:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No question groups available"
+            )
+        
+        # Find current group index
+        current_group_index = 0
+        current_group = None
+        for i, group in enumerate(ordered_groups):
+            if group.id == session.current_group_id:
+                current_group_index = i
+                current_group = group
+                break
+        
+        if not current_group:
+            current_group = ordered_groups[0]
+            current_group_index = 0
+            # Update session's current_group_id
+            session.current_group_id = current_group.id
+            db.commit()
+        
+        # Get existing answers for this session
+        existing_answers_list = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+        existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
+        
+        # Get questions to display based on question_logic
+        questions_to_display = SessionService._get_questions_from_logic(
+            db, current_group, existing_answers
+        )
+        
+        # Paginate questions
+        total_questions = len(questions_to_display)
+        total_pages = max(1, math.ceil(total_questions / questions_per_page))
+        page = max(1, min(page, total_pages))
+        
+        start_idx = (page - 1) * questions_per_page
+        end_idx = start_idx + questions_per_page
+        paginated_questions = questions_to_display[start_idx:end_idx]
+        
+        # Convert to response format
+        question_responses = []
+        for q in paginated_questions:
+            question_responses.append(QuestionToDisplay(
+                id=q.id,
+                identifier=q.identifier,
+                question_text=q.question_text,
+                question_type=q.question_type,
+                is_required=q.is_required,
+                help_text=q.help_text,
+                options=q.options,
+                person_display_mode=q.person_display_mode,
+                include_time=q.include_time,
+                validation_rules=q.validation_rules,
+                current_answer=existing_answers.get(q.id)
+            ))
+        
+        is_last_group = current_group_index >= len(ordered_groups) - 1
+        
+        return SessionQuestionsResponse(
+            session_id=session_id,
+            client_identifier=session.client_identifier,
+            flow_id=session.flow_id,
+            flow_name=flow_name,
+            current_group_id=current_group.id,
+            current_group_name=current_group.name,
+            current_group_index=current_group_index,
+            total_groups=len(ordered_groups),
+            questions=question_responses,
+            current_page=page,
+            total_pages=total_pages,
+            questions_per_page=questions_per_page,
+            is_completed=session.is_completed,
+            is_last_group=is_last_group,
+            can_go_back=current_group_index > 0 or page > 1,
+            existing_answers=existing_answers
+        )
+    
+    @staticmethod
+    def _get_groups_from_flow_logic(
+        db: Session,
+        flow_logic: List[Dict],
+        session_id: int
+    ) -> List[QuestionGroup]:
+        """
+        Extract ordered list of question groups from flow_logic.
+        Evaluates conditionals based on existing answers.
+        """
+        groups = []
+        
+        # Get existing answers for conditional evaluation
+        existing_answers = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+        answer_map = {}
+        for answer in existing_answers:
+            question = db.query(Question).filter(Question.id == answer.question_id).first()
+            if question:
+                answer_map[question.identifier] = answer.answer_value
+        
+        def process_steps(steps: List[Dict]):
+            for step in steps:
+                if step.get('type') == 'group' and step.get('groupId'):
+                    group = db.query(QuestionGroup).filter(
+                        QuestionGroup.id == step['groupId'],
+                        QuestionGroup.is_active == True
+                    ).first()
+                    if group and group not in groups:
+                        groups.append(group)
+                
+                elif step.get('type') == 'conditional' and step.get('conditional'):
+                    cond = step['conditional']
+                    identifier = cond.get('identifier')
+                    expected_value = cond.get('value')
+                    
+                    # Check if condition is met
+                    if identifier and identifier in answer_map:
+                        if answer_map[identifier] == expected_value:
+                            # Condition met - add target group
+                            target_group_id = cond.get('targetGroupId')
+                            if target_group_id:
+                                target_group = db.query(QuestionGroup).filter(
+                                    QuestionGroup.id == target_group_id,
+                                    QuestionGroup.is_active == True
+                                ).first()
+                                if target_group and target_group not in groups:
+                                    groups.append(target_group)
+                            
+                            # Process nested steps
+                            if cond.get('nestedSteps'):
+                                process_steps(cond['nestedSteps'])
+        
+        process_steps(flow_logic)
+        return groups
+    
+    @staticmethod
+    def _get_questions_from_logic(
+        db: Session,
+        group: QuestionGroup,
+        existing_answers: Dict[int, str]
+    ) -> List[Question]:
+        """
+        Get questions to display based on question_logic.
+        Evaluates conditionals and respects stop flags.
+        """
+        if not group.question_logic:
+            # No logic defined - return all questions in order
+            return db.query(Question).filter(
+                Question.question_group_id == group.id,
+                Question.is_active == True
+            ).order_by(Question.display_order).all()
+        
+        questions = []
+        # Build answer map by identifier
+        answer_by_identifier = {}
+        for q_id, answer in existing_answers.items():
+            question = db.query(Question).filter(Question.id == q_id).first()
+            if question:
+                answer_by_identifier[question.identifier] = answer
+        
+        def process_logic_items(items: List[Dict]) -> bool:
+            """Process logic items. Returns False if stop flag encountered."""
+            for item in items:
+                if item.get('type') == 'question':
+                    question_id = item.get('questionId')
+                    if question_id:
+                        question = db.query(Question).filter(
+                            Question.id == question_id,
+                            Question.is_active == True
+                        ).first()
+                        if question and question not in questions:
+                            questions.append(question)
+                    
+                    # Check for stop flag
+                    if item.get('stopFlow'):
+                        return False
+                
+                elif item.get('type') == 'conditional' and item.get('conditional'):
+                    cond = item['conditional']
+                    identifier = cond.get('ifIdentifier')
+                    expected_value = cond.get('value')
+                    
+                    # Check if condition is met
+                    if identifier and identifier in answer_by_identifier:
+                        if answer_by_identifier[identifier] == expected_value:
+                            # Condition met - process nested items
+                            nested_items = cond.get('nestedItems', [])
+                            if nested_items:
+                                should_continue = process_logic_items(nested_items)
+                                if not should_continue:
+                                    return False
+                            
+                            # Check for end flow flag
+                            if cond.get('endFlow'):
+                                return False
+            
+            return True
+        
+        process_logic_items(group.question_logic)
+        return questions
+    
+    @staticmethod
+    def save_answers(
+        db: Session,
+        session_id: int,
+        user_id: int,
+        answers: List[SessionAnswerCreate]
+    ) -> None:
+        """
+        Save answers without navigating to next group.
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        for answer_data in answers:
+            existing = db.query(SessionAnswer).filter(
+                SessionAnswer.session_id == session_id,
+                SessionAnswer.question_id == answer_data.question_id
+            ).first()
+            
+            if existing:
+                existing.answer_value = answer_data.answer_value
+            else:
+                answer = SessionAnswer(
+                    session_id=session_id,
+                    question_id=answer_data.question_id,
+                    answer_value=answer_data.answer_value
+                )
+                db.add(answer)
+        
+        db.commit()
+    
+    @staticmethod
+    def navigate_session(
+        db: Session,
+        session_id: int,
+        user_id: int,
+        direction: str,
+        answers: Optional[List[SessionAnswerCreate]] = None
+    ) -> DocumentSession:
+        """
+        Navigate to next or previous group in the flow.
+        
+        Args:
+            db: Database session
+            session_id: Session ID
+            user_id: User ID
+            direction: 'forward' or 'backward'
+            answers: Optional answers to save before navigating
+            
+        Returns:
+            Updated session
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        if session.is_completed and direction == 'forward':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session is already completed"
+            )
+        
+        # Save answers if provided
+        if answers:
+            SessionService.save_answers(db, session_id, user_id, answers)
+        
+        # Get ordered groups from flow
+        ordered_groups = []
+        if session.flow_id:
+            flow = db.query(DocumentFlow).filter(
+                DocumentFlow.id == session.flow_id
+            ).first()
+            if flow and flow.flow_logic:
+                ordered_groups = SessionService._get_groups_from_flow_logic(
+                    db, flow.flow_logic, session_id
+                )
+        
+        if not ordered_groups and session.current_group_id:
+            group = db.query(QuestionGroup).filter(
+                QuestionGroup.id == session.current_group_id
+            ).first()
+            if group:
+                ordered_groups = [group]
+        
+        # Find current index
+        current_index = 0
+        for i, group in enumerate(ordered_groups):
+            if group.id == session.current_group_id:
+                current_index = i
+                break
+        
+        # Navigate
+        if direction == 'forward':
+            if current_index < len(ordered_groups) - 1:
+                # Move to next group
+                session.current_group_id = ordered_groups[current_index + 1].id
+            else:
+                # Last group - mark as completed
+                session.is_completed = True
+                session.completed_at = datetime.utcnow()
+        
+        elif direction == 'backward':
+            if current_index > 0:
+                session.current_group_id = ordered_groups[current_index - 1].id
+        
+        db.commit()
+        db.refresh(session)
+        
+        return session

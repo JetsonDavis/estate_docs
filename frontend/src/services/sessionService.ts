@@ -4,7 +4,10 @@ import {
   QuestionnaireSessionWithAnswers,
   SessionCreate,
   SubmitAnswersRequest,
-  SessionProgress
+  SessionProgress,
+  SessionQuestionsResponse,
+  SaveAnswersRequest,
+  NavigateRequest
 } from '../types/session'
 
 export const sessionService = {
@@ -37,6 +40,39 @@ export const sessionService = {
    */
   getSessionProgress: async (sessionId: number): Promise<SessionProgress> => {
     const response = await apiClient.get<SessionProgress>(`/sessions/${sessionId}/progress`)
+    return response.data
+  },
+
+  /**
+   * Get questions to display for a session with pagination
+   */
+  getSessionQuestions: async (
+    sessionId: number,
+    page: number = 1,
+    questionsPerPage: number = 5
+  ): Promise<SessionQuestionsResponse> => {
+    const response = await apiClient.get<SessionQuestionsResponse>(
+      `/sessions/${sessionId}/questions`,
+      { params: { page, questions_per_page: questionsPerPage } }
+    )
+    return response.data
+  },
+
+  /**
+   * Save answers without navigating
+   */
+  saveAnswers: async (sessionId: number, answers: SaveAnswersRequest): Promise<void> => {
+    await apiClient.post(`/sessions/${sessionId}/save-answers`, answers)
+  },
+
+  /**
+   * Navigate to next or previous group
+   */
+  navigate: async (sessionId: number, data: NavigateRequest): Promise<QuestionnaireSession> => {
+    const response = await apiClient.post<QuestionnaireSession>(
+      `/sessions/${sessionId}/navigate`,
+      data
+    )
     return response.data
   },
 

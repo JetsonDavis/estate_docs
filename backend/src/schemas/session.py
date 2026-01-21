@@ -71,3 +71,49 @@ class SessionProgressResponse(BaseModel):
     next_group_id: Optional[int]
     is_completed: bool
     total_answers: int
+
+
+class QuestionToDisplay(BaseModel):
+    """Schema for a question to display in the questionnaire."""
+    id: int
+    identifier: str
+    question_text: str
+    question_type: str
+    is_required: bool
+    help_text: Optional[str]
+    options: Optional[List[dict]]
+    person_display_mode: Optional[str]
+    include_time: Optional[bool]
+    validation_rules: Optional[dict]
+    current_answer: Optional[str] = None
+
+
+class SessionQuestionsResponse(BaseModel):
+    """Schema for session questions response with pagination."""
+    session_id: int
+    client_identifier: str
+    flow_id: Optional[int]
+    flow_name: Optional[str]
+    current_group_id: int
+    current_group_name: str
+    current_group_index: int
+    total_groups: int
+    questions: List[QuestionToDisplay]
+    current_page: int
+    total_pages: int
+    questions_per_page: int
+    is_completed: bool
+    is_last_group: bool
+    can_go_back: bool
+    existing_answers: dict  # question_id -> answer_value
+
+
+class SaveAnswersRequest(BaseModel):
+    """Schema for saving answers (without navigating)."""
+    answers: List[SessionAnswerCreate]
+
+
+class NavigateRequest(BaseModel):
+    """Schema for navigation request."""
+    direction: str = Field(..., pattern="^(forward|backward)$")
+    answers: Optional[List[SessionAnswerCreate]] = None
