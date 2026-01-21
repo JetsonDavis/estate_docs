@@ -6,7 +6,7 @@ FROM --platform=linux/amd64 python:3.11-slim-bullseye
 RUN addgroup --system app && adduser --system --group app
 
 WORKDIR /app/
-EXPOSE 88
+EXPOSE 80
 EXPOSE 8000
 
 # Environment variables
@@ -121,7 +121,7 @@ set -e\n\
 echo "Starting Estate Docs application..."\n\
 \n\
 # Start nginx as root\n\
-echo "Starting nginx on port 88..."\n\
+echo "Starting nginx on port 80..."\n\
 nginx\n\
 echo "Nginx started"\n\
 \n\
