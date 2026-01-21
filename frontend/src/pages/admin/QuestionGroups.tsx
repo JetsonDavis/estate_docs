@@ -673,6 +673,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }, 1000)
   }
 
+  // Insert a question BEFORE a specific index (for the insert button)
+  const insertQuestionBeforeIndex = (beforeIndex: number) => {
+    const newQuestion = addQuestion()
+    if (!newQuestion) return
+    
+    const newLogicItem: QuestionLogicItem = {
+      id: Date.now().toString(),
+      type: 'question',
+      questionId: undefined,
+      depth: 0
+    }
+    
+    ;(newLogicItem as any).localQuestionId = newQuestion.id
+    
+    // Insert at the specified index (before the item at that index)
+    const newLogic = [...questionLogic.slice(0, beforeIndex), newLogicItem, ...questionLogic.slice(beforeIndex)]
+    setQuestionLogic(newLogic)
+    saveQuestionLogic(newLogic)
+  }
+
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
     const newQuestion = addQuestion()
     if (!newQuestion) return
@@ -1709,8 +1729,50 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             <h2 className="form-section-title">Questions</h2>
           </div>
 
-          {mainLevelQuestions.map((question, qIndex) => (
+          {mainLevelQuestions.map((question, qIndex) => {
+            // Find the logic index for this question to use for insertion
+            const logicIndex = questionLogic.findIndex(item => 
+              item.type === 'question' && 
+              ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+            )
+            
+            return (
             <div key={question.id} className="question-builder">
+              {/* Insert Question button before each question */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                marginBottom: '0.5rem',
+                marginTop: qIndex === 0 ? '0' : '0.5rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px dashed #2563eb',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new question here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Insert Question
+                </button>
+              </div>
+              
               <div className="question-builder-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="question-number">Question {qIndex + 1}</span>
@@ -2140,7 +2202,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 return null
               })}
             </div>
-          ))}
+          )})}
+          
 
           {questions.length === 0 && (
             <div className="empty-questions">
