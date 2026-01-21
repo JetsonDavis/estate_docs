@@ -82,11 +82,15 @@ VOLUME ["/app/document_uploads"]
 
 # Set up frontend
 WORKDIR /app/frontend
-RUN npm ci 2>/dev/null || npm install
-RUN npm run build || (echo "Build failed, checking for TypeScript errors..." && npm run build 2>&1 | head -100)
 
-# Verify frontend build
-RUN ls -la /app/frontend/dist/ || echo "Warning: dist folder not found"
+# Create production env file for Vite build
+RUN echo "VITE_API_BASE_URL=/api/v1" > .env.production
+
+# Install dependencies
+RUN npm ci || npm install
+
+# Build frontend - show errors if build fails
+RUN npm run build && ls -la /app/frontend/dist/
 
 # Return to app directory
 WORKDIR /app/
