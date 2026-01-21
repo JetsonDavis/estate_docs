@@ -458,10 +458,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     identifierCheckTimeoutRefs.current[question.id] = setTimeout(async () => {
       try {
         // First check against other questions in the current form
-        const localDuplicate = questions.some(q => 
-          q.id !== question.id && 
-          q.identifier.toLowerCase() === question.identifier.toLowerCase()
-        )
+        // Use a promise to get current state since we're in an async callback
+        let localDuplicate = false
+        setQuestions(prev => {
+          localDuplicate = prev.some(q => 
+            q.id !== question.id && 
+            q.identifier.trim() !== '' &&
+            q.identifier.toLowerCase() === question.identifier.toLowerCase()
+          )
+          return prev // Don't modify, just read
+        })
 
         if (localDuplicate) {
           setQuestions(prev => prev.map(q => 
@@ -470,31 +476,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return
         }
 
-        // Then check against all groups in the database
-        const response = await questionGroupService.listQuestionGroups(1, 1000, true)
-        
-        // Fetch each group's details to get questions
-        let isDuplicate = false
-        for (const group of response.question_groups) {
-          try {
-            const groupDetail = await questionGroupService.getQuestionGroup(group.id)
-            if (groupDetail.questions) {
-              const found = groupDetail.questions.some(q => 
-                q.identifier.toLowerCase() === question.identifier.toLowerCase() && 
-                q.id !== question.dbId
-              )
-              if (found) {
-                isDuplicate = true
-                break
-              }
-            }
-          } catch (err) {
-            console.error(`Failed to fetch group ${group.id}:`, err)
-          }
-        }
+        // Then check against the database using the efficient endpoint
+        const result = await questionGroupService.checkQuestionIdentifier(
+          question.identifier,
+          question.dbId
+        )
 
         setQuestions(prev => prev.map(q => 
-          q.id === question.id ? { ...q, isDuplicateIdentifier: isDuplicate, isCheckingIdentifier: false } : q
+          q.id === question.id ? { ...q, isDuplicateIdentifier: result.exists, isCheckingIdentifier: false } : q
         ))
       } catch (error) {
         console.error('Failed to check identifier uniqueness:', error)

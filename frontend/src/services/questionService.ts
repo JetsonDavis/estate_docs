@@ -73,4 +73,20 @@ export const questionGroupService = {
   async deleteQuestion(questionId: number): Promise<void> {
     await apiClient.delete(`/question-groups/questions/${questionId}`)
   },
+
+  async checkQuestionIdentifier(
+    identifier: string,
+    excludeId?: number
+  ): Promise<{ exists: boolean; question_id: number | null }> {
+    const response = await apiClient.get<{ exists: boolean; question_id: number | null }>(
+      '/question-groups/questions/check-identifier',
+      {
+        params: {
+          identifier,
+          exclude_id: excludeId,
+        },
+      }
+    )
+    return response.data
+  },
 }
