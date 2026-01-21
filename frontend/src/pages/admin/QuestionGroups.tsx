@@ -1838,7 +1838,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         <div className="form-section">
           <h2 className="form-section-title">Group Information</h2>
 
-          <div className="form-group">
+          <div className="form-group" style={{ maxWidth: '50%' }}>
             <label className="form-label">Name *</label>
             <input
               type="text"
@@ -1856,7 +1856,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             )}
           </div>
 
-          <div className="form-group form-group-description">
+          <div className="form-group form-group-description" style={{ maxWidth: '50%' }}>
             <label className="form-label">Description</label>
             <textarea
               value={description}
@@ -1884,7 +1884,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         {groupInfoSaved && (
         <div className="form-section">
           <div className="form-section-header">
-            <h2 className="form-section-title">Questions</h2>
+            <h2 className="form-section-title" style={{ marginBottom: 0 }}>Questions</h2>
           </div>
 
           {mainLevelQuestions.map((question, qIndex) => {
