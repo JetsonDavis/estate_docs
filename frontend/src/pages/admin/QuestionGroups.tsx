@@ -17,7 +17,7 @@ const QuestionGroups: React.FC = () => {
   const { id } = useParams()
 
   const pageSize = 20
-  
+
   // Determine current view
   const isCreateView = location.pathname.includes('/new')
   const isEditView = location.pathname.includes('/edit')
@@ -67,13 +67,13 @@ const QuestionGroups: React.FC = () => {
 
   // Render edit form
   if (isEditView && id) {
-    return <CreateQuestionGroupForm 
-      groupId={parseInt(id)} 
-      onCancel={() => navigate('/admin/question-groups')} 
+    return <CreateQuestionGroupForm
+      groupId={parseInt(id)}
+      onCancel={() => navigate('/admin/question-groups')}
       onSuccess={() => {
         setSuccess('Question group updated successfully')
         navigate('/admin/question-groups')
-      }} 
+      }}
     />
   }
 
@@ -91,7 +91,7 @@ const QuestionGroups: React.FC = () => {
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Create Question Group
+          Create Questions Group
         </button>
       </div>
 
@@ -146,39 +146,32 @@ const QuestionGroups: React.FC = () => {
                 <div className="group-content">
                   <div className="group-info">
                     <div className="group-header">
-                      {group.is_active && (
-                        <button
-                          onClick={() => handleDelete(group.id)}
-                          className="trash-icon-button"
-                          title="Delete group"
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            padding: '0.25rem', 
-                            cursor: 'pointer',
-                            color: '#dc2626',
-                            marginRight: '0.5rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            position: 'relative',
-                            top: '-3px'
-                          }}
-                        >
-                          <svg 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24" 
-                            style={{ width: '1rem', height: '1rem' }}
-                          >
-                            <path 
-                              strokeLinecap="round" 
-                              strokeLinejoin="round" 
-                              strokeWidth={2} 
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-                            />
-                          </svg>
-                        </button>
-                      )}
+                      <input
+                        type="checkbox"
+                        checked={group.is_active}
+                        onChange={async (e) => {
+                          try {
+                            await questionGroupService.updateQuestionGroup(group.id, {
+                              is_active: e.target.checked
+                            })
+                            // Refresh the list
+                            setGroups(prev => prev.map(g =>
+                              g.id === group.id ? { ...g, is_active: e.target.checked } : g
+                            ))
+                          } catch (err) {
+                            console.error('Failed to update group status:', err)
+                          }
+                        }}
+                        style={{
+                          width: '1rem',
+                          height: '1rem',
+                          marginRight: '0.5rem',
+                          cursor: 'pointer',
+                          position: 'relative',
+                          top: '-2px'
+                        }}
+                        title={group.is_active ? 'Active - click to deactivate' : 'Inactive - click to activate'}
+                      />
                       <span
                         onClick={() => navigate(`/admin/question-groups/${group.id}/edit`)}
                         style={{ cursor: 'pointer', color: '#2563eb', fontSize: '0.875rem', fontWeight: '400' }}
@@ -188,6 +181,39 @@ const QuestionGroups: React.FC = () => {
                       <span className="badge badge-count">
                         {group.question_count} questions
                       </span>
+                      {group.is_active && (
+                        <button
+                          onClick={() => handleDelete(group.id)}
+                          className="trash-icon-button"
+                          title="Delete group"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '0.25rem',
+                            cursor: 'pointer',
+                            color: '#dc2626',
+                            marginLeft: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            position: 'relative',
+                            top: '-3px'
+                          }}
+                        >
+                          <svg
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            style={{ width: '1rem', height: '1rem' }}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      )}
                       {!group.is_active && (
                         <span className="badge badge-inactive">
                           Inactive
@@ -271,6 +297,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const autoSaveTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
   const identifierCheckTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
   const questionLogicSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const groupInfoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isEditMode = !!groupId
 
   useEffect(() => {
@@ -298,7 +325,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           setDescription(groupData.description || '')
           setGroupInfoSaved(true)
           setSavedGroupId(groupId)
-          
+
           // Load questions if they exist
           const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
             ? groupData.questions.map(q => ({
@@ -315,12 +342,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               }))
             : []
           setQuestions(loadedQuestions)
-          
+
           // Load question logic if it exists, and clean up orphaned items
           if (groupData.question_logic && groupData.question_logic.length > 0) {
             // Create a set of valid question IDs
             const validQuestionIds = new Set(loadedQuestions.map(q => q.dbId))
-            
+
             // Recursively clean orphaned question items from logic
             const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
               return items.filter(item => {
@@ -342,10 +369,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 return item
               })
             }
-            
+
             const cleanedLogic = cleanOrphanedItems(groupData.question_logic)
             setQuestionLogic(cleanedLogic)
-            
+
             // Save the cleaned logic back to the database if it changed
             if (JSON.stringify(cleanedLogic) !== JSON.stringify(groupData.question_logic)) {
               questionGroupService.updateQuestionGroup(groupId, { question_logic: cleanedLogic })
@@ -403,6 +430,32 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }, [name, groupInfoSaved])
 
+  // Auto-save group name/description when changed (only when already saved)
+  useEffect(() => {
+    if (!groupInfoSaved || !savedGroupId) return
+
+    if (groupInfoSaveTimeoutRef.current) {
+      clearTimeout(groupInfoSaveTimeoutRef.current)
+    }
+
+    groupInfoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await questionGroupService.updateQuestionGroup(savedGroupId, {
+          name,
+          description: description || undefined
+        })
+      } catch (error) {
+        console.error('Failed to auto-save group info:', error)
+      }
+    }, 500)
+
+    return () => {
+      if (groupInfoSaveTimeoutRef.current) {
+        clearTimeout(groupInfoSaveTimeoutRef.current)
+      }
+    }
+  }, [name, description, groupInfoSaved, savedGroupId])
+
   const isNameUnique = name.trim() !== '' && !isDuplicateName
   const canAddQuestion = isNameUnique
 
@@ -443,14 +496,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // If identifier is empty, clear any duplicate status
     if (question.identifier.trim() === '') {
-      setQuestions(prev => prev.map(q => 
+      setQuestions(prev => prev.map(q =>
         q.id === question.id ? { ...q, isDuplicateIdentifier: false, isCheckingIdentifier: false } : q
       ))
       return
     }
 
     // Mark as checking
-    setQuestions(prev => prev.map(q => 
+    setQuestions(prev => prev.map(q =>
       q.id === question.id ? { ...q, isCheckingIdentifier: true } : q
     ))
 
@@ -461,8 +514,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         // Use a promise to get current state since we're in an async callback
         let localDuplicate = false
         setQuestions(prev => {
-          localDuplicate = prev.some(q => 
-            q.id !== question.id && 
+          localDuplicate = prev.some(q =>
+            q.id !== question.id &&
             q.identifier.trim() !== '' &&
             q.identifier.toLowerCase() === question.identifier.toLowerCase()
           )
@@ -470,7 +523,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         })
 
         if (localDuplicate) {
-          setQuestions(prev => prev.map(q => 
+          setQuestions(prev => prev.map(q =>
             q.id === question.id ? { ...q, isDuplicateIdentifier: true, isCheckingIdentifier: false } : q
           ))
           return
@@ -482,12 +535,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           question.dbId
         )
 
-        setQuestions(prev => prev.map(q => 
+        setQuestions(prev => prev.map(q =>
           q.id === question.id ? { ...q, isDuplicateIdentifier: result.exists, isCheckingIdentifier: false } : q
         ))
       } catch (error) {
         console.error('Failed to check identifier uniqueness:', error)
-        setQuestions(prev => prev.map(q => 
+        setQuestions(prev => prev.map(q =>
           q.id === question.id ? { ...q, isDuplicateIdentifier: false, isCheckingIdentifier: false } : q
         ))
       }
@@ -496,7 +549,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const triggerAutoSave = (question: QuestionFormData) => {
     if (!savedGroupId) return
-    
+
     // Clear existing timeout for this question
     if (autoSaveTimeoutRefs.current[question.id]) {
       clearTimeout(autoSaveTimeoutRefs.current[question.id]!)
@@ -516,7 +569,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const autoSaveQuestion = async (question: QuestionFormData) => {
     if (!savedGroupId) return
-    
+
     // Don't save if missing required fields
     if (!question.identifier.trim() || !question.question_text.trim()) {
       return
@@ -528,13 +581,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     // Mark as saving
-    setQuestions(prev => prev.map(q => 
+    setQuestions(prev => prev.map(q =>
       q.id === question.id ? { ...q, isSaving: true } : q
     ))
 
     try {
       const questionIndex = questions.findIndex(q => q.id === question.id)
-      
+
       if (question.dbId) {
         // Update existing question
         await questionGroupService.updateQuestion(question.dbId, {
@@ -559,12 +612,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
           include_time: question.question_type === 'date' ? question.include_time : undefined
         })
-        
+
         // Update with database ID
-        setQuestions(prev => prev.map(q => 
+        setQuestions(prev => prev.map(q =>
           q.id === question.id ? { ...q, dbId: created.id } : q
         ))
-        
+
         // Also update the questionId in questionLogic if this is a nested question
         setQuestionLogic(prev => {
           const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
@@ -591,12 +644,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       }
 
       // Mark as saved
-      setQuestions(prev => prev.map(q => 
+      setQuestions(prev => prev.map(q =>
         q.id === question.id ? { ...q, isSaving: false, lastSaved: new Date() } : q
       ))
     } catch (error: any) {
       console.error('Failed to auto-save question:', error)
-      setQuestions(prev => prev.map(q => 
+      setQuestions(prev => prev.map(q =>
         q.id === question.id ? { ...q, isSaving: false } : q
       ))
     }
@@ -604,7 +657,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const removeQuestion = async (id: string) => {
     const questionToRemove = questions.find(q => q.id === id)
-    
+
     // If the question has a dbId, delete it from the database
     if (questionToRemove?.dbId) {
       try {
@@ -613,7 +666,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         console.error('Failed to delete question from database:', err)
       }
     }
-    
+
     setQuestions(questions.filter(q => q.id !== id))
   }
 
@@ -655,12 +708,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   // Question Logic Functions
   const saveQuestionLogic = async (newLogic: QuestionLogicItem[]) => {
     if (!savedGroupId) return
-    
+
     // Clear existing timeout
     if (questionLogicSaveTimeoutRef.current) {
       clearTimeout(questionLogicSaveTimeoutRef.current)
     }
-    
+
     // Debounced save
     questionLogicSaveTimeoutRef.current = setTimeout(async () => {
       try {
@@ -674,19 +727,33 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   // Insert a question BEFORE a specific index (for the insert button)
-  const insertQuestionBeforeIndex = (beforeIndex: number) => {
-    const newQuestion = addQuestion()
-    if (!newQuestion) return
-    
+  const insertQuestionBeforeIndex = (beforeIndex: number, questionArrayIndex: number) => {
+    // Create the new question data
+    const newQuestion: QuestionFormData = {
+      id: Date.now().toString(),
+      question_text: '',
+      question_type: 'free_text',
+      identifier: '',
+      is_required: false,
+      options: []
+    }
+
+    // Insert at the correct position in the questions array
+    setQuestions(prev => [
+      ...prev.slice(0, questionArrayIndex),
+      newQuestion,
+      ...prev.slice(questionArrayIndex)
+    ])
+
     const newLogicItem: QuestionLogicItem = {
       id: Date.now().toString(),
       type: 'question',
       questionId: undefined,
       depth: 0
     }
-    
+
     ;(newLogicItem as any).localQuestionId = newQuestion.id
-    
+
     // Insert at the specified index (before the item at that index)
     const newLogic = [...questionLogic.slice(0, beforeIndex), newLogicItem, ...questionLogic.slice(beforeIndex)]
     setQuestionLogic(newLogic)
@@ -696,17 +763,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
     const newQuestion = addQuestion()
     if (!newQuestion) return
-    
+
     const newLogicItem: QuestionLogicItem = {
       id: Date.now().toString(),
       type: 'question',
       questionId: undefined, // Will be set when question is saved
       depth: parentPath ? parentPath.length : 0
     }
-    
+
     // Store the local question ID temporarily for matching
     ;(newLogicItem as any).localQuestionId = newQuestion.id
-    
+
     if (parentPath && parentPath.length > 0) {
       // Add to nested items
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
@@ -731,7 +798,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       saveQuestionLogic(newLogic)
     } else {
       // Add to root level
-      const newLogic = afterIndex !== undefined 
+      const newLogic = afterIndex !== undefined
         ? [...questionLogic.slice(0, afterIndex + 1), newLogicItem, ...questionLogic.slice(afterIndex + 1)]
         : [...questionLogic, newLogicItem]
       setQuestionLogic(newLogic)
@@ -743,16 +810,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const addQuestionToLogicAtIndex = (afterIndex: number, parentPath?: number[]) => {
     const newQuestion = addQuestion()
     if (!newQuestion) return
-    
+
     const newLogicItem: QuestionLogicItem = {
       id: Date.now().toString(),
       type: 'question',
       questionId: undefined,
       depth: parentPath ? parentPath.length : 0
     }
-    
+
     ;(newLogicItem as any).localQuestionId = newQuestion.id
-    
+
     if (parentPath && parentPath.length > 0) {
       // Add to nested items at specific index
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
@@ -784,15 +851,64 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
+  // Insert a nested question BEFORE a specific index within a conditional's nestedItems
+  const insertNestedQuestionBeforeIndex = (beforeIndex: number, parentPath: number[]) => {
+    // Create the new question data
+    const newQuestion: QuestionFormData = {
+      id: Date.now().toString(),
+      question_text: '',
+      question_type: 'free_text',
+      identifier: '',
+      is_required: false,
+      options: []
+    }
+
+    // Add to questions array
+    setQuestions(prev => [...prev, newQuestion])
+
+    const newLogicItem: QuestionLogicItem = {
+      id: (Date.now() + 1).toString(),
+      type: 'question',
+      questionId: undefined,
+      depth: parentPath.length
+    }
+
+    ;(newLogicItem as any).localQuestionId = newQuestion.id
+
+    // Insert at the specified index within the nested items
+    const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+      if (depth >= path.length) {
+        // We're at the target level - insert before the specified index
+        return [...items.slice(0, beforeIndex), newLogicItem, ...items.slice(beforeIndex)]
+      }
+      return items.map((item, idx) => {
+        if (idx === path[depth] && item.conditional) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+            }
+          }
+        }
+        return item
+      })
+    }
+
+    const newLogic = updateNestedItems(questionLogic, parentPath, 0)
+    setQuestionLogic(newLogic)
+    saveQuestionLogic(newLogic)
+  }
+
   const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
     console.log('addConditionalToLogic called:', { afterIndex, parentPath, targetQuestion, questionLogicLength: questionLogic.length })
-    
+
     // Get the previous question to use as the "if" condition
     // If targetQuestion is passed, get the latest version from questions state
-    let previousQuestion: QuestionFormData | undefined = targetQuestion 
+    let previousQuestion: QuestionFormData | undefined = targetQuestion
       ? questions.find(q => q.id === targetQuestion.id) || targetQuestion
       : undefined
-    
+
     if (!previousQuestion) {
       if (parentPath && parentPath.length > 0) {
         // Find the previous item in nested context
@@ -826,7 +942,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }
       }
     }
-    
+
     // Create a new nested question to go inside the conditional
     const nestedQuestion = addQuestion()
     const nestedQuestionLogicItem: QuestionLogicItem = {
@@ -848,9 +964,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       },
       depth: parentPath ? parentPath.length : 0
     }
-    
+
     console.log('Creating conditional:', { newConditional, previousQuestion, nestedQuestion })
-    
+
     if (parentPath && parentPath.length > 0) {
       // Add to nested items
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
@@ -992,7 +1108,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const getPreviousQuestionIdentifiers = (currentIndex: number, parentPath?: number[]): string[] => {
     const identifiers: string[] = []
-    
+
     // Collect identifiers from questions before the current position
     if (parentPath && parentPath.length > 0) {
       // In nested context, get identifiers from parent conditional's target
@@ -1023,7 +1139,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }
       }
     }
-    
+
     return identifiers
   }
 
@@ -1036,7 +1152,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   // Helper to collect all nested question IDs from conditionals
   const getNestedQuestionIds = (items: QuestionLogicItem[]): Set<string> => {
     const nestedIds = new Set<string>()
-    
+
     const collectIds = (logicItems: QuestionLogicItem[], isNested: boolean) => {
       logicItems.forEach(item => {
         // If we're inside a conditional's nestedItems, track all questions
@@ -1051,7 +1167,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }
       })
     }
-    
+
     collectIds(items, false)
     return nestedIds
   }
@@ -1075,24 +1191,59 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Filter to only items that have valid questions, and track their display index
     let questionDisplayIndex = 0
     let conditionalDisplayIndex = 0
-    
+
     return nestedItems.map((item, itemIndex) => {
       const currentPath = [...parentPath, itemIndex]
-      
+
       if (item.type === 'question') {
         const nestedQuestion = getQuestionFromLogicItem(item)
         if (!nestedQuestion) return null
-        
+
         const currentDisplayIndex = questionDisplayIndex
         questionDisplayIndex++
-        
+
         // Build the full number string (e.g., "1-1" or "1-1-1")
-        const questionNumber = questionNumberPrefix 
+        const questionNumber = questionNumberPrefix
           ? `${questionNumberPrefix}-${depth}${currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''}`
           : `${depth}${currentDisplayIndex > 0 ? `-${currentDisplayIndex}` : ''}`
 
         return (
           <div key={item.id} style={{ marginBottom: '1rem' }}>
+            {/* Insert Question button before each nested question */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              marginBottom: '0.5rem',
+              marginTop: itemIndex === 0 ? '0' : '0.25rem'
+            }}>
+              <button
+                type="button"
+                onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  padding: '0.2rem 0.5rem',
+                  fontSize: '0.65rem',
+                  background: 'white',
+                  color: '#7c3aed',
+                  border: '1px dashed #7c3aed',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  opacity: 0.7,
+                  transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                title="Insert a nested question here"
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Insert
+              </button>
+            </div>
+
             {/* Nested Question Block */}
             <div style={{
               padding: '1rem',
@@ -1117,10 +1268,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }
                     // Remove the old question from state
                     setQuestions(prev => prev.filter(q => q.id !== nestedQuestion.id))
-                    
+
                     // Create a new empty question to replace it
                     const newQuestion = addQuestion()
-                    
+
                     // Update the logic item to point to the new question
                     setQuestionLogic(prev => {
                       const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
@@ -1458,12 +1609,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         if (!prevNestedQuestion) {
           prevNestedQuestion = parentQuestion
         }
-        
+
         const currentConditionalIndex = conditionalDisplayIndex
         conditionalDisplayIndex++
-        
+
         // Build the conditional number string (e.g., "1-1" or "1-1-1")
-        const conditionalNumber = questionNumberPrefix 
+        const conditionalNumber = questionNumberPrefix
           ? `${questionNumberPrefix}-${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
           : `${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
 
@@ -1588,7 +1739,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 )}
               </div>
             </div>
-            
+
           </div>
         )
       }
@@ -1626,7 +1777,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const handleSaveQuestion = async (question: QuestionFormData, index: number) => {
     if (!savedGroupId) return
-    
+
     if (!question.question_text || !question.identifier) {
       alert('Please provide question text and identifier')
       return
@@ -1660,7 +1811,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           </p>
         </div>
         {!groupInfoSaved && (
-          <button 
+          <button
             onClick={handleSaveGroupInfo}
             disabled={(!isNameUnique && !isEditMode) || submitting}
             className="create-button"
@@ -1677,7 +1828,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       <div className="question-group-form">
         <div className="form-section">
           <h2 className="form-section-title">Group Information</h2>
-          
+
           <div className="form-group">
             <label className="form-label">Name *</label>
             <input
@@ -1686,7 +1837,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               onChange={(e) => setName(e.target.value)}
               className="form-input"
               style={{ borderColor: isDuplicateName ? '#dc2626' : undefined }}
-              disabled={groupInfoSaved}
               required
             />
             {isCheckingName && (
@@ -1704,7 +1854,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               onChange={(e) => setDescription(e.target.value)}
               className="form-textarea"
               rows={3}
-              disabled={groupInfoSaved}
             />
           </div>
 
@@ -1731,23 +1880,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
           {mainLevelQuestions.map((question, qIndex) => {
             // Find the logic index for this question to use for insertion
-            const logicIndex = questionLogic.findIndex(item => 
-              item.type === 'question' && 
+            const logicIndex = questionLogic.findIndex(item =>
+              item.type === 'question' &&
               ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
             )
-            
+
             return (
             <div key={question.id} className="question-builder">
               {/* Insert Question button before each question */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'center', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
                 marginBottom: '0.5rem',
                 marginTop: qIndex === 0 ? '0' : '0.5rem'
               }}>
                 <button
                   type="button"
-                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex)}
+                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex, qIndex)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1772,7 +1921,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   Insert Question
                 </button>
               </div>
-              
+
               <div className="question-builder-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="question-number">Question {qIndex + 1}</span>
@@ -1944,8 +2093,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     )}
                     {question.question_type === 'person' && (
                       <div className="person-options">
-                        <div 
-                          className="dropdown-container" 
+                        <div
+                          className="dropdown-container"
                           ref={(el) => { displayModeDropdownRefs.current[question.id] = el }}
                         >
                           <button
@@ -1957,7 +2106,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 openDisplayModeDropdown === question.id ? null : question.id
                               )
                             }}
-                            style={{ 
+                            style={{
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center'
@@ -2035,8 +2184,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   onClick={() => {
                     console.log('Add Conditional button clicked for question:', question)
                     // Find the logic index for this question
-                    const logicIndex = questionLogic.findIndex(item => 
-                      item.type === 'question' && 
+                    const logicIndex = questionLogic.findIndex(item =>
+                      item.type === 'question' &&
                       ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
                     )
                     console.log('logicIndex:', logicIndex, 'qIndex:', qIndex)
@@ -2066,11 +2215,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Render conditionals that are associated with this question */}
               {questionLogic.map((logicItem, logicIndex) => {
                 // Render conditionals whose ifIdentifier matches this question's identifier
-                if (logicItem.type === 'conditional' && 
+                if (logicItem.type === 'conditional' &&
                     logicItem.conditional?.ifIdentifier === question.identifier) {
                   return (
                     <React.Fragment key={logicItem.id}>
-                    <div style={{ 
+                    <div style={{
                       marginTop: '0.75rem',
                       marginLeft: '2rem',
                       padding: '1rem',
@@ -2195,7 +2344,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </div>
                       </div>
                     </div>
-                      
+
                     </React.Fragment>
                   )
                 }
@@ -2203,7 +2352,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               })}
             </div>
           )})}
-          
+
 
           {questions.length === 0 && (
             <div className="empty-questions">
@@ -2212,9 +2361,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           )}
 
           <div style={{ marginTop: '1rem' }}>
-            <button 
-              type="button" 
-              onClick={() => addQuestionToLogic()} 
+            <button
+              type="button"
+              onClick={() => addQuestionToLogic()}
               className="add-question-button"
               disabled={!canAddQuestion}
               style={{ opacity: canAddQuestion ? 1 : 0.5, cursor: canAddQuestion ? 'pointer' : 'not-allowed' }}

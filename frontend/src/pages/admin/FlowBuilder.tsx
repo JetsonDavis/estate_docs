@@ -80,14 +80,24 @@ const FlowBuilder: React.FC = () => {
 
       // Load all question groups
       const groupsResponse = await questionGroupService.listQuestionGroups(1, 100)
-      const allGroups = groupsResponse.question_groups || []
+      let allGroups = groupsResponse.question_groups || []
+
+      // Sort groups: Active first, then inactive; within each group by created_at descending
+      allGroups = allGroups.sort((a, b) => {
+        // First sort by is_active (active first)
+        if (a.is_active !== b.is_active) {
+          return a.is_active ? -1 : 1
+        }
+        // Then sort by created_at descending (newest first)
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      })
 
       if (flowId) {
         // Load existing flow
         const flowData = await flowService.getFlow(flowId)
         setName(flowData.name)
         setDescription(flowData.description || '')
-        
+
         // Set selected groups from flow
         const flowGroups: FlowGroup[] = (flowData.question_groups || []).map((g, idx) => ({
           id: g.id,
@@ -95,12 +105,11 @@ const FlowBuilder: React.FC = () => {
           description: g.description,
           order_index: g.order_index ?? idx
         })).sort((a, b) => a.order_index - b.order_index)
-        
+
         setSelectedGroups(flowGroups)
-        
-        // Filter out already selected groups from available
-        const selectedIds = new Set(flowGroups.map(g => g.id))
-        setAvailableGroups(allGroups.filter(g => !selectedIds.has(g.id)))
+
+        // Keep all groups available (copy instead of move)
+        setAvailableGroups(allGroups)
       } else {
         setAvailableGroups(allGroups)
         setSelectedGroups([])
@@ -138,12 +147,20 @@ const FlowBuilder: React.FC = () => {
 
   const handleDropOnSelected = (e: React.DragEvent, targetIndex?: number) => {
     e.preventDefault()
-    
+
     if (!draggedItem) return
 
     if (dragSource === 'available') {
-      // Moving from available to selected
+      // Copying from available to selected (available groups remain intact)
       const group = draggedItem as QuestionGroup
+
+      // Check if this group is already in selected groups
+      const alreadyExists = selectedGroups.some(g => g.id === group.id)
+      if (alreadyExists) {
+        handleDragEnd()
+        return
+      }
+
       const newFlowGroup: FlowGroup = {
         id: group.id,
         name: group.name,
@@ -151,10 +168,7 @@ const FlowBuilder: React.FC = () => {
         order_index: targetIndex ?? selectedGroups.length
       }
 
-      // Remove from available
-      setAvailableGroups(prev => prev.filter(g => g.id !== group.id))
-
-      // Add to selected at the target position
+      // Add to selected at the target position (don't remove from available)
       setSelectedGroups(prev => {
         const newList = [...prev]
         const insertIndex = targetIndex ?? newList.length
@@ -183,57 +197,43 @@ const FlowBuilder: React.FC = () => {
 
   const handleDropOnAvailable = (e: React.DragEvent) => {
     e.preventDefault()
-    
+
     if (!draggedItem || dragSource !== 'selected') return
 
     const flowGroup = draggedItem as FlowGroup
-    
-    // Remove from selected
+
+    // Remove from selected (available groups always have all groups)
     setSelectedGroups(prev => {
       const newList = prev.filter(g => g.id !== flowGroup.id)
       return newList.map((g, idx) => ({ ...g, order_index: idx }))
     })
 
-    // Add back to available
-    const originalGroup: QuestionGroup = {
-      id: flowGroup.id,
-      name: flowGroup.name,
-      description: flowGroup.description || '',
-      identifier: '',
-      display_order: 0,
-      is_active: true,
-      created_at: '',
-      updated_at: '',
-      question_logic: null,
-      question_count: 0
-    }
-    setAvailableGroups(prev => [...prev, originalGroup])
-
     handleDragEnd()
   }
 
   const removeFromSelected = (groupId: number) => {
-    const group = selectedGroups.find(g => g.id === groupId)
-    if (!group) return
-
     setSelectedGroups(prev => {
       const newList = prev.filter(g => g.id !== groupId)
       return newList.map((g, idx) => ({ ...g, order_index: idx }))
     })
+    // No need to add back to available - it's always there
+  }
 
-    const originalGroup: QuestionGroup = {
-      id: group.id,
-      name: group.name,
-      description: group.description || '',
-      identifier: '',
-      display_order: 0,
-      is_active: true,
-      created_at: '',
-      updated_at: '',
-      question_logic: null,
-      question_count: 0
+  const handleToggleActive = async (groupId: number, currentStatus: boolean, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent drag from starting
+
+    try {
+      // Update the question group's is_active status
+      await questionGroupService.updateQuestionGroup(groupId, {
+        is_active: !currentStatus
+      })
+
+      // Reload the groups to reflect the change and re-sort
+      await loadData()
+    } catch (err: any) {
+      console.error('Failed to toggle group active status:', err)
+      alert(err.response?.data?.detail || 'Failed to update group status')
     }
-    setAvailableGroups(prev => [...prev, originalGroup])
   }
 
   const handleSave = async () => {
@@ -399,9 +399,9 @@ const FlowBuilder: React.FC = () => {
             Available Question Groups
           </h3>
           <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#6b7280' }}>
-            Drag groups into flow →
+            Drag groups to copy into flow →
           </p>
-          
+
           {availableGroups.length === 0 ? (
             <div style={{
               padding: '2rem',
@@ -409,9 +409,7 @@ const FlowBuilder: React.FC = () => {
               color: '#6b7280',
               fontSize: '0.875rem'
             }}>
-              {selectedGroups.length > 0 
-                ? 'All question groups have been added to the flow'
-                : 'No question groups available. Create some first.'}
+              No question groups available. Create some first.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -425,14 +423,14 @@ const FlowBuilder: React.FC = () => {
                     padding: '0.75rem 1rem',
                     backgroundColor: 'white',
                     border: '1px solid #e5e7eb',
-                    borderLeft: '4px solid #14b8a6',
+                    borderLeft: `4px solid ${group.is_active ? '#14b8a6' : '#9ca3af'}`,
                     borderRadius: '0.375rem',
                     cursor: 'grab',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
                     transition: 'all 0.15s ease',
-                    opacity: draggedItem && (draggedItem as QuestionGroup).id === group.id ? 0.5 : 1,
+                    opacity: draggedItem && (draggedItem as QuestionGroup).id === group.id ? 0.5 : group.is_active ? 1 : 0.6,
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
                   }}
                   onMouseEnter={(e) => {
@@ -472,6 +470,36 @@ const FlowBuilder: React.FC = () => {
                         {group.description}
                       </div>
                     )}
+                  </div>
+                  {/* Toggle Switch */}
+                  <div
+                    onClick={(e) => handleToggleActive(group.id, group.is_active, e)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'relative',
+                      width: '44px',
+                      height: '24px',
+                      backgroundColor: group.is_active ? '#14b8a6' : '#d1d5db',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s',
+                      flexShrink: 0
+                    }}
+                    title={group.is_active ? 'Active - Click to deactivate' : 'Inactive - Click to activate'}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '2px',
+                        left: group.is_active ? '22px' : '2px',
+                        width: '20px',
+                        height: '20px',
+                        backgroundColor: 'white',
+                        borderRadius: '50%',
+                        transition: 'left 0.2s',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                    />
                   </div>
                 </div>
               ))}
