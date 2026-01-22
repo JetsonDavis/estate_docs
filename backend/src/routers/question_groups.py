@@ -86,9 +86,17 @@ async def get_question_group(
     # Get questions for this group
     questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
     
-    response_data = QuestionGroupResponse.model_validate(group)
     return QuestionGroupDetailResponse(
-        **response_data.model_dump(),
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        identifier=group.identifier,
+        display_order=group.display_order,
+        question_logic=group.question_logic,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+        is_active=group.is_active,
+        question_count=len(questions),
         questions=[QuestionResponse.model_validate(q) for q in questions]
     )
 
@@ -117,7 +125,27 @@ async def update_question_group(
     Update question group (admin only).
     """
     group = QuestionGroupService.update_question_group(db, group_id, group_data)
-    return QuestionGroupResponse.model_validate(group)
+    questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=False)
+    return QuestionGroupResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        identifier=group.identifier,
+        display_order=group.display_order,
+        question_logic=group.question_logic,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+        is_active=group.is_active,
+        question_count=len(questions),
+        questions=[
+            {
+                "id": q.id,
+                "identifier": q.identifier,
+                "question_text": q.question_text,
+                "question_type": q.question_type
+            } for q in questions
+        ]
+    )
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
