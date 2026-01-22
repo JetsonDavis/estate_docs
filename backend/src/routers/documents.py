@@ -1,8 +1,11 @@
 """API endpoints for document generation and management."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel
+import io
 
 from ..database import get_db
 from ..middleware.auth_middleware import require_auth
@@ -149,4 +152,52 @@ async def delete_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
+        )
+
+
+class MergeDocumentRequest(BaseModel):
+    session_id: int
+    template_id: int
+
+
+@router.post("/merge")
+async def merge_document(
+    request: MergeDocumentRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """
+    Merge a template with session data and return a downloadable document.
+    
+    - **session_id**: Document session ID
+    - **template_id**: Template ID
+    
+    Returns a Word document with all template identifiers replaced with session values.
+    For person-type identifiers with dot notation (e.g., <<person.field>>), 
+    the system will fetch the person and use the specified field.
+    """
+    try:
+        docx_bytes = DocumentService.merge_document(
+            db,
+            request.session_id,
+            request.template_id,
+            int(current_user["sub"])
+        )
+        
+        return StreamingResponse(
+            io.BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f"attachment; filename=merged_document_{request.session_id}_{request.template_id}.docx"
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to merge document: {str(e)}"
         )

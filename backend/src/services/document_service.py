@@ -5,11 +5,16 @@ from typing import Optional, Tuple, List
 from fastapi import HTTPException, status
 import re
 from datetime import datetime
+from docx import Document
+from docx.shared import Pt
+import io
+import json
 
 from ..models.document import GeneratedDocument
 from ..models.template import Template
 from ..models.session import DocumentSession, SessionAnswer
 from ..models.question import Question
+from ..models.person import Person
 from ..schemas.document import GenerateDocumentRequest
 
 
@@ -297,3 +302,130 @@ class DocumentService:
         db.commit()
         
         return True
+    
+    @staticmethod
+    def merge_document(
+        db: Session,
+        session_id: int,
+        template_id: int,
+        user_id: int
+    ) -> bytes:
+        """
+        Merge a template with session data and return a Word document.
+        
+        Args:
+            db: Database session
+            session_id: Document session ID
+            template_id: Template ID
+            user_id: User ID
+            
+        Returns:
+            Bytes of the generated Word document
+        """
+        # Get template
+        template = db.query(Template).filter(
+            Template.id == template_id,
+            Template.is_active == True
+        ).first()
+        
+        if not template:
+            raise ValueError("Template not found")
+        
+        # Get session (verify user owns it)
+        session = db.query(DocumentSession).filter(
+            DocumentSession.id == session_id,
+            DocumentSession.user_id == user_id
+        ).first()
+        
+        if not session:
+            raise ValueError("Session not found")
+        
+        # Get all answers for this session with their question identifiers
+        answers_query = db.query(SessionAnswer, Question).join(
+            Question, SessionAnswer.question_id == Question.id
+        ).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+        
+        # Build a mapping of identifier -> answer value
+        answer_map = {}
+        for answer, question in answers_query:
+            answer_map[question.identifier] = answer.answer_value
+        
+        # Get template markdown content
+        content = template.markdown_content or ""
+        
+        # Find all identifiers in the template
+        identifier_pattern = r'<<([^>]+)>>'
+        
+        def replace_identifier(match):
+            identifier = match.group(1).strip()
+            
+            # Check if this is a person field with dot notation (e.g., person.field)
+            if '.' in identifier:
+                parts = identifier.split('.', 1)
+                person_identifier = parts[0]
+                field_name = parts[1]
+                
+                # Get the person name from answers
+                person_name = answer_map.get(person_identifier, '')
+                
+                # Handle JSON array of person names (multiple people)
+                try:
+                    person_names = json.loads(person_name)
+                    if isinstance(person_names, list) and len(person_names) > 0:
+                        person_name = person_names[0]  # Use first person for now
+                except (json.JSONDecodeError, TypeError):
+                    pass  # person_name is already a string
+                
+                if person_name:
+                    # Look up the person in the database
+                    person = db.query(Person).filter(
+                        Person.name == person_name
+                    ).first()
+                    
+                    if person:
+                        # Get the specified field from the person
+                        field_value = getattr(person, field_name, None)
+                        if field_value is not None:
+                            return str(field_value)
+                
+                # If person or field not found, return placeholder
+                return f"<<{identifier}>>"
+            
+            # Regular identifier - get from answer map
+            value = answer_map.get(identifier, '')
+            
+            # Handle JSON arrays (for person type questions with multiple values)
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    value = ', '.join(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            
+            return value if value else f"<<{identifier}>>"
+        
+        # Replace all identifiers in the content
+        merged_content = re.sub(identifier_pattern, replace_identifier, content)
+        
+        # Create a Word document
+        doc = Document()
+        
+        # Add the merged content to the document
+        # Split by paragraphs and add each one
+        paragraphs = merged_content.split('\n')
+        for para_text in paragraphs:
+            if para_text.strip():
+                paragraph = doc.add_paragraph(para_text)
+                # Set default font
+                for run in paragraph.runs:
+                    run.font.size = Pt(12)
+                    run.font.name = 'Calibri'
+        
+        # Save to bytes
+        doc_bytes = io.BytesIO()
+        doc.save(doc_bytes)
+        doc_bytes.seek(0)
+        
+        return doc_bytes.getvalue()

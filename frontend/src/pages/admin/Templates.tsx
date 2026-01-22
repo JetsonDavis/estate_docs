@@ -523,7 +523,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ template, onClose
               Cancel
             </button>
             <button type="submit" disabled={submitting} className="submit-button">
-              {submitting ? 'Saving...' : 'Save Changes'}
+              {submitting ? 'Updating...' : 'Update Changes'}
             </button>
           </div>
         </form>

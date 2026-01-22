@@ -110,11 +110,68 @@ const MergeDocuments: React.FC = () => {
     return sessionIdentifiers.includes(identifier) && templateIdentifiers.includes(identifier)
   }
 
+  const handleMergeDocuments = async () => {
+    if (!selectedSessionId || !selectedTemplateId) {
+      alert('Please select both a document session and a template')
+      return
+    }
+
+    try {
+      setLoadingIdentifiers(true)
+      const response = await fetch(`/api/v1/documents/merge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          session_id: selectedSessionId,
+          template_id: selectedTemplateId
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to merge documents')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `merged_document_${selectedSessionId}_${selectedTemplateId}.docx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (err: any) {
+      alert(err.message || 'Failed to merge documents')
+    } finally {
+      setLoadingIdentifiers(false)
+    }
+  }
+
   return (
     <div className="merge-documents-container">
       <div className="merge-documents-wrapper">
         <div className="merge-documents-header">
           <h1 className="merge-documents-title">Merge Documents</h1>
+          <button
+            onClick={handleMergeDocuments}
+            disabled={!selectedSessionId || !selectedTemplateId || loadingIdentifiers}
+            className="btn btn-primary"
+            style={{
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              fontWeight: 600,
+              borderRadius: '0.5rem',
+              border: 'none',
+              cursor: selectedSessionId && selectedTemplateId ? 'pointer' : 'not-allowed',
+              opacity: selectedSessionId && selectedTemplateId ? 1 : 0.5
+            }}
+          >
+            Merge Documents
+          </button>
         </div>
 
         {loading && <div className="loading-state">Loading...</div>}
