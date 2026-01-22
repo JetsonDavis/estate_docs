@@ -226,7 +226,7 @@ const QuestionGroups: React.FC = () => {
                       <p className="group-description">{group.description}</p>
                     )}
                     {group.questions && group.questions.length > 0 && (
-                      <div style={{ marginTop: '0.5rem' }}>
+                      <div>
                         <button
                           onClick={() => {
                             setExpandedGroups(prev => {
@@ -248,7 +248,8 @@ const QuestionGroups: React.FC = () => {
                             fontSize: '0.875rem',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '0.25rem'
+                            gap: '0.25rem',
+                            fontWeight: '600'
                           }}
                         >
                           <svg
@@ -267,7 +268,7 @@ const QuestionGroups: React.FC = () => {
                               clipRule="evenodd"
                             />
                           </svg>
-                          {expandedGroups.has(group.id) ? 'Hide' : 'Show'} question identifiers
+                          Question Identifiers
                         </button>
                         {expandedGroups.has(group.id) && (
                           <div style={{
