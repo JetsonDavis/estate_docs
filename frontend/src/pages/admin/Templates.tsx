@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template, TemplateCreate, TemplateType } from '../../types/template'
 import './Templates.css'
 
 const Templates: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -15,6 +17,18 @@ const Templates: React.FC = () => {
   useEffect(() => {
     loadTemplates()
   }, [search])
+
+  useEffect(() => {
+    const templateId = searchParams.get('template')
+    if (templateId && templates.length > 0) {
+      const template = templates.find(t => t.id === parseInt(templateId))
+      if (template) {
+        setSelectedTemplate(template)
+        setShowEditModal(true)
+        setSearchParams({})
+      }
+    }
+  }, [searchParams, templates])
 
   const loadTemplates = async () => {
     try {

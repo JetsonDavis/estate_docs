@@ -251,3 +251,24 @@ async def navigate_session(
     )
     
     return DocumentSessionResponse.model_validate(session)
+
+
+@router.get("/{session_id}/identifiers", response_model=List[str])
+async def get_session_identifiers(
+    session_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+) -> List[str]:
+    """
+    Get all question identifiers from a session that have been answered.
+    
+    - **session_id**: Session ID
+    """
+    identifiers = SessionService.get_session_identifiers(db, session_id, int(current_user["sub"]))
+    if identifiers is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+    
+    return identifiers

@@ -17,6 +17,7 @@ import FlowBuilder from './pages/admin/FlowBuilder'
 import DocumentSessions from './pages/DocumentSessions'
 import DocumentNew from './pages/DocumentNew'
 import Documents from './pages/Documents'
+import MergeDocuments from './pages/MergeDocuments'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -194,6 +195,17 @@ function App() {
                   <div className="min-h-screen bg-gray-50">
                     <Header />
                     <Documents />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/merge-documents"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <MergeDocuments />
                   </div>
                 </ProtectedRoute>
               }

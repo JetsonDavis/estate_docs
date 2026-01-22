@@ -30,6 +30,9 @@ class Template(Base, TimestampMixin, SoftDeleteMixin):
     # Markdown content with identifiers
     markdown_content = Column(Text, nullable=False)
     
+    # Comma-separated list of identifiers found in the template
+    identifiers = Column(Text, nullable=True)
+    
     # Metadata
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     
@@ -49,6 +52,7 @@ class Template(Base, TimestampMixin, SoftDeleteMixin):
             "original_filename": self.original_filename,
             "original_file_path": self.original_file_path,
             "markdown_content": self.markdown_content,
+            "identifiers": self.identifiers,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),

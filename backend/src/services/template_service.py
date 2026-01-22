@@ -43,6 +43,10 @@ class TemplateService:
             created_by=created_by
         )
         
+        # Extract identifiers from markdown content and save as comma-separated string
+        identifiers_list = template.extract_identifiers()
+        template.identifiers = ','.join(identifiers_list) if identifiers_list else None
+        
         db.add(template)
         db.commit()
         db.refresh(template)
@@ -128,6 +132,11 @@ class TemplateService:
         
         for field, value in update_data.items():
             setattr(template, field, value)
+        
+        # Re-extract identifiers if markdown content was updated
+        if 'markdown_content' in update_data:
+            identifiers_list = template.extract_identifiers()
+            template.identifiers = ','.join(identifiers_list) if identifiers_list else None
         
         db.commit()
         db.refresh(template)

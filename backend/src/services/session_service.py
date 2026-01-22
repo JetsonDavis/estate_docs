@@ -687,3 +687,32 @@ class SessionService:
         db.refresh(session)
         
         return session
+    
+    @staticmethod
+    def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[List[str]]:
+        """
+        Get all question identifiers from a session that have been answered.
+        
+        Args:
+            db: Database session
+            session_id: Session ID
+            user_id: User ID (for authorization)
+            
+        Returns:
+            List of identifiers if session found, None otherwise
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            return None
+        
+        # Get all answers for this session with their question identifiers
+        answers = db.query(SessionAnswer, Question.identifier).join(
+            Question, SessionAnswer.question_id == Question.id
+        ).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+        
+        # Extract unique identifiers
+        identifiers = list(set([identifier for _, identifier in answers]))
+        
+        return sorted(identifiers)

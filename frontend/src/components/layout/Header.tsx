@@ -56,12 +56,9 @@ const Header: React.FC = () => {
                     <Link to="/document" className="header-link">
                       Document Sessions
                     </Link>
-                    <button
-                      onClick={() => alert('Not yet implemented')}
-                      className="header-link header-link-button"
-                    >
+                    <Link to="/merge-documents" className="header-link">
                       Merge Documents
-                    </button>
+                    </Link>
                   </>
                 )}
                 {!isAdmin && (
@@ -69,12 +66,9 @@ const Header: React.FC = () => {
                     <Link to="/document" className="header-link">
                       Document Sessions
                     </Link>
-                    <button
-                      onClick={() => alert('Not yet implemented')}
-                      className="header-link header-link-button"
-                    >
+                    <Link to="/merge-documents" className="header-link">
                       Merge Documents
-                    </button>
+                    </Link>
                   </>
                 )}
               </div>

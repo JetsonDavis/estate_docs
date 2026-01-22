@@ -8,6 +8,7 @@ export interface Template {
   original_filename: string | null
   original_file_path: string | null
   markdown_content: string
+  identifiers: string | null
   created_by: number | null
   created_at: string
   updated_at: string

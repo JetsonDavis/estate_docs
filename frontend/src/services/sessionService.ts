@@ -95,5 +95,13 @@ export const sessionService = {
    */
   deleteSession: async (sessionId: number): Promise<void> => {
     await apiClient.delete(`/sessions/${sessionId}`)
+  },
+
+  /**
+   * Get identifiers from a session
+   */
+  getSessionIdentifiers: async (sessionId: number): Promise<string[]> => {
+    const response = await apiClient.get<string[]>(`/sessions/${sessionId}/identifiers`)
+    return response.data
   }
 }

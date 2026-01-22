@@ -31,6 +31,7 @@ class TemplateResponse(TemplateBase):
     original_filename: Optional[str]
     original_file_path: Optional[str]
     markdown_content: str
+    identifiers: Optional[str]
     created_by: Optional[int]
     created_at: datetime
     updated_at: datetime
