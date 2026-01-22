@@ -34,20 +34,33 @@ async def list_question_groups(
         db, skip, page_size, include_inactive
     )
     
+    # Get questions for each group to include identifiers and types
+    group_responses = []
+    for g in groups:
+        questions = QuestionService.list_questions_by_group(db, g.id, include_inactive=False)
+        group_response = QuestionGroupResponse(
+            id=g.id,
+            name=g.name,
+            description=g.description,
+            identifier=g.identifier,
+            display_order=g.display_order,
+            created_at=g.created_at,
+            updated_at=g.updated_at,
+            is_active=g.is_active,
+            question_count=len(questions),
+            questions=[
+                {
+                    "id": q.id,
+                    "identifier": q.identifier,
+                    "question_text": q.question_text,
+                    "question_type": q.question_type
+                } for q in questions
+            ]
+        )
+        group_responses.append(group_response)
+    
     return QuestionGroupListResponse(
-        question_groups=[
-            QuestionGroupResponse(
-                id=g.id,
-                name=g.name,
-                description=g.description,
-                identifier=g.identifier,
-                display_order=g.display_order,
-                created_at=g.created_at,
-                updated_at=g.updated_at,
-                is_active=g.is_active,
-                question_count=len(g.questions) if hasattr(g, 'questions') else 0
-            ) for g in groups
-        ],
+        question_groups=group_responses,
         total=total,
         page=page,
         page_size=page_size

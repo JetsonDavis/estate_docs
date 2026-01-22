@@ -84,6 +84,7 @@ export interface QuestionGroup {
   updated_at: string
   is_active: boolean
   question_count: number
+  questions?: Question[]
 }
 
 export interface QuestionGroupCreate {

@@ -130,6 +130,7 @@ class QuestionGroupResponse(BaseModel):
     updated_at: datetime
     is_active: bool
     question_count: Optional[int] = 0
+    questions: Optional[List[Dict[str, Any]]] = None
     
     model_config = {"from_attributes": True}
 

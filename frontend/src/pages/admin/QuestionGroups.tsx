@@ -12,6 +12,7 @@ const QuestionGroups: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
   const navigate = useNavigate()
   const location = useLocation()
   const { id } = useParams()
@@ -223,6 +224,88 @@ const QuestionGroups: React.FC = () => {
                     </div>
                     {group.description && (
                       <p className="group-description">{group.description}</p>
+                    )}
+                    {group.questions && group.questions.length > 0 && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <button
+                          onClick={() => {
+                            setExpandedGroups(prev => {
+                              const newSet = new Set(prev)
+                              if (newSet.has(group.id)) {
+                                newSet.delete(group.id)
+                              } else {
+                                newSet.add(group.id)
+                              }
+                              return newSet
+                            })
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: '0.25rem 0',
+                            cursor: 'pointer',
+                            color: '#6b7280',
+                            fontSize: '0.875rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                        >
+                          <svg
+                            style={{
+                              width: '1rem',
+                              height: '1rem',
+                              transform: expandedGroups.has(group.id) ? 'rotate(90deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.2s'
+                            }}
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          {expandedGroups.has(group.id) ? 'Hide' : 'Show'} question identifiers
+                        </button>
+                        {expandedGroups.has(group.id) && (
+                          <div style={{
+                            marginTop: '0.5rem',
+                            paddingLeft: '1.5rem',
+                            fontSize: '0.875rem',
+                            color: '#4b5563'
+                          }}>
+                            {group.questions.map((q: any, idx: number) => (
+                              <div key={idx} style={{ marginBottom: '0.25rem' }}>
+                                <code style={{
+                                  backgroundColor: '#f3f4f6',
+                                  padding: '0.125rem 0.375rem',
+                                  borderRadius: '0.25rem',
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.8125rem'
+                                }}>
+                                  {q.identifier}
+                                </code>
+                                <span style={{
+                                  marginLeft: '0.5rem',
+                                  padding: '0.125rem 0.375rem',
+                                  backgroundColor: '#dbeafe',
+                                  color: '#1e40af',
+                                  borderRadius: '0.25rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500'
+                                }}>
+                                  {q.question_type}
+                                </span>
+                                <span style={{ marginLeft: '0.5rem', color: '#9ca3af' }}>
+                                  {q.question_text}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
