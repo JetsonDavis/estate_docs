@@ -360,11 +360,8 @@
 
 .person-add-btn,
 .person-remove-btn {
-  width: 2rem;
   height: 2rem;
-  border-radius: 50%;
   border: none;
-  font-size: 1.25rem;
   font-weight: 600;
   cursor: pointer;
   display: flex;
@@ -376,10 +373,21 @@
 .person-add-btn {
   background-color: #2563eb;
   color: white;
+  padding: 0 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
 }
 
 .person-add-btn:hover {
   background-color: #1d4ed8;
+}
+
+.person-remove-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 1.25rem;
 }
 
 .person-remove-btn {

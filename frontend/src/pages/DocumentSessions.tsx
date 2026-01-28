@@ -21,6 +21,7 @@ const DocumentSessions: React.FC = () => {
   const [sessionData, setSessionData] = useState<SessionQuestionsResponse | null>(null)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [personAnswers, setPersonAnswers] = useState<Record<number, string[]>>({}) // For multiple person fields
+  const [personConjunctions, setPersonConjunctions] = useState<Record<number, Array<'and' | 'then'>>>({}) // Conjunction between each person
   const [currentPage, setCurrentPage] = useState(1)
 
   // UI state
@@ -75,15 +76,23 @@ const DocumentSessions: React.FC = () => {
       // Pre-fill answers from existing_answers
       const initialAnswers: Record<number, string> = {}
       const initialPersonAnswers: Record<number, string[]> = {}
+      const initialPersonConjunctions: Record<number, Array<'and' | 'then'>> = {}
 
       data.questions.forEach(q => {
         if (data.existing_answers[q.id]) {
           if (q.question_type === 'person') {
-            // Person answers might be JSON array
+            // Person answers might be JSON array with conjunction info
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
               if (Array.isArray(parsed)) {
-                initialPersonAnswers[q.id] = parsed
+                // Check if it's the new format with objects containing name and conjunction
+                if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+                  initialPersonAnswers[q.id] = parsed.map((p: any) => p.name)
+                  initialPersonConjunctions[q.id] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
+                } else {
+                  // Old format - just an array of strings
+                  initialPersonAnswers[q.id] = parsed
+                }
               } else {
                 initialPersonAnswers[q.id] = [data.existing_answers[q.id]]
               }
@@ -100,6 +109,7 @@ const DocumentSessions: React.FC = () => {
 
       setAnswers(initialAnswers)
       setPersonAnswers(initialPersonAnswers)
+      setPersonConjunctions(initialPersonConjunctions)
     } catch (err: any) {
       if (err.response?.status === 400 && err.response?.data?.detail === 'Session is already completed') {
         setIsCompleted(true)
@@ -190,7 +200,12 @@ const DocumentSessions: React.FC = () => {
                     try {
                       const parsed = JSON.parse(data.existing_answers[q.id])
                       if (Array.isArray(parsed)) {
-                        newPersonAnswers[q.id] = parsed
+                        // Check if it's the new format with objects
+                        if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+                          newPersonAnswers[q.id] = parsed.map((p: any) => p.name)
+                        } else {
+                          newPersonAnswers[q.id] = parsed
+                        }
                       } else {
                         newPersonAnswers[q.id] = [data.existing_answers[q.id]]
                       }
@@ -204,6 +219,25 @@ const DocumentSessions: React.FC = () => {
               })
 
               return newPersonAnswers
+            })
+
+            setPersonConjunctions(currentConjunctions => {
+              const newConjunctions: Record<number, Array<'and' | 'then'>> = { ...currentConjunctions }
+
+              data.questions.forEach(q => {
+                if (q.question_type === 'person' && data.existing_answers[q.id]) {
+                  try {
+                    const parsed = JSON.parse(data.existing_answers[q.id])
+                    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+                      newConjunctions[q.id] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
+                    }
+                  } catch {
+                    // Ignore parse errors
+                  }
+                }
+              })
+
+              return newConjunctions
             })
           } catch (err) {
             console.error('Failed to refresh questions after answer change:', err)
@@ -224,9 +258,17 @@ const DocumentSessions: React.FC = () => {
     // Debounce the save
     personAnswerSaveTimeoutRef.current[questionId] = setTimeout(async () => {
       try {
-        // Filter out empty values and save as JSON array
+        // Filter out empty values
         const filteredValues = values.filter(v => v.trim() !== '')
-        const answerValue = JSON.stringify(filteredValues)
+        const conjunctions = personConjunctions[questionId] || []
+        
+        // Build array with person names and conjunctions
+        const personData = filteredValues.map((name, idx) => ({
+          name,
+          conjunction: conjunctions[idx] || undefined
+        }))
+        
+        const answerValue = JSON.stringify(personData)
 
         await sessionService.saveAnswers(sessionData.session_id, {
           answers: [{ question_id: questionId, answer_value: answerValue }]
@@ -250,10 +292,15 @@ const DocumentSessions: React.FC = () => {
     })
   }
 
-  const addPersonField = (questionId: number) => {
+  const addPersonField = (questionId: number, conjunction: 'and' | 'then') => {
     setPersonAnswers(prev => {
       const current = prev[questionId] || ['']
       const updated = [...current, '']
+      return { ...prev, [questionId]: updated }
+    })
+    setPersonConjunctions(prev => {
+      const current = prev[questionId] || []
+      const updated = [...current, conjunction]
       return { ...prev, [questionId]: updated }
     })
   }
@@ -267,6 +314,12 @@ const DocumentSessions: React.FC = () => {
       // Trigger save after removal
       savePersonAnswer(questionId, updated)
 
+      return { ...prev, [questionId]: updated }
+    })
+    setPersonConjunctions(prev => {
+      const current = prev[questionId] || []
+      // Remove the conjunction before this index (conjunctions are between items)
+      const updated = current.filter((_, i) => i !== index - 1)
       return { ...prev, [questionId]: updated }
     })
   }
@@ -299,13 +352,18 @@ const DocumentSessions: React.FC = () => {
       answer_value: answerValue
     }))
 
-    // Add person answers (as JSON arrays)
+    // Add person answers with conjunctions
     Object.entries(personAnswers).forEach(([questionId, values]) => {
       const filteredValues = values.filter(v => v.trim() !== '')
       if (filteredValues.length > 0) {
+        const conjunctions = personConjunctions[parseInt(questionId)] || []
+        const personData = filteredValues.map((name, idx) => ({
+          name,
+          conjunction: conjunctions[idx] || undefined
+        }))
         answerArray.push({
           question_id: parseInt(questionId),
-          answer_value: JSON.stringify(filteredValues)
+          answer_value: JSON.stringify(personData)
         })
       }
     })
@@ -344,13 +402,18 @@ const DocumentSessions: React.FC = () => {
         answer_value: answerValue
       }))
 
-      // Add person answers
+      // Add person answers with conjunctions
       Object.entries(personAnswers).forEach(([questionId, values]) => {
         const filteredValues = values.filter(v => v.trim() !== '')
         if (filteredValues.length > 0) {
+          const conjunctions = personConjunctions[parseInt(questionId)] || []
+          const personData = filteredValues.map((name, idx) => ({
+            name,
+            conjunction: conjunctions[idx] || undefined
+          }))
           answerArray.push({
             question_id: parseInt(questionId),
-            answer_value: JSON.stringify(filteredValues)
+            answer_value: JSON.stringify(personData)
           })
         }
       })
@@ -440,7 +503,7 @@ const DocumentSessions: React.FC = () => {
           <div className="person-field-container">
             {personValues.map((personValue, index) => (
               <div key={index} className="person-field-row">
-                <div className="person-input-wrapper">
+                <div className="person-input-wrapper" style={{ maxWidth: 'calc(100% - 60px)' }}>
                   <input
                     type="text"
                     className="question-input"
@@ -460,14 +523,25 @@ const DocumentSessions: React.FC = () => {
                 </div>
 
                 {index === personValues.length - 1 && (
-                  <button
-                    type="button"
-                    onClick={() => addPersonField(question.id)}
-                    className="person-add-btn"
-                    title="Add another person"
-                  >
-                    +
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => addPersonField(question.id, 'and')}
+                      className="person-add-btn"
+                      title="Add another person with 'and'"
+                    >
+                      + and
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addPersonField(question.id, 'then')}
+                      className="person-add-btn"
+                      title="Add another person with 'then'"
+                      style={{ marginLeft: '0.25rem' }}
+                    >
+                      + then
+                    </button>
+                  </>
                 )}
 
                 {personValues.length > 1 && (

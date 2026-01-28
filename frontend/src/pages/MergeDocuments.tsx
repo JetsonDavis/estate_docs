@@ -74,7 +74,13 @@ const MergeDocuments: React.FC = () => {
       setLoadingIdentifiers(true)
       const template = templates.find(t => t.id === templateId)
       if (template && template.identifiers) {
-        setTemplateIdentifiers(template.identifiers.split(',').map(id => id.trim()))
+        // For template identifiers, only use text before the period (if there is one)
+        const identifiers = template.identifiers.split(',').map(id => {
+          const trimmed = id.trim()
+          const dotIndex = trimmed.indexOf('.')
+          return dotIndex !== -1 ? trimmed.substring(0, dotIndex) : trimmed
+        })
+        setTemplateIdentifiers(identifiers)
       } else {
         setTemplateIdentifiers([])
       }
