@@ -6,27 +6,31 @@ import PersonTypeahead from '../../components/common/PersonTypeahead'
 import './QuestionGroups.css'
 
 const QuestionGroups: React.FC = () => {
-  const [groups, setGroups] = useState<QuestionGroup[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
   const navigate = useNavigate()
   const location = useLocation()
   const { id } = useParams()
 
-  const pageSize = 20
-
-  // Determine current view
+  // Determine current view early so we can use it for initial state
   const isCreateView = location.pathname.includes('/new')
   const isEditView = location.pathname.includes('/edit')
   const isDetailView = id && !isEditView
+  const isListView = !isCreateView && !isEditView && !isDetailView
+
+  const [groups, setGroups] = useState<QuestionGroup[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(isListView)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
+
+  const pageSize = 20
 
   useEffect(() => {
-    loadGroups()
-  }, [page])
+    if (isListView) {
+      loadGroups()
+    }
+  }, [page, isListView])
 
   const loadGroups = async () => {
     try {
@@ -1061,10 +1065,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     console.log('Creating conditional:', { newConditional, previousQuestion, nestedQuestion })
 
     if (parentPath && parentPath.length > 0) {
-      // Add to nested items
+      // Add to nested items - insert after the specified index, not at the end
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
         if (depth >= path.length) {
-          return [...items, newConditional]
+          // Insert after afterIndex position, not at the end
+          const insertIndex = afterIndex >= 0 ? afterIndex + 1 : items.length
+          return [...items.slice(0, insertIndex), newConditional, ...items.slice(insertIndex)]
         }
         return items.map((item, idx) => {
           if (idx === path[depth] && item.conditional) {
@@ -1294,6 +1300,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
         const currentDisplayIndex = questionDisplayIndex
         questionDisplayIndex++
+
+        // Check if this is the last question in the nested items group
+        // (no more question-type items after this one at the same level)
+        const isLastQuestionInGroup = !nestedItems.slice(itemIndex + 1).some(
+          nextItem => nextItem.type === 'question'
+        )
 
         // Build the full number string (e.g., "1-1" or "1-1-1")
         const questionNumber = questionNumberPrefix
@@ -1572,27 +1584,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             {/* Action buttons after nested question */}
             {depth <= 4 && (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginLeft: '1rem' }}>
-                <button
-                  type="button"
-                  onClick={() => addQuestionToLogic(itemIndex, parentPath)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.25rem 0.5rem',
-                    fontSize: '0.7rem',
-                    background: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Follow-on Question
-                </button>
+                {isLastQuestionInGroup && (
+                  <button
+                    type="button"
+                    onClick={() => addQuestionToLogic(itemIndex, parentPath)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.7rem',
+                      background: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Follow-on Question
+                  </button>
+                )}
                 {depth < 4 && (
                   <button
                     type="button"
@@ -1616,8 +1630,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     Add Conditional
                   </button>
                 )}
-                {/* Add question at parent level (one less indent) */}
-                {parentPath.length > 0 && (
+                {/* Add question at parent level (one less indent) - only show for last question in group */}
+                {parentPath.length > 0 && isLastQuestionInGroup && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1647,7 +1661,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     </svg>
                   </button>
                 )}
-                {(() => {
+                {/* End Flow button - only show for last question in group */}
+                {isLastQuestionInGroup && (() => {
                   // Find parent conditional to get its endFlow state
                   const getParentConditional = (path: number[]): QuestionLogicItem | undefined => {
                     if (path.length === 0) return undefined
@@ -1689,13 +1704,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           </div>
         )
       } else if (item.type === 'conditional' && item.conditional) {
-        // Find the previous question in this nested context
+        // Find the previous question in this nested context and its display index
         let prevNestedQuestion: QuestionFormData | undefined
-        for (let i = itemIndex - 1; i >= 0; i--) {
+        let prevQuestionDisplayIndex = 0
+        let questionsBeforeThis = 0
+        for (let i = 0; i < itemIndex; i++) {
           const prevItem = nestedItems[i]
           if (prevItem.type === 'question') {
-            prevNestedQuestion = getQuestionFromLogicItem(prevItem)
-            break
+            const q = getQuestionFromLogicItem(prevItem)
+            if (q) {
+              prevNestedQuestion = q
+              prevQuestionDisplayIndex = questionsBeforeThis
+              questionsBeforeThis++
+            }
           }
         }
         // If no previous in nested, use parent question
@@ -1706,10 +1727,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         const currentConditionalIndex = conditionalDisplayIndex
         conditionalDisplayIndex++
 
-        // Build the conditional number string (e.g., "1-1" or "1-1-1")
-        const conditionalNumber = questionNumberPrefix
-          ? `${questionNumberPrefix}-${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
-          : `${depth + 1}${currentConditionalIndex > 0 ? `-${currentConditionalIndex}` : ''}`
+        // Build the conditional number string based on the previous question's number
+        // The conditional should have the same number as the question it follows
+        const prevQuestionNumber = questionNumberPrefix
+          ? `${questionNumberPrefix}-${depth}${prevQuestionDisplayIndex > 0 ? `-${prevQuestionDisplayIndex}` : ''}`
+          : `${depth}${prevQuestionDisplayIndex > 0 ? `-${prevQuestionDisplayIndex}` : ''}`
+        const conditionalNumber = prevNestedQuestion
+          ? prevQuestionNumber
+          : (questionNumberPrefix ? `${questionNumberPrefix}-${depth}` : `${depth}`)
 
         return (
           <div key={item.id} style={{
@@ -1892,6 +1917,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to save question')
     }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <svg
+            style={{ width: '3rem', height: '3rem', color: '#7c3aed', animation: 'spin 1s linear infinite' }}
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      </div>
+    )
   }
 
   return (
