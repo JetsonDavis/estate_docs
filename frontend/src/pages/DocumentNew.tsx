@@ -1,7 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
+import { questionGroupService } from '../services/questionService'
 import { Person } from '../types/person'
+import { QuestionGroup } from '../types/question'
 import PersonTypeahead from '../components/common/PersonTypeahead'
 import PersonFormModal from '../components/common/PersonFormModal'
 import './DocumentSessions.css'
@@ -12,13 +14,36 @@ const DocumentNew: React.FC = () => {
   // Form state
   const [documentFor, setDocumentFor] = useState('')
   const [documentName, setDocumentName] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>([])
+  const [loadingGroups, setLoadingGroups] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showNewPersonModal, setShowNewPersonModal] = useState(false)
+
+  // Fetch question groups on mount
+  useEffect(() => {
+    const fetchQuestionGroups = async () => {
+      try {
+        setLoadingGroups(true)
+        const response = await questionGroupService.listQuestionGroups(1, 100, false)
+        setQuestionGroups(response.question_groups)
+        // Pre-select the first group if available
+        if (response.question_groups.length > 0) {
+          setSelectedGroupId(response.question_groups[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to fetch question groups:', err)
+      } finally {
+        setLoadingGroups(false)
+      }
+    }
+    fetchQuestionGroups()
+  }, [])
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!documentFor.trim() || !documentName.trim()) {
+    if (!documentFor.trim() || !documentName.trim() || !selectedGroupId) {
       alert('Please fill in all fields')
       return
     }
@@ -26,7 +51,8 @@ const DocumentNew: React.FC = () => {
     try {
       setSubmitting(true)
       const session = await sessionService.createSession({
-        client_identifier: `${documentFor} - ${documentName}`
+        client_identifier: `${documentFor} - ${documentName}`,
+        starting_group_id: selectedGroupId
       })
       navigate(`/document?session=${session.id}`)
     } catch (err: any) {
@@ -89,7 +115,30 @@ const DocumentNew: React.FC = () => {
                 disabled={!documentFor.trim()}
               />
             </div>
-            <button type="submit" disabled={submitting || !documentFor.trim() || !documentName.trim()} className="btn btn-primary">
+            <div className="form-group">
+              <label className="form-label">Question Group:</label>
+              {loadingGroups ? (
+                <div style={{ padding: '0.5rem', color: '#6b7280' }}>Loading question groups...</div>
+              ) : questionGroups.length === 0 ? (
+                <div style={{ padding: '0.5rem', color: '#ef4444' }}>No question groups available</div>
+              ) : (
+                <select
+                  value={selectedGroupId || ''}
+                  onChange={(e) => setSelectedGroupId(Number(e.target.value))}
+                  className="form-input"
+                  required
+                  disabled={!documentFor.trim()}
+                >
+                  <option value="">Select a question group</option>
+                  {questionGroups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name} {group.description ? `- ${group.description}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <button type="submit" disabled={submitting || !documentFor.trim() || !documentName.trim() || !selectedGroupId} className="btn btn-primary">
               {submitting ? 'Creating...' : 'Create Document'}
             </button>
           </form>

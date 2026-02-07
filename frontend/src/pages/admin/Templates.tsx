@@ -285,7 +285,10 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    console.log('File upload triggered, file:', file)
     if (!file) return
+
+    console.log('File name:', file.name, 'File type:', file.type, 'File size:', file.size)
 
     // Check if file is an image
     const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif']
@@ -303,13 +306,17 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
       setUploading(true)
       // Pass the template name if available for Word/PDF files
       const templateNameForUpload = name.trim() || file.name.replace(/\.[^/.]+$/, '')
+      console.log('Calling uploadFile with:', file.name, templateNameForUpload)
       const response = await templateService.uploadFile(file, templateNameForUpload)
+      console.log('Upload response:', response)
       setMarkdownContent(response.markdown_content)
       setUploadedFile(true)
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to upload file')
+      console.error('Upload error:', err)
+      alert(err.response?.data?.detail || err.message || 'Failed to upload file')
     } finally {
       setUploading(false)
+      e.target.value = '' // Reset file input for re-upload
     }
   }
 
@@ -406,12 +413,16 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
 
           <div className="form-group">
             <label className="form-label">Upload File</label>
-            <div className="file-upload" onClick={() => document.getElementById('file-input')?.click()}>
+            <div className="file-upload" onClick={() => {
+              console.log('File upload div clicked')
+              document.getElementById('file-input')?.click()
+            }}>
               <input
                 id="file-input"
                 type="file"
                 accept=".docx,.pdf,.txt,.jpg,.jpeg,.png,.tiff,.tif"
                 onChange={handleFileUpload}
+                style={{ display: 'none' }}
               />
               <div className="upload-icon">📄</div>
               <div className="upload-text">

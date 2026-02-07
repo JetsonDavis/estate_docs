@@ -54,7 +54,7 @@ const Header: React.FC = () => {
                       Templates
                     </Link>
                     <Link to="/document" className="header-link">
-                      Document Sessions
+                      Input Form
                     </Link>
                     <Link to="/merge-documents" className="header-link">
                       Merge Documents
@@ -64,7 +64,7 @@ const Header: React.FC = () => {
                 {!isAdmin && (
                   <>
                     <Link to="/document" className="header-link">
-                      Document Sessions
+                      Input Form
                     </Link>
                     <Link to="/merge-documents" className="header-link">
                       Merge Documents

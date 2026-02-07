@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     document_uploads_dir: str = "./document_uploads"
     max_upload_size_mb: int = 10
     
+    # OpenAI
+    openai_api_key: Optional[str] = None
+    
     # Environment
     environment: str = "development"
     debug: bool = True

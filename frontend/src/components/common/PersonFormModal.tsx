@@ -82,12 +82,27 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Format date to YYYY-MM-DD for HTML date input
+  const formatDateForInput = (dateString: string | null): string => {
+    if (!dateString) return ''
+    // If already in YYYY-MM-DD format, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return dateString
+    // Try to parse and format
+    try {
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return ''
+      return date.toISOString().split('T')[0]
+    } catch {
+      return ''
+    }
+  }
+
   useEffect(() => {
     if (editingPerson) {
       setFormData({
         name: editingPerson.name,
         phone_number: editingPerson.phone_number || '',
-        date_of_birth: editingPerson.date_of_birth || '',
+        date_of_birth: formatDateForInput(editingPerson.date_of_birth),
         email: editingPerson.email || '',
         employer: editingPerson.employer || '',
         occupation: editingPerson.occupation || '',

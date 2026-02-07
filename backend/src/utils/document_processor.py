@@ -1,7 +1,9 @@
 """Document processing utilities for converting various file formats to Markdown."""
 
 import os
-from typing import Optional
+import base64
+import logging
+from typing import Optional, List
 from docx import Document
 import PyPDF2
 import pdfplumber
@@ -9,6 +11,26 @@ import markdown2
 import mammoth
 from pathlib import Path
 from datetime import datetime
+from io import BytesIO
+
+# Optional imports for OCR
+try:
+    from pdf2image import convert_from_path
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
+
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 
 class DocumentProcessor:
@@ -77,6 +99,7 @@ class DocumentProcessor:
     def pdf_to_markdown(file_path: str) -> str:
         """
         Convert PDF to Markdown text using pdfplumber for better text extraction.
+        Falls back to PyPDF2 if pdfplumber fails.
         
         Args:
             file_path: Path to the PDF file
@@ -84,22 +107,61 @@ class DocumentProcessor:
         Returns:
             Markdown text content
         """
+        import logging
         markdown_lines = []
         
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    # Split into paragraphs (double newlines)
-                    paragraphs = text.split('\n\n')
-                    for para in paragraphs:
-                        # Clean up single newlines within paragraphs
-                        cleaned = para.replace('\n', ' ').strip()
-                        if cleaned:
-                            markdown_lines.append(cleaned)
-                            markdown_lines.append("")  # Blank line between paragraphs
+        # Try pdfplumber first
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                logging.info(f"PDF has {len(pdf.pages)} pages")
+                for i, page in enumerate(pdf.pages):
+                    text = page.extract_text()
+                    logging.info(f"Page {i+1} extracted text length: {len(text) if text else 0}")
+                    if text:
+                        # Split into paragraphs (double newlines)
+                        paragraphs = text.split('\n\n')
+                        for para in paragraphs:
+                            # Clean up single newlines within paragraphs
+                            cleaned = para.replace('\n', ' ').strip()
+                            if cleaned:
+                                markdown_lines.append(cleaned)
+                                markdown_lines.append("")  # Blank line between paragraphs
+        except Exception as e:
+            logging.error(f"pdfplumber failed: {e}")
         
-        return "\n".join(markdown_lines)
+        # If pdfplumber didn't extract anything, try PyPDF2
+        if not markdown_lines:
+            logging.info("Trying PyPDF2 fallback")
+            try:
+                with open(file_path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    logging.info(f"PyPDF2: PDF has {len(reader.pages)} pages")
+                    for i, page in enumerate(reader.pages):
+                        text = page.extract_text()
+                        logging.info(f"PyPDF2 Page {i+1} extracted text length: {len(text) if text else 0}")
+                        if text:
+                            # Clean up and add to markdown
+                            lines = text.split('\n')
+                            for line in lines:
+                                cleaned = line.strip()
+                                if cleaned:
+                                    markdown_lines.append(cleaned)
+                            markdown_lines.append("")  # Blank line between pages
+            except Exception as e:
+                logging.error(f"PyPDF2 also failed: {e}")
+        
+        result = "\n".join(markdown_lines)
+        logging.info(f"Final markdown content length: {len(result)}")
+        
+        # If still empty, the PDF might be image-based (scanned) - try OCR
+        if not result.strip():
+            logging.info("Text extraction failed, attempting OCR with OpenAI Vision")
+            ocr_result = DocumentProcessor.ocr_pdf_with_openai(file_path)
+            if ocr_result:
+                return ocr_result
+            return "# PDF Text Extraction Failed\n\nThis PDF appears to be image-based (scanned) and OCR processing failed. Please check your OpenAI API key configuration."
+        
+        return result
     
     @staticmethod
     def image_to_markdown(file_path: str, ocr_text: str) -> str:
@@ -267,3 +329,157 @@ class DocumentProcessor:
             f.write(markdown_content)
 
         return str(file_path)
+    
+    @staticmethod
+    def ocr_pdf_with_openai(file_path: str) -> Optional[str]:
+        """
+        Use OpenAI Vision API to OCR an image-based PDF.
+        Converts PDF pages to images and sends them to GPT-4 Vision.
+        
+        Args:
+            file_path: Path to the PDF file
+            
+        Returns:
+            Extracted text as markdown, or None if OCR fails
+        """
+        if not OPENAI_AVAILABLE:
+            logging.error("OpenAI package not installed")
+            return None
+        
+        if not PDF2IMAGE_AVAILABLE:
+            logging.error("pdf2image package not installed")
+            return None
+        
+        from ..config import settings
+        
+        if not settings.openai_api_key:
+            logging.error("OpenAI API key not configured")
+            return None
+        
+        try:
+            # Convert PDF pages to images
+            logging.info(f"Converting PDF to images: {file_path}")
+            images = convert_from_path(file_path, dpi=150)
+            logging.info(f"Converted {len(images)} pages to images")
+            
+            client = OpenAI(api_key=settings.openai_api_key)
+            all_text = []
+            
+            for i, image in enumerate(images):
+                logging.info(f"Processing page {i+1} with OpenAI Vision")
+                
+                # Convert PIL image to base64
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                
+                # Call OpenAI Vision API
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Please extract all the text from this document image. Preserve the structure and formatting as much as possible. Output the text in markdown format. If there are form fields or placeholders, preserve them. Do not add any commentary, just output the extracted text."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{img_base64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=4096
+                )
+                
+                page_text = response.choices[0].message.content
+                if page_text:
+                    all_text.append(f"<!-- Page {i+1} -->\n{page_text}")
+                    logging.info(f"Page {i+1} extracted {len(page_text)} characters")
+            
+            result = "\n\n".join(all_text)
+            logging.info(f"Total OCR result: {len(result)} characters")
+            return result
+            
+        except Exception as e:
+            logging.error(f"OpenAI Vision OCR failed: {e}")
+            return None
+    
+    @staticmethod
+    def ocr_image_with_openai(file_path: str) -> Optional[str]:
+        """
+        Use OpenAI Vision API to OCR an image file.
+        
+        Args:
+            file_path: Path to the image file
+            
+        Returns:
+            Extracted text as markdown, or None if OCR fails
+        """
+        if not OPENAI_AVAILABLE:
+            logging.error("OpenAI package not installed")
+            return None
+        
+        if not PIL_AVAILABLE:
+            logging.error("PIL/Pillow package not installed")
+            return None
+        
+        from ..config import settings
+        
+        if not settings.openai_api_key:
+            logging.error("OpenAI API key not configured")
+            return None
+        
+        try:
+            logging.info(f"Processing image with OpenAI Vision: {file_path}")
+            
+            # Read and encode the image
+            with open(file_path, 'rb') as f:
+                img_base64 = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Determine image type from extension
+            ext = os.path.splitext(file_path)[1].lower()
+            mime_type = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.tiff': 'image/tiff',
+                '.tif': 'image/tiff',
+                '.bmp': 'image/bmp'
+            }.get(ext, 'image/png')
+            
+            client = OpenAI(api_key=settings.openai_api_key)
+            
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Please extract all the text from this document image. Preserve the structure and formatting as much as possible. Output the text in markdown format. If there are form fields or placeholders, preserve them. Do not add any commentary, just output the extracted text."
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{img_base64}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=4096
+            )
+            
+            result = response.choices[0].message.content
+            logging.info(f"Image OCR result: {len(result) if result else 0} characters")
+            return result
+            
+        except Exception as e:
+            logging.error(f"OpenAI Vision OCR failed for image: {e}")
+            return None

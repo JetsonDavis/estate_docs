@@ -20,3 +20,6 @@ markdown2==2.4.12
 aiofiles==23.2.1
 mammoth==1.11.0
 pypandoc==1.12
+openai==1.12.0
+pdf2image==1.16.3
+pillow==10.2.0

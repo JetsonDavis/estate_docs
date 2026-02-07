@@ -60,7 +60,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
          libpq-dev \
          nginx \
          pandoc \
-         gnupg && \
+         gnupg \
+         poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 # Add PostgreSQL 15 repository and install client

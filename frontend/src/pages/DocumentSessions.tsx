@@ -29,6 +29,7 @@ const DocumentSessions: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCompleted, setIsCompleted] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
 
   // Modal state for person-type questions
   const [personModalForQuestion, setPersonModalForQuestion] = useState<number | null>(null)
@@ -148,6 +149,11 @@ const DocumentSessions: React.FC = () => {
       ...prev,
       [questionId]: value
     }))
+
+    // Mark as having changes if value actually changed
+    if (previousValue !== value) {
+      setHasChanges(true)
+    }
 
     // If the value actually changed, check if we need to refresh for conditionals
     if (previousValue !== value && sessionData) {
@@ -280,6 +286,7 @@ const DocumentSessions: React.FC = () => {
   }
 
   const handlePersonAnswerChange = (questionId: number, index: number, value: string) => {
+    setHasChanges(true)
     setPersonAnswers(prev => {
       const current = prev[questionId] || ['']
       const updated = [...current]
@@ -428,17 +435,29 @@ const DocumentSessions: React.FC = () => {
         await saveCurrentAnswers()
         await loadSessionQuestions(sessionData.session_id, currentPage - 1)
       } else {
-        // Navigate between groups
+        // Check if this is an Exit (no changes) on the last group/page
+        const isLastGroupAndPage = sessionData.is_last_group && currentPage >= sessionData.total_pages
+        
+        if (direction === 'forward' && isLastGroupAndPage && !hasChanges) {
+          // No changes - just navigate directly to menu without saving
+          navigate('/document')
+          return
+        }
+        
+        // Navigate between groups (with saving)
         const result = await sessionService.navigate(sessionData.session_id, {
           direction,
           answers: answerArray
         })
 
         if (result.is_completed) {
-          setIsCompleted(true)
+          // Navigate back to document sessions list
+          navigate('/document')
         } else {
           // Reload questions for new group
           await loadSessionQuestions(sessionData.session_id, 1)
+          // Reset hasChanges for new group
+          setHasChanges(false)
         }
       }
     } catch (err: any) {
@@ -498,12 +517,13 @@ const DocumentSessions: React.FC = () => {
       case 'person':
         const personValues = personAnswers[question.id] || ['']
         const suggestions = personSuggestions[question.id] || []
+        const conjunctions = personConjunctions[question.id] || []
 
         return (
           <div className="person-field-container">
             {personValues.map((personValue, index) => (
               <div key={index} className="person-field-row">
-                <div className="person-input-wrapper" style={{ maxWidth: 'calc(100% - 60px)' }}>
+                <div className="person-input-wrapper" style={{ maxWidth: 'calc(100% - 120px)', flex: 1 }}>
                   <input
                     type="text"
                     className="question-input"
@@ -521,6 +541,18 @@ const DocumentSessions: React.FC = () => {
                     ))}
                   </datalist>
                 </div>
+
+                {/* Show trailing conjunction for non-last items */}
+                {index < personValues.length - 1 && conjunctions[index] && (
+                  <span style={{ 
+                    marginLeft: '0.5rem', 
+                    fontWeight: 500, 
+                    color: '#6b7280',
+                    minWidth: '2.5rem'
+                  }}>
+                    {conjunctions[index]}
+                  </span>
+                )}
 
                 {index === personValues.length - 1 && (
                   <>
@@ -618,8 +650,8 @@ const DocumentSessions: React.FC = () => {
         <div className="document-sessions-wrapper">
           <div className="document-sessions-header">
             <div>
-              <h1 className="document-sessions-title">Documents</h1>
-              <p className="document-sessions-subtitle">Start a new document or continue an existing one</p>
+              <h1 className="document-sessions-title">Input Form</h1>
+              <p className="document-sessions-subtitle">Start a new form or continue an existing one</p>
             </div>
             <button
               onClick={() => navigate('/document/new')}
@@ -648,7 +680,7 @@ const DocumentSessions: React.FC = () => {
           <div className="session-list" style={{ background: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', padding: '1rem' }}>
               {sessions.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#6b7280' }}>
-                  No documents yet. Start a new one to get started.
+                  No forms yet. Start a new one to get started.
                 </p>
               ) : (
                 sessions.map(session => (
@@ -675,8 +707,9 @@ const DocumentSessions: React.FC = () => {
     )
   }
 
-  // Show completion screen
-  if (isCompleted && sessionData) {
+  // Show completion screen only if we just completed (no questions loaded)
+  // If questions are loaded, allow editing even for completed sessions
+  if (isCompleted && sessionData && sessionData.questions.length === 0) {
     return (
       <div className="document-sessions-container">
         <div className="document-sessions-content">
@@ -690,7 +723,7 @@ const DocumentSessions: React.FC = () => {
               onClick={() => navigate('/document')}
               className="btn btn-primary"
             >
-              Back to Documents
+              Back to Input Form
             </button>
           </div>
         </div>
@@ -758,9 +791,9 @@ const DocumentSessions: React.FC = () => {
                     disabled={submitting}
                     className="btn btn-primary"
                   >
-                    {submitting ? 'Saving...' : (
+                    {submitting ? (hasChanges ? 'Updating...' : 'Saving...') : (
                       sessionData.is_last_group && currentPage >= sessionData.total_pages
-                        ? 'Exit'
+                        ? (hasChanges ? 'Update' : 'Exit')
                         : 'Next →'
                     )}
                   </button>

@@ -116,9 +116,72 @@ class DocumentService:
             ).first()
             
             if question:
-                answer_map[question.identifier] = answer.answer_value
+                # Format person answers with conjunctions
+                formatted_value = DocumentService._format_answer_value(
+                    answer.answer_value, 
+                    question.question_type
+                )
+                answer_map[question.identifier] = formatted_value
         
         return answer_map
+    
+    @staticmethod
+    def _format_answer_value(answer_value: str, question_type: str) -> str:
+        """
+        Format an answer value for display in merged documents.
+        
+        For person-type questions, converts JSON array with conjunctions to readable text.
+        E.g., [{"name": "John", "conjunction": "and"}, {"name": "Jane"}] -> "John and Jane"
+        
+        Args:
+            answer_value: Raw answer value from database
+            question_type: Type of the question
+            
+        Returns:
+            Formatted answer string
+        """
+        if question_type != 'person':
+            return answer_value
+        
+        # Try to parse as JSON array of person objects
+        try:
+            import json
+            parsed = json.loads(answer_value)
+            
+            if isinstance(parsed, list) and len(parsed) > 0:
+                # Check if it's the new format with objects containing name and conjunction
+                if isinstance(parsed[0], dict) and 'name' in parsed[0]:
+                    parts = []
+                    for i, person in enumerate(parsed):
+                        name = person.get('name', '')
+                        if name:
+                            parts.append(name)
+                            # Add conjunction after this person if it exists and there's a next person
+                            if i < len(parsed) - 1:
+                                conjunction = person.get('conjunction', '')
+                                if conjunction:
+                                    parts.append(conjunction)
+                    return ' '.join(parts)
+                elif isinstance(parsed[0], str):
+                    # Old format - just an array of strings
+                    return ', '.join(parsed)
+            
+            return answer_value
+        except (json.JSONDecodeError, TypeError):
+            # Not JSON, return as-is
+            return answer_value
+    
+    @staticmethod
+    def _is_value_empty(value: str) -> bool:
+        """Check if a value should be considered empty."""
+        if not value:
+            return True
+        if not value.strip():
+            return True
+        if value.startswith('[') and value.endswith(']'):
+            # Looks like "[identifier: NOT ANSWERED]"
+            return True
+        return False
     
     @staticmethod
     def _merge_template(template_content: str, answer_map: dict) -> str:
@@ -126,6 +189,11 @@ class DocumentService:
         Merge template content with answer values.
         
         Replaces all occurrences of <<identifier>> with corresponding answer values.
+        
+        Supports conditional syntax:
+        - [[ ... ]] - If all identifiers inside are empty, remove the entire section
+        - {{ IF <<identifier>> }} ... {{ END }} - Include content if identifier is NOT empty
+        - {{ IF NOT <<identifier>> }} ... {{ END }} - Include content if identifier IS empty
         
         Args:
             template_content: Template markdown content
@@ -136,15 +204,137 @@ class DocumentService:
         """
         merged_content = template_content
         
-        # Find all identifiers in template (e.g., <<identifier>>)
+        # First, process {{ IF <<identifier>> = "value" }} ... {{ END }} blocks (equality check)
+        # Include content only if the identifier equals the specified value
+        if_equals_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*=\s*"([^"]*)"\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        
+        def process_if_equals_block(match):
+            identifier = match.group(1)
+            expected_value = match.group(2)
+            section_content = match.group(3)
+            actual_value = answer_map.get(identifier, '')
+            
+            if actual_value == expected_value:
+                # Values match - include the content
+                return section_content
+            else:
+                # Values don't match - remove the section
+                return ''
+        
+        merged_content = re.sub(if_equals_pattern, process_if_equals_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Process {{ IF <<identifier>> != "value" }} ... {{ END }} blocks (inequality check)
+        # Include content only if the identifier does NOT equal the specified value
+        if_not_equals_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*!=\s*"([^"]*)"\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        
+        def process_if_not_equals_block(match):
+            identifier = match.group(1)
+            expected_value = match.group(2)
+            section_content = match.group(3)
+            actual_value = answer_map.get(identifier, '')
+            
+            if actual_value != expected_value:
+                # Values don't match - include the content
+                return section_content
+            else:
+                # Values match - remove the section
+                return ''
+        
+        merged_content = re.sub(if_not_equals_pattern, process_if_not_equals_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Process {{ IF <<identifier>> }} ... {{ END }} blocks
+        # Include content only if the identifier is NOT empty
+        if_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        
+        def process_if_block(match):
+            identifier = match.group(1)
+            section_content = match.group(2)
+            value = answer_map.get(identifier, '')
+            
+            if not DocumentService._is_value_empty(value):
+                # Identifier has a value - include the content
+                return section_content
+            else:
+                # Identifier is empty - remove the section
+                return ''
+        
+        merged_content = re.sub(if_pattern, process_if_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Process {{ IF NOT <<identifier>> }} ... {{ END }} blocks
+        # Include content only if the identifier IS empty
+        if_not_pattern = r'\{\{\s*IF\s+NOT\s+<<([^>]+)>>\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        
+        def process_if_not_block(match):
+            identifier = match.group(1)
+            section_content = match.group(2)
+            value = answer_map.get(identifier, '')
+            
+            if DocumentService._is_value_empty(value):
+                # Identifier is empty - include the content
+                return section_content
+            else:
+                # Identifier has a value - remove the section
+                return ''
+        
+        merged_content = re.sub(if_not_pattern, process_if_not_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Process conditional sections [[ ... ]]
+        # If all identifiers inside are empty, remove the entire section
+        conditional_pattern = r'\[\[(.*?)\]\]'
+        
+        def process_conditional_section(match):
+            section_content = match.group(1)
+            
+            # Find all identifiers in this section
+            identifier_pattern = r'<<([^>]+)>>'
+            identifiers_in_section = re.findall(identifier_pattern, section_content)
+            
+            if not identifiers_in_section:
+                # No identifiers in section, keep the content (without brackets)
+                return section_content
+            
+            # Check if ALL identifiers in this section are empty
+            all_empty = True
+            for identifier in identifiers_in_section:
+                value = answer_map.get(identifier, '')
+                if not DocumentService._is_value_empty(value):
+                    all_empty = False
+                    break
+            
+            if all_empty:
+                # All identifiers are empty - remove the entire section
+                return ''
+            else:
+                # At least one identifier has a value - keep the section (without brackets)
+                return section_content
+        
+        merged_content = re.sub(conditional_pattern, process_conditional_section, merged_content, flags=re.DOTALL)
+        
+        # Then, replace all identifiers with their values
         pattern = r'<<([^>]+)>>'
         
         def replace_identifier(match):
             identifier = match.group(1)
-            # Return answer value if available, otherwise keep placeholder
-            return answer_map.get(identifier, f"[{identifier}: NOT ANSWERED]")
+            value = answer_map.get(identifier, '')
+            # Return answer value if available and not empty, otherwise return empty string
+            if not DocumentService._is_value_empty(value):
+                return value
+            return ''
         
         merged_content = re.sub(pattern, replace_identifier, merged_content)
+        
+        # Finally, replace ## with auto-incrementing counter
+        counter = [1]  # Use list to allow modification in nested function
+        
+        def replace_counter(match):
+            current = counter[0]
+            counter[0] += 1
+            return str(current)
+        
+        merged_content = re.sub(r'##', replace_counter, merged_content)
+        
+        # Clean up any double spaces or extra whitespace left behind
+        merged_content = re.sub(r'  +', ' ', merged_content)
         
         return merged_content
     
@@ -347,10 +537,14 @@ class DocumentService:
             SessionAnswer.session_id == session_id
         ).all()
         
-        # Build a mapping of identifier -> answer value
+        # Build a mapping of identifier -> answer value (with formatting for person types)
         answer_map = {}
         for answer, question in answers_query:
-            answer_map[question.identifier] = answer.answer_value
+            formatted_value = DocumentService._format_answer_value(
+                answer.answer_value,
+                question.question_type
+            )
+            answer_map[question.identifier] = formatted_value
         
         # Get template markdown content
         content = template.markdown_content or ""

@@ -46,6 +46,7 @@ export interface QuestionCreate {
 export interface QuestionUpdate {
   question_text?: string
   question_type?: QuestionType
+  identifier?: string
   display_order?: number
   is_required?: boolean
   help_text?: string

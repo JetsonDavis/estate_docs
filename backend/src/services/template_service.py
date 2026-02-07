@@ -184,7 +184,10 @@ class TemplateService:
             Dictionary with file info and markdown content
         """
         # Determine file type
+        import logging
+        logging.info(f"Processing uploaded file: {file.filename}")
         file_type = DocumentProcessor.get_file_type(file.filename)
+        logging.info(f"Detected file type: {file_type}")
         if not file_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -193,6 +196,7 @@ class TemplateService:
 
         # Read file content
         content = await file.read()
+        logging.info(f"Read {len(content)} bytes from file")
 
         # Save file to temp storage - resolve path relative to estate_docs root
         from pathlib import Path
@@ -203,17 +207,21 @@ class TemplateService:
         file_path = DocumentProcessor.save_uploaded_file(content, file.filename, str(upload_dir))
 
         # Convert to markdown based on file type
+        logging.info(f"Saved file to: {file_path}")
         try:
             if file_type == 'word':
                 markdown_content = DocumentProcessor.word_to_markdown(file_path)
             elif file_type == 'pdf':
+                logging.info(f"Converting PDF to markdown: {file_path}")
                 markdown_content = DocumentProcessor.pdf_to_markdown(file_path)
+                logging.info(f"PDF conversion result length: {len(markdown_content) if markdown_content else 0}")
             elif file_type == 'text':
                 markdown_content = DocumentProcessor.text_to_markdown(file_path)
             elif file_type == 'image':
-                # For images, we would call AWS Textract here
-                # For now, return placeholder
-                markdown_content = "# OCR Processing Required\n\nPlease process this image with AWS Textract."
+                # Use OpenAI Vision API for OCR
+                markdown_content = DocumentProcessor.ocr_image_with_openai(file_path)
+                if not markdown_content:
+                    markdown_content = "# OCR Processing Failed\n\nCould not extract text from this image. Please check your OpenAI API key configuration."
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

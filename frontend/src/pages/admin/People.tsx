@@ -81,7 +81,16 @@ const People: React.FC = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString()
+    // Parse date parts directly to avoid timezone issues
+    // Date string is in YYYY-MM-DD format
+    const parts = dateString.split('-')
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10)
+      const month = parseInt(parts[1], 10)
+      const day = parseInt(parts[2], 10)
+      return `${month}/${day}/${year}`
+    }
+    return dateString
   }
 
   const totalPages = Math.ceil(total / pageSize)

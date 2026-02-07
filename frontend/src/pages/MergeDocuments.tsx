@@ -60,7 +60,8 @@ const MergeDocuments: React.FC = () => {
     try {
       setLoadingIdentifiers(true)
       const identifiers = await sessionService.getSessionIdentifiers(sessionId)
-      setSessionIdentifiers(identifiers)
+      // Sort alphabetically
+      setSessionIdentifiers([...identifiers].sort((a, b) => a.localeCompare(b)))
     } catch (err: any) {
       console.error('Failed to load session identifiers:', err)
       setSessionIdentifiers([])
@@ -80,7 +81,8 @@ const MergeDocuments: React.FC = () => {
           const dotIndex = trimmed.indexOf('.')
           return dotIndex !== -1 ? trimmed.substring(0, dotIndex) : trimmed
         })
-        setTemplateIdentifiers(identifiers)
+        // Sort alphabetically
+        setTemplateIdentifiers([...identifiers].sort((a, b) => a.localeCompare(b)))
       } else {
         setTemplateIdentifiers([])
       }
@@ -189,7 +191,7 @@ const MergeDocuments: React.FC = () => {
             <div className="list-box-container">
               <div className="list-box">
                 <div className="list-box-header">
-                  <h2 className="list-box-title">Document Sessions</h2>
+                  <h2 className="list-box-title">Input Form</h2>
                   <span className="list-box-count">{sessions.length}</span>
                 </div>
                 <div className="list-box-content">
@@ -290,7 +292,7 @@ const MergeDocuments: React.FC = () => {
                 ) : (
                   <div className="identifiers-columns">
                     <div className="identifiers-column">
-                      <h3 className="column-title">Document Session Identifiers</h3>
+                      <h3 className="column-title">Input Form Identifiers</h3>
                       {sessionIdentifiers.length === 0 ? (
                         <div className="empty-list">No session selected or no identifiers found</div>
                       ) : (

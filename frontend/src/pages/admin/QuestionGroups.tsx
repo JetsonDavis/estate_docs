@@ -690,6 +690,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         await questionGroupService.updateQuestion(question.dbId, {
           question_text: question.question_text,
           question_type: question.question_type,
+          identifier: question.identifier,
           is_required: question.is_required,
           display_order: questionIndex + 1,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,

@@ -159,11 +159,7 @@ class SessionService:
                 detail="Session not found"
             )
         
-        if session.is_completed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session is already completed"
-            )
+        # Allow saving answers on completed sessions for editing
         
         # Get current group
         current_group = db.query(QuestionGroup).filter(
@@ -337,11 +333,7 @@ class SessionService:
                 detail="Session not found"
             )
         
-        if session.is_completed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session is already completed"
-            )
+        # Allow viewing/editing completed sessions - don't block access
         
         # Get flow and its groups
         flow = None
@@ -634,11 +626,7 @@ class SessionService:
                 detail="Session not found"
             )
         
-        if session.is_completed and direction == 'forward':
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session is already completed"
-            )
+        # Allow navigation and saving on completed sessions for editing
         
         # Save answers if provided
         if answers:

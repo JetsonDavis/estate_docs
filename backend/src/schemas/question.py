@@ -59,6 +59,7 @@ class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
     question_text: Optional[str] = Field(None, min_length=1, max_length=1000)
     question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
+    identifier: Optional[str] = Field(None, min_length=1, max_length=100)
     display_order: Optional[int] = Field(None, ge=0)
     is_required: Optional[bool] = None
     help_text: Optional[str] = Field(None, max_length=500)
