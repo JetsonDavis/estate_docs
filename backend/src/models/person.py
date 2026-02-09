@@ -31,6 +31,7 @@ class Person(Base):
     
     # Trustor-related fields
     trustor_is_living = Column(Integer, default=1, nullable=True)  # 1 = living, 0 = deceased
+    date_of_death = Column(Date, nullable=True)
     trustor_death_certificate_received = Column(Integer, default=0, nullable=True)
     trustor_of_sound_mind = Column(Integer, default=1, nullable=True)
     trustor_has_relinquished = Column(Integer, default=0, nullable=True)

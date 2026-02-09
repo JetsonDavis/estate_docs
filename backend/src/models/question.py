@@ -65,6 +65,7 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
     question_text = Column(Text, nullable=False)
     question_type = Column(String(50), nullable=False)  # Validated by Pydantic schema
     identifier = Column(String(100), unique=True, nullable=False, index=True)
+    repeatable = Column(Boolean, default=False, nullable=False)
     display_order = Column(Integer, default=0, nullable=False)
     is_required = Column(Boolean, default=True, nullable=False)
     help_text = Column(Text, nullable=True)
@@ -102,6 +103,7 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
             "question_text": self.question_text,
             "question_type": qt,
             "identifier": self.identifier,
+            "repeatable": self.repeatable,
             "display_order": self.display_order,
             "is_required": self.is_required,
             "help_text": self.help_text,

@@ -25,6 +25,7 @@ export interface Person {
   mailing_address: Address | null
   physical_address: Address | null
   trustor_is_living: number | null
+  date_of_death: string | null
   trustor_death_certificate_received: number | null
   trustor_of_sound_mind: number | null
   trustor_has_relinquished: number | null
@@ -51,6 +52,7 @@ export interface PersonCreate {
   mailing_address?: Address
   physical_address?: Address
   trustor_is_living?: number
+  date_of_death?: string
   trustor_death_certificate_received?: number
   trustor_of_sound_mind?: number
   trustor_has_relinquished?: number
@@ -70,6 +72,7 @@ export interface PersonUpdate {
   physical_address?: Address
   is_active?: boolean
   trustor_is_living?: number
+  date_of_death?: string
   trustor_death_certificate_received?: number
   trustor_of_sound_mind?: number
   trustor_has_relinquished?: number

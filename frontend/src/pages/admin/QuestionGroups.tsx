@@ -359,6 +359,7 @@ interface QuestionFormData {
   question_text: string
   question_type: QuestionType
   identifier: string
+  repeatable: boolean
   is_required: boolean
   options: QuestionOption[]
   person_display_mode?: string
@@ -424,6 +425,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 question_text: q.question_text,
                 question_type: q.question_type,
                 identifier: q.identifier,
+                repeatable: q.repeatable || false,
                 is_required: q.is_required,
                 options: q.options || [],
                 person_display_mode: q.person_display_mode || undefined,
@@ -599,6 +601,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       question_text: '',
       question_type: 'free_text',
       identifier: '',
+      repeatable: false,
       is_required: false,
       options: []
     }
@@ -735,6 +738,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           question_text: question.question_text,
           question_type: question.question_type,
           identifier: question.identifier,
+          repeatable: question.repeatable,
           is_required: question.is_required,
           display_order: questionIndex + 1,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
@@ -748,6 +752,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           question_text: question.question_text,
           question_type: question.question_type,
           identifier: question.identifier,
+          repeatable: question.repeatable,
           is_required: question.is_required,
           display_order: questionIndex + 1,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
@@ -884,6 +889,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       question_text: '',
       question_type: 'free_text',
       identifier: '',
+      repeatable: false,
       is_required: false,
       options: []
     }
@@ -1009,6 +1015,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       question_text: '',
       question_type: 'free_text',
       identifier: '',
+      repeatable: false,
       is_required: false,
       options: []
     }
@@ -1516,7 +1523,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               {/* Identifier */}
               <div className="form-group">
-                <label className="form-label">Identifier *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={nestedQuestion.repeatable}
+                      onChange={(e) => updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)}
+                    />
+                    Repeatable
+                  </label>
+                </div>
                 <input
                   type="text"
                   value={nestedQuestion.identifier}
@@ -2001,6 +2018,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         question_text: question.question_text,
         question_type: question.question_type,
         identifier: question.identifier,
+        repeatable: question.repeatable,
         is_required: question.is_required,
         display_order: index + 1,
         options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
@@ -2121,7 +2139,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 display: 'flex',
                 justifyContent: 'center',
                 marginBottom: '0.5rem',
-                marginTop: qIndex === 0 ? '0' : '0.5rem'
+                marginTop: '12px'
               }}>
                 <button
                   type="button"
@@ -2175,7 +2193,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               <div className="question-builder-content">
                 <div className="form-group">
-                  <label className="form-label">Identifier *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
+                    <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                      <input
+                        type="checkbox"
+                        checked={question.repeatable}
+                        onChange={(e) => updateQuestion(question.id, 'repeatable', e.target.checked)}
+                      />
+                      Repeatable
+                    </label>
+                  </div>
                   <input
                     type="text"
                     value={question.identifier}
@@ -2407,7 +2435,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
               {/* Action buttons after each question */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', marginLeft: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', marginLeft: '-1px', marginBottom: '12px' }}>
                 <button
                   type="button"
                   onClick={() => {

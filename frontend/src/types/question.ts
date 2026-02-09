@@ -11,6 +11,7 @@ export interface Question {
   question_text: string
   question_type: QuestionType
   identifier: string
+  repeatable: boolean
   display_order: number
   is_required: boolean
   help_text: string | null
@@ -31,6 +32,7 @@ export interface QuestionCreate {
   question_text: string
   question_type: QuestionType
   identifier: string
+  repeatable?: boolean
   display_order?: number
   is_required?: boolean
   help_text?: string
@@ -47,6 +49,7 @@ export interface QuestionUpdate {
   question_text?: string
   question_type?: QuestionType
   identifier?: string
+  repeatable?: boolean
   display_order?: number
   is_required?: boolean
   help_text?: string

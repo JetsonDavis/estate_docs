@@ -79,6 +79,7 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
     mailing_address: {},
     physical_address: {},
     trustor_is_living: 1,
+    date_of_death: '',
     trustor_death_certificate_received: 0,
     trustor_of_sound_mind: 1,
     trustor_has_relinquished: 0,
@@ -116,6 +117,7 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
         physical_address: editingPerson.physical_address || {},
         is_active: editingPerson.is_active,
         trustor_is_living: editingPerson.trustor_is_living ?? 1,
+        date_of_death: formatDateForInput(editingPerson.date_of_death),
         trustor_death_certificate_received: editingPerson.trustor_death_certificate_received ?? 0,
         trustor_of_sound_mind: editingPerson.trustor_of_sound_mind ?? 1,
         trustor_has_relinquished: editingPerson.trustor_has_relinquished ?? 0,
@@ -134,6 +136,7 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
         mailing_address: {},
         physical_address: {},
         trustor_is_living: 1,
+        date_of_death: '',
         trustor_death_certificate_received: 0,
         trustor_of_sound_mind: 1,
         trustor_has_relinquished: 0,
@@ -447,6 +450,18 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
                 <option value={0}>No (Deceased)</option>
               </select>
             </div>
+
+            {formData.trustor_is_living === 0 && (
+              <div className="form-group">
+                <label className="form-label">Date of Death</label>
+                <input
+                  type="date"
+                  value={formData.date_of_death || ''}
+                  onChange={(e) => setFormData({ ...formData, date_of_death: e.target.value })}
+                  className="form-input"
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Death Certificate Received</label>
