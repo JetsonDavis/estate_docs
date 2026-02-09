@@ -488,9 +488,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             const orphanedQuestions = loadedQuestions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
             console.log('Orphaned questions (in DB but not in logic):', orphanedQuestions.map(q => ({ dbId: q.dbId, identifier: q.identifier })))
             
-            // Add orphaned questions back to the logic at the end
+            // Only add orphaned questions if they are truly missing from the logic
+            // Don't auto-save the repaired logic - let the user decide
             if (orphanedQuestions.length > 0) {
-              console.log('REPAIRING: Adding orphaned questions back to logic:', orphanedQuestions.map(q => q.identifier))
+              console.warn('WARNING: Found orphaned questions in DB but not in logic:', orphanedQuestions.map(q => q.identifier))
+              console.warn('These questions exist in the database but are not in the question_logic. They will be added at the root level for display only.')
               for (const orphan of orphanedQuestions) {
                 cleanedLogic.push({
                   id: `restored_${orphan.dbId}_${Date.now()}`,
@@ -499,20 +501,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   depth: 0
                 })
               }
-              console.log('Repaired question_logic:', JSON.stringify(cleanedLogic, null, 2))
+              console.log('Repaired question_logic (for display only):', JSON.stringify(cleanedLogic, null, 2))
             }
             
             setQuestionLogic(cleanedLogic)
 
-            // Save the cleaned/repaired logic back to the database if it changed
-            if (JSON.stringify(cleanedLogic) !== JSON.stringify(groupData.question_logic)) {
-              console.log('SAVING repaired question_logic to database...')
-              questionGroupService.updateQuestionGroup(groupId, { question_logic: cleanedLogic })
-                .then(() => console.log('Repaired question_logic saved successfully'))
-                .catch(err => console.error('Failed to save repaired question_logic:', err))
-            } else {
-              console.log('question_logic unchanged, no save needed')
-            }
+            // DON'T auto-save repaired logic - this was causing issues where
+            // nested questions were being moved to root level on page reload
+            // The user should manually fix any orphaned questions
+            console.log('question_logic loaded (not auto-saving repairs)')
           }
         } catch (error) {
           console.error('Failed to load group data:', error)
@@ -1895,7 +1892,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 {isLastQuestionInGroup && (
                   <button
                     type="button"
-                    onClick={() => addQuestionToLogic(itemIndex, parentPath)}
+                    onClick={() => {
+                      console.log('Add Follow-on Question clicked:', { itemIndex, parentPath, nestedItemsLength: nestedItems.length })
+                      addQuestionToLogic(itemIndex, parentPath)
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',

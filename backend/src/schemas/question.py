@@ -13,7 +13,7 @@ class QuestionBase(BaseModel):
     """Base question schema."""
     question_text: str = Field(..., min_length=1, max_length=1000)
     question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
-    identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9_]+$")
+    identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_.\\-]+$")
     repeatable: bool = Field(default=False)
     display_order: int = Field(default=0, ge=0)
     is_required: bool = Field(default=True)
@@ -25,6 +25,12 @@ class QuestionBase(BaseModel):
     person_display_mode: Optional[str] = Field(None, pattern="^(autocomplete|dropdown)$")
     include_time: Optional[bool] = Field(None)
     validation_rules: Optional[Dict[str, Any]] = None
+    
+    @field_validator('identifier')
+    @classmethod
+    def lowercase_identifier(cls, v: str) -> str:
+        """Convert identifier to lowercase before storage."""
+        return v.lower() if v else v
 
 
 class QuestionCreate(QuestionBase):
@@ -104,13 +110,18 @@ class QuestionGroupBase(BaseModel):
     """Base question group schema."""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9_]+$")
+    identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_.\\-]+$")
     display_order: int = Field(default=0, ge=0)
+    
+    @field_validator('identifier')
+    @classmethod
+    def lowercase_identifier(cls, v: str) -> str:
+        """Convert identifier to lowercase before storage."""
+        return v.lower() if v else v
 
 
 class QuestionGroupCreate(QuestionGroupBase):
     """Schema for creating a question group."""
-    pass
 
 
 class QuestionGroupUpdate(BaseModel):
