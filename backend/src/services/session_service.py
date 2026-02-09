@@ -238,12 +238,21 @@ class SessionService:
                     cond = item.get('conditional', {})
                     if_identifier = cond.get('ifIdentifier')
                     expected_value = cond.get('value')
+                    operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
                     next_group_id = cond.get('nextGroupId')
                     
                     # Find question by identifier to get its ID
                     for q in current_group.questions:
                         if q.identifier == if_identifier:
-                            if answer_by_question_id.get(q.id) == expected_value:
+                            actual_value = answer_by_question_id.get(q.id)
+                            
+                            # Evaluate based on operator
+                            if operator == 'not_equals':
+                                condition_met = actual_value != expected_value
+                            else:  # 'equals' or default
+                                condition_met = actual_value == expected_value
+                            
+                            if condition_met:
                                 if next_group_id:
                                     return next_group_id
                                 break
@@ -564,13 +573,23 @@ class SessionService:
                     cond = item['conditional']
                     identifier = cond.get('ifIdentifier')
                     expected_value = cond.get('value')
+                    operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
                     
-                    logger.info(f"{indent}  Conditional: if {identifier} == '{expected_value}'")
+                    operator_display = '==' if operator == 'equals' else '!='
+                    logger.info(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
                     logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
                     
                     # Check if condition is met
                     if identifier and identifier in answer_by_identifier:
-                        if answer_by_identifier[identifier] == expected_value:
+                        actual_value = answer_by_identifier[identifier]
+                        
+                        # Evaluate based on operator
+                        if operator == 'not_equals':
+                            condition_met = actual_value != expected_value
+                        else:  # 'equals' or default
+                            condition_met = actual_value == expected_value
+                        
+                        if condition_met:
                             logger.info(f"{indent}  Condition MET - processing nested items")
                             # Condition met - process nested items
                             nested_items = cond.get('nestedItems', [])

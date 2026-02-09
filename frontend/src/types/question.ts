@@ -63,6 +63,8 @@ export interface QuestionUpdate {
   is_active?: boolean
 }
 
+export type ConditionalOperator = 'equals' | 'not_equals'
+
 export interface QuestionLogicItem {
   id: string
   type: 'question' | 'conditional'
@@ -70,6 +72,7 @@ export interface QuestionLogicItem {
   stopFlow?: boolean
   conditional?: {
     ifIdentifier: string
+    operator?: ConditionalOperator  // defaults to 'equals' for backwards compatibility
     value: string
     nestedItems: QuestionLogicItem[]
     endFlow?: boolean

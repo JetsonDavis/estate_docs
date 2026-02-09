@@ -1317,7 +1317,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  const updateConditionalValue = (itemId: string, field: 'ifIdentifier' | 'value', value: string) => {
+  const updateConditionalValue = (itemId: string, field: 'ifIdentifier' | 'value' | 'operator', value: string) => {
     const updateItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
       return items.map(item => {
         if (item.id === itemId && item.conditional) {
@@ -2090,10 +2090,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 />
               </div>
 
-              {/* Equals value */}
+              {/* Operator dropdown */}
               <div>
                 <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                  Equals value
+                  Operator
+                </label>
+                <select
+                  value={item.conditional.operator || 'equals'}
+                  onChange={(e) => updateConditionalValue(item.id, 'operator', e.target.value)}
+                  className="form-select"
+                  style={{ fontSize: '0.8rem' }}
+                >
+                  <option value="equals">equals</option>
+                  <option value="not_equals">does not equal</option>
+                </select>
+              </div>
+
+              {/* Value */}
+              <div>
+                <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
+                  Value
                 </label>
                 {(() => {
                   const isChoiceType = prevNestedQuestion && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(prevNestedQuestion.question_type)
@@ -2719,10 +2735,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           />
                         </div>
 
-                        {/* Equals value - based on question type */}
+                        {/* Operator dropdown */}
                         <div>
                           <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                            Equals value
+                            Operator
+                          </label>
+                          <select
+                            value={logicItem.conditional?.operator || 'equals'}
+                            onChange={(e) => updateConditionalValue(logicItem.id, 'operator', e.target.value)}
+                            className="form-select"
+                            style={{ fontSize: '0.875rem' }}
+                          >
+                            <option value="equals">equals</option>
+                            <option value="not_equals">does not equal</option>
+                          </select>
+                        </div>
+
+                        {/* Value - based on question type */}
+                        <div>
+                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
+                            Value
                           </label>
                           {(() => {
                             const prevQuestion = question
