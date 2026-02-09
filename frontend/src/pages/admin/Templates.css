@@ -33,57 +33,11 @@
   flex-wrap: wrap;
 }
 
-.search-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-input {
-  padding: 0.75rem 3rem 0.75rem 1rem;
-  border: 2px solid #d1d5db;
-  border-radius: 0.75rem;
-  font-size: 0.875rem;
-  min-width: 250px;
-  transition: all 0.2s;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
 .error-message {
   color: #dc2626;
   font-size: 0.875rem;
   margin-top: 0.5rem;
   font-weight: 500;
-}
-
-.search-icon-button {
-  position: absolute;
-  right: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6b7280;
-  transition: all 0.2s;
-  border-radius: 0.5rem;
-}
-
-.search-icon-button:hover {
-  color: #2563eb;
-  background-color: #f3f4f6;
-}
-
-.search-icon {
-  width: 1.25rem;
-  height: 1.25rem;
 }
 
 @media (max-width: 640px) {
@@ -361,6 +315,7 @@
   padding: 2rem;
   max-width: 1360px;
   width: 90%;
+  min-height: 700px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
@@ -393,7 +348,8 @@
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
 }
 
 .form-label {
@@ -401,6 +357,7 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: #374151;
+  margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
 
@@ -425,15 +382,15 @@
 }
 
 .form-textarea {
-  min-height: 150px !important;
-  height: 150px !important;
   font-family: 'Courier New', monospace;
+  overflow-y: auto;
+  resize: vertical;
 }
 
 .file-upload {
   border: 2px dashed #d1d5db;
   border-radius: 0.5rem;
-  padding: 2rem;
+  padding: 0.75rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;

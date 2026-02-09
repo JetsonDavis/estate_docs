@@ -43,6 +43,13 @@ class PersonBase(BaseModel):
     occupation: Optional[str] = Field(None, max_length=255)
     mailing_address: Optional[Address] = None
     physical_address: Optional[Address] = None
+    # Trustor-related fields
+    trustor_is_living: Optional[int] = Field(default=1, description="1 = living, 0 = deceased")
+    trustor_death_certificate_received: Optional[int] = Field(default=0)
+    trustor_of_sound_mind: Optional[int] = Field(default=1)
+    trustor_has_relinquished: Optional[int] = Field(default=0)
+    trustor_relinquished_date: Optional[date] = None
+    trustor_reling_doc_received: Optional[int] = Field(default=0)
 
 
 class PersonCreate(PersonBase):
@@ -62,6 +69,13 @@ class PersonUpdate(BaseModel):
     physical_address: Optional[Address] = None
     ssn: Optional[str] = Field(None, max_length=11, description="Social Security Number (will be encrypted)")
     is_active: Optional[bool] = None
+    # Trustor-related fields
+    trustor_is_living: Optional[int] = None
+    trustor_death_certificate_received: Optional[int] = None
+    trustor_of_sound_mind: Optional[int] = None
+    trustor_has_relinquished: Optional[int] = None
+    trustor_relinquished_date: Optional[date] = None
+    trustor_reling_doc_received: Optional[int] = None
 
 
 class Person(PersonBase):

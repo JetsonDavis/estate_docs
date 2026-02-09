@@ -29,6 +29,14 @@ class Person(Base):
     mailing_address = Column(JSON, nullable=True)  # JSON object with address fields
     physical_address = Column(JSON, nullable=True)  # JSON object with address fields
     
+    # Trustor-related fields
+    trustor_is_living = Column(Integer, default=1, nullable=True)  # 1 = living, 0 = deceased
+    trustor_death_certificate_received = Column(Integer, default=0, nullable=True)
+    trustor_of_sound_mind = Column(Integer, default=1, nullable=True)
+    trustor_has_relinquished = Column(Integer, default=0, nullable=True)
+    trustor_relinquished_date = Column(Date, nullable=True)
+    trustor_reling_doc_received = Column(Integer, default=0, nullable=True)
+    
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

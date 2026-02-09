@@ -118,6 +118,45 @@ const MergeDocuments: React.FC = () => {
     return sessionIdentifiers.includes(identifier) && templateIdentifiers.includes(identifier)
   }
 
+  // Sort identifiers so matching ones line up between the two columns
+  // Returns { sessionSorted, templateSorted } where matching identifiers are at the same index
+  const getSortedIdentifiers = () => {
+    // Find identifiers that exist in both lists
+    const inBoth = sessionIdentifiers.filter(id => templateIdentifiers.includes(id)).sort()
+    
+    // Find identifiers only in session (not in template)
+    const onlyInSession = sessionIdentifiers.filter(id => !templateIdentifiers.includes(id)).sort()
+    
+    // Find identifiers only in template (not in session)
+    const onlyInTemplate = templateIdentifiers.filter(id => !sessionIdentifiers.includes(id)).sort()
+    
+    // Build aligned lists:
+    // - First, matching identifiers (same in both)
+    // - Then, non-matching ones with placeholders to align
+    const sessionSorted: (string | null)[] = []
+    const templateSorted: (string | null)[] = []
+    
+    // Add matching identifiers first
+    for (const id of inBoth) {
+      sessionSorted.push(id)
+      templateSorted.push(id)
+    }
+    
+    // Add session-only identifiers with null placeholders in template
+    for (const id of onlyInSession) {
+      sessionSorted.push(id)
+      templateSorted.push(null)
+    }
+    
+    // Add template-only identifiers with null placeholders in session
+    for (const id of onlyInTemplate) {
+      sessionSorted.push(null)
+      templateSorted.push(id)
+    }
+    
+    return { sessionSorted, templateSorted }
+  }
+
   const handleMergeDocuments = async () => {
     if (!selectedSessionId || !selectedTemplateId) {
       alert('Please select both a document session and a template')
@@ -291,40 +330,47 @@ const MergeDocuments: React.FC = () => {
                   <div className="loading-state">Loading identifiers...</div>
                 ) : (
                   <div className="identifiers-columns">
-                    <div className="identifiers-column">
-                      <h3 className="column-title">Input Form Identifiers</h3>
-                      {sessionIdentifiers.length === 0 ? (
-                        <div className="empty-list">No session selected or no identifiers found</div>
-                      ) : (
-                        <ul className="identifier-items">
-                          {sessionIdentifiers.map((identifier) => (
-                            <li
-                              key={identifier}
-                              className={`identifier-item ${!templateIdentifiers.includes(identifier) ? 'missing' : ''}`}
-                            >
-                              {identifier}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="identifiers-column">
-                      <h3 className="column-title">Template Identifiers</h3>
-                      {templateIdentifiers.length === 0 ? (
-                        <div className="empty-list">No template selected or no identifiers found</div>
-                      ) : (
-                        <ul className="identifier-items">
-                          {templateIdentifiers.map((identifier) => (
-                            <li
-                              key={identifier}
-                              className={`identifier-item ${!sessionIdentifiers.includes(identifier) ? 'missing' : ''}`}
-                            >
-                              {identifier}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    {(() => {
+                      const { sessionSorted, templateSorted } = getSortedIdentifiers()
+                      return (
+                        <>
+                          <div className="identifiers-column">
+                            <h3 className="column-title">Input Form Identifiers</h3>
+                            {sessionIdentifiers.length === 0 ? (
+                              <div className="empty-list">No session selected or no identifiers found</div>
+                            ) : (
+                              <ul className="identifier-items">
+                                {sessionSorted.map((identifier, index) => (
+                                  <li
+                                    key={identifier || `placeholder-${index}`}
+                                    className={`identifier-item ${identifier === null ? 'placeholder' : (!templateIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                                  >
+                                    {identifier || '\u00A0'}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                          <div className="identifiers-column">
+                            <h3 className="column-title">Template Identifiers</h3>
+                            {templateIdentifiers.length === 0 ? (
+                              <div className="empty-list">No template selected or no identifiers found</div>
+                            ) : (
+                              <ul className="identifier-items">
+                                {templateSorted.map((identifier, index) => (
+                                  <li
+                                    key={identifier || `placeholder-${index}`}
+                                    className={`identifier-item ${identifier === null ? 'placeholder' : (!sessionIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                                  >
+                                    {identifier || '\u00A0'}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

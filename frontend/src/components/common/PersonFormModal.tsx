@@ -78,6 +78,12 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
     occupation: '',
     mailing_address: {},
     physical_address: {},
+    trustor_is_living: 1,
+    trustor_death_certificate_received: 0,
+    trustor_of_sound_mind: 1,
+    trustor_has_relinquished: 0,
+    trustor_relinquished_date: '',
+    trustor_reling_doc_received: 0,
   })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -109,6 +115,12 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
         mailing_address: editingPerson.mailing_address || {},
         physical_address: editingPerson.physical_address || {},
         is_active: editingPerson.is_active,
+        trustor_is_living: editingPerson.trustor_is_living ?? 1,
+        trustor_death_certificate_received: editingPerson.trustor_death_certificate_received ?? 0,
+        trustor_of_sound_mind: editingPerson.trustor_of_sound_mind ?? 1,
+        trustor_has_relinquished: editingPerson.trustor_has_relinquished ?? 0,
+        trustor_relinquished_date: formatDateForInput(editingPerson.trustor_relinquished_date),
+        trustor_reling_doc_received: editingPerson.trustor_reling_doc_received ?? 0,
       })
     } else {
       setFormData({
@@ -121,6 +133,12 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
         occupation: '',
         mailing_address: {},
         physical_address: {},
+        trustor_is_living: 1,
+        trustor_death_certificate_received: 0,
+        trustor_of_sound_mind: 1,
+        trustor_has_relinquished: 0,
+        trustor_relinquished_date: '',
+        trustor_reling_doc_received: 0,
       })
     }
     setError('')
@@ -412,6 +430,80 @@ const PersonFormModal: React.FC<PersonFormModalProps> = ({
                 placeholder="12345"
                 maxLength={10}
               />
+            </div>
+
+            <div className="form-group form-group-full">
+              <h4 className="address-section-title">Trustor Information</h4>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Trustor Is Living</label>
+              <select
+                value={formData.trustor_is_living ?? 1}
+                onChange={(e) => setFormData({ ...formData, trustor_is_living: parseInt(e.target.value) })}
+                className="form-input"
+              >
+                <option value={1}>Yes</option>
+                <option value={0}>No (Deceased)</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Death Certificate Received</label>
+              <select
+                value={formData.trustor_death_certificate_received ?? 0}
+                onChange={(e) => setFormData({ ...formData, trustor_death_certificate_received: parseInt(e.target.value) })}
+                className="form-input"
+              >
+                <option value={0}>No</option>
+                <option value={1}>Yes</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Of Sound Mind</label>
+              <select
+                value={formData.trustor_of_sound_mind ?? 1}
+                onChange={(e) => setFormData({ ...formData, trustor_of_sound_mind: parseInt(e.target.value) })}
+                className="form-input"
+              >
+                <option value={1}>Yes</option>
+                <option value={0}>No</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Has Relinquished</label>
+              <select
+                value={formData.trustor_has_relinquished ?? 0}
+                onChange={(e) => setFormData({ ...formData, trustor_has_relinquished: parseInt(e.target.value) })}
+                className="form-input"
+              >
+                <option value={0}>No</option>
+                <option value={1}>Yes</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Relinquished Date</label>
+              <input
+                type="date"
+                value={formData.trustor_relinquished_date || ''}
+                onChange={(e) => setFormData({ ...formData, trustor_relinquished_date: e.target.value })}
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Relinquishment Doc Received</label>
+              <select
+                value={formData.trustor_reling_doc_received ?? 0}
+                onChange={(e) => setFormData({ ...formData, trustor_reling_doc_received: parseInt(e.target.value) })}
+                className="form-input"
+              >
+                <option value={0}>No</option>
+                <option value={1}>Yes</option>
+              </select>
             </div>
           </div>
 

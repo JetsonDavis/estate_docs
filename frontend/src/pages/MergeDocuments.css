@@ -252,6 +252,12 @@
   border-color: #fca5a5;
 }
 
+.identifier-item.placeholder {
+  background-color: transparent;
+  border: 1px dashed #e5e7eb;
+  color: transparent;
+}
+
 @media (max-width: 768px) {
   .list-box-container {
     grid-template-columns: 1fr;

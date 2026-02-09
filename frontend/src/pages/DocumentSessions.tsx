@@ -7,7 +7,7 @@ import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
 import './DocumentSessions.css'
 
-const QUESTIONS_PER_PAGE = 5
+const QUESTIONS_PER_PAGE = 10
 
 const DocumentSessions: React.FC = () => {
   const [searchParams] = useSearchParams()
@@ -691,9 +691,41 @@ const DocumentSessions: React.FC = () => {
                   >
                     <div className="session-card-header">
                       <div className="session-name">{session.client_identifier}</div>
-                      <span className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}>
-                        {session.is_completed ? 'Completed' : 'In Progress'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}>
+                          {session.is_completed ? 'Completed' : 'In Progress'}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (window.confirm(`Are you sure you want to delete the form for "${session.client_identifier}"?`)) {
+                              sessionService.deleteSession(session.id)
+                                .then(() => {
+                                  setSessions(prev => prev.filter(s => s.id !== session.id))
+                                })
+                                .catch(err => {
+                                  alert('Failed to delete form: ' + (err.response?.data?.detail || err.message))
+                                })
+                            }
+                          }}
+                          style={{
+                            padding: '0.375rem',
+                            color: '#dc2626',
+                            background: 'white',
+                            border: '1px solid #dc2626',
+                            borderRadius: '0.25rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          title="Delete"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     <div className="session-date">
                       Started: {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
@@ -782,6 +814,22 @@ const DocumentSessions: React.FC = () => {
                       className="btn btn-secondary"
                     >
                       ← Back
+                    </button>
+                  )}
+
+                  {/* Show Update button when there are multiple pages and we're not on the last page */}
+                  {sessionData.total_pages > 1 && currentPage < sessionData.total_pages && hasChanges && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await saveCurrentAnswers()
+                        setHasChanges(false)
+                      }}
+                      disabled={submitting}
+                      className="btn btn-secondary"
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      {submitting ? 'Updating...' : 'Update'}
                     </button>
                   )}
 

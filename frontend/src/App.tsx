@@ -12,6 +12,7 @@ import Users from './pages/admin/Users'
 import People from './pages/admin/People'
 import QuestionGroups from './pages/admin/QuestionGroups'
 import Templates from './pages/admin/Templates'
+import EditTemplate from './pages/admin/EditTemplate'
 import Flows from './pages/admin/Flows'
 import FlowBuilder from './pages/admin/FlowBuilder'
 import DocumentSessions from './pages/DocumentSessions'
@@ -127,6 +128,17 @@ function App() {
                   <div className="min-h-screen bg-gray-50">
                     <Header />
                     <Templates />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/templates/:id/edit"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <EditTemplate />
                   </div>
                 </ProtectedRoute>
               }

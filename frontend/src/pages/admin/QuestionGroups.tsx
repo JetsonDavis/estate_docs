@@ -460,12 +460,56 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               })
             }
 
-            const cleanedLogic = cleanOrphanedItems(groupData.question_logic)
+            let cleanedLogic = cleanOrphanedItems(groupData.question_logic)
+            
+            console.log('Loaded questions from DB:', loadedQuestions.map(q => ({ id: q.id, dbId: q.dbId, identifier: q.identifier })))
+            console.log('Cleaned question_logic:', JSON.stringify(cleanedLogic, null, 2))
+            
+            // Find questions that exist in DB but are missing from question_logic (orphaned questions)
+            const getQuestionIdsFromLogic = (items: QuestionLogicItem[]): Set<number> => {
+              const ids = new Set<number>()
+              for (const item of items) {
+                if (item.type === 'question' && item.questionId) {
+                  ids.add(item.questionId)
+                }
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  const nestedIds = getQuestionIdsFromLogic(item.conditional.nestedItems)
+                  nestedIds.forEach(id => ids.add(id))
+                }
+              }
+              return ids
+            }
+            
+            const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
+            console.log('Question IDs found in logic:', Array.from(questionIdsInLogic))
+            
+            const orphanedQuestions = loadedQuestions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
+            console.log('Orphaned questions (in DB but not in logic):', orphanedQuestions.map(q => ({ dbId: q.dbId, identifier: q.identifier })))
+            
+            // Add orphaned questions back to the logic at the end
+            if (orphanedQuestions.length > 0) {
+              console.log('REPAIRING: Adding orphaned questions back to logic:', orphanedQuestions.map(q => q.identifier))
+              for (const orphan of orphanedQuestions) {
+                cleanedLogic.push({
+                  id: `restored_${orphan.dbId}_${Date.now()}`,
+                  type: 'question',
+                  questionId: orphan.dbId,
+                  depth: 0
+                })
+              }
+              console.log('Repaired question_logic:', JSON.stringify(cleanedLogic, null, 2))
+            }
+            
             setQuestionLogic(cleanedLogic)
 
-            // Save the cleaned logic back to the database if it changed
+            // Save the cleaned/repaired logic back to the database if it changed
             if (JSON.stringify(cleanedLogic) !== JSON.stringify(groupData.question_logic)) {
+              console.log('SAVING repaired question_logic to database...')
               questionGroupService.updateQuestionGroup(groupId, { question_logic: cleanedLogic })
+                .then(() => console.log('Repaired question_logic saved successfully'))
+                .catch(err => console.error('Failed to save repaired question_logic:', err))
+            } else {
+              console.log('question_logic unchanged, no save needed')
             }
           }
         } catch (error) {
@@ -716,11 +760,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           q.id === question.id ? { ...q, dbId: created.id } : q
         ))
 
-        // Also update the questionId in questionLogic if this is a nested question
+        // Also update the questionId in questionLogic
+        console.log(`Updating questionLogic for question ${question.id} with dbId ${created.id}`)
         setQuestionLogic(prev => {
+          console.log('Current questionLogic before update:', JSON.stringify(prev, null, 2))
           const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
             return items.map(item => {
               if (item.type === 'question' && (item as any).localQuestionId === question.id) {
+                console.log(`Found matching logic item, updating questionId from ${item.questionId} to ${created.id}`)
                 return { ...item, questionId: created.id }
               }
               if (item.type === 'conditional' && item.conditional?.nestedItems) {
@@ -736,6 +783,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             })
           }
           const updated = updateLogicItems(prev)
+          console.log('Updated questionLogic:', JSON.stringify(updated, null, 2))
           saveQuestionLogic(updated)
           return updated
         })
@@ -807,6 +855,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const saveQuestionLogic = async (newLogic: QuestionLogicItem[]) => {
     if (!savedGroupId) return
 
+    console.log('saveQuestionLogic called with:', JSON.stringify(newLogic, null, 2))
+
     // Clear existing timeout
     if (questionLogicSaveTimeoutRef.current) {
       clearTimeout(questionLogicSaveTimeoutRef.current)
@@ -815,9 +865,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Debounced save
     questionLogicSaveTimeoutRef.current = setTimeout(async () => {
       try {
+        console.log('Actually saving question_logic to server:', JSON.stringify(newLogic, null, 2))
         await questionGroupService.updateQuestionGroup(savedGroupId, {
           question_logic: newLogic
         })
+        console.log('question_logic saved successfully')
       } catch (err) {
         console.error('Failed to save question logic:', err)
       }
@@ -1129,19 +1181,60 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const removeLogicItem = (itemId: string) => {
     const removeItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-      return items.filter(item => item.id !== itemId).map(item => {
+      const result: QuestionLogicItem[] = []
+      
+      for (const item of items) {
+        if (item.id === itemId) {
+          // If this is a conditional being removed, promote its nested questions to the current level
+          if (item.type === 'conditional' && item.conditional?.nestedItems) {
+            // Add all nested question items (not nested conditionals) to the current level
+            for (const nestedItem of item.conditional.nestedItems) {
+              if (nestedItem.type === 'question') {
+                // Reset depth to current level
+                result.push({ ...nestedItem, depth: 0 })
+              }
+              // Recursively handle nested conditionals - promote their questions too
+              if (nestedItem.type === 'conditional' && nestedItem.conditional?.nestedItems) {
+                const promotedItems = flattenNestedQuestions(nestedItem.conditional.nestedItems)
+                result.push(...promotedItems)
+              }
+            }
+          }
+          // Skip adding the removed item itself
+          continue
+        }
+        
+        // Recursively process nested items in conditionals
         if (item.conditional?.nestedItems) {
-          return {
+          result.push({
             ...item,
             conditional: {
               ...item.conditional,
               nestedItems: removeItem(item.conditional.nestedItems)
             }
-          }
+          })
+        } else {
+          result.push(item)
         }
-        return item
-      })
+      }
+      
+      return result
     }
+    
+    // Helper to flatten all nested questions from a conditional tree
+    const flattenNestedQuestions = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+      const result: QuestionLogicItem[] = []
+      for (const item of items) {
+        if (item.type === 'question') {
+          result.push({ ...item, depth: 0 })
+        }
+        if (item.type === 'conditional' && item.conditional?.nestedItems) {
+          result.push(...flattenNestedQuestions(item.conditional.nestedItems))
+        }
+      }
+      return result
+    }
+    
     const newLogic = removeItem(questionLogic)
     setQuestionLogic(newLogic)
     saveQuestionLogic(newLogic)

@@ -507,8 +507,16 @@ class SessionService:
         Get questions to display based on question_logic.
         Evaluates conditionals and respects stop flags.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"_get_questions_from_logic called for group {group.id} ({group.name})")
+        logger.info(f"question_logic: {group.question_logic}")
+        logger.info(f"existing_answers: {existing_answers}")
+        
         if not group.question_logic:
             # No logic defined - return all questions in order
+            logger.info("No question_logic defined, returning all questions")
             return db.query(Question).filter(
                 Question.question_group_id == group.id,
                 Question.is_active == True
@@ -522,9 +530,16 @@ class SessionService:
             if question:
                 answer_by_identifier[question.identifier] = answer
         
-        def process_logic_items(items: List[Dict]) -> bool:
+        logger.info(f"answer_by_identifier: {answer_by_identifier}")
+        
+        def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
             """Process logic items. Returns False if stop flag encountered."""
-            for item in items:
+            indent = "  " * depth
+            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
+            
+            for idx, item in enumerate(items):
+                logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
+                
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
                     if question_id:
@@ -533,10 +548,16 @@ class SessionService:
                             Question.is_active == True
                         ).first()
                         if question and question not in questions:
+                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id})")
                             questions.append(question)
+                        elif not question:
+                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
+                    else:
+                        logger.warning(f"{indent}  Question item has no questionId")
                     
                     # Check for stop flag
                     if item.get('stopFlow'):
+                        logger.info(f"{indent}  Stop flag encountered")
                         return False
                 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
@@ -544,23 +565,33 @@ class SessionService:
                     identifier = cond.get('ifIdentifier')
                     expected_value = cond.get('value')
                     
+                    logger.info(f"{indent}  Conditional: if {identifier} == '{expected_value}'")
+                    logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
+                    
                     # Check if condition is met
                     if identifier and identifier in answer_by_identifier:
                         if answer_by_identifier[identifier] == expected_value:
+                            logger.info(f"{indent}  Condition MET - processing nested items")
                             # Condition met - process nested items
                             nested_items = cond.get('nestedItems', [])
                             if nested_items:
-                                should_continue = process_logic_items(nested_items)
+                                should_continue = process_logic_items(nested_items, depth + 1)
                                 if not should_continue:
                                     return False
                             
                             # Check for end flow flag
                             if cond.get('endFlow'):
+                                logger.info(f"{indent}  End flow flag encountered")
                                 return False
+                        else:
+                            logger.info(f"{indent}  Condition NOT MET (value mismatch)")
+                    else:
+                        logger.info(f"{indent}  Condition NOT MET (identifier not in answers)")
             
             return True
         
         process_logic_items(group.question_logic)
+        logger.info(f"Final questions to display: {[q.identifier for q in questions]}")
         return questions
     
     @staticmethod

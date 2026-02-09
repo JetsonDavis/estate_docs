@@ -206,7 +206,9 @@ class DocumentService:
         
         # First, process {{ IF <<identifier>> = "value" }} ... {{ END }} blocks (equality check)
         # Include content only if the identifier equals the specified value
-        if_equals_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*=\s*"([^"]*)"\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        # Supports both single and double quotes around the value
+        # Supports identifiers with or without << >> brackets
+        if_equals_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=\s]+)(?:>>)?\s*=\s*["\']([^"\']*)["\']?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
         
         def process_if_equals_block(match):
             identifier = match.group(1)
@@ -214,7 +216,8 @@ class DocumentService:
             section_content = match.group(3)
             actual_value = answer_map.get(identifier, '')
             
-            if actual_value == expected_value:
+            # Case-insensitive comparison
+            if actual_value.lower() == expected_value.lower():
                 # Values match - include the content
                 return section_content
             else:
@@ -225,7 +228,9 @@ class DocumentService:
         
         # Process {{ IF <<identifier>> != "value" }} ... {{ END }} blocks (inequality check)
         # Include content only if the identifier does NOT equal the specified value
-        if_not_equals_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*!=\s*"([^"]*)"\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        # Supports both single and double quotes around the value
+        # Supports identifiers with or without << >> brackets
+        if_not_equals_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=!\s]+)(?:>>)?\s*!=\s*["\']([^"\']*)["\']?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
         
         def process_if_not_equals_block(match):
             identifier = match.group(1)
@@ -233,7 +238,8 @@ class DocumentService:
             section_content = match.group(3)
             actual_value = answer_map.get(identifier, '')
             
-            if actual_value != expected_value:
+            # Case-insensitive comparison
+            if actual_value.lower() != expected_value.lower():
                 # Values don't match - include the content
                 return section_content
             else:
@@ -244,7 +250,8 @@ class DocumentService:
         
         # Process {{ IF <<identifier>> }} ... {{ END }} blocks
         # Include content only if the identifier is NOT empty
-        if_pattern = r'\{\{\s*IF\s+<<([^>]+)>>\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        # Supports identifiers with or without << >> brackets
+        if_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=!\s\}]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
         
         def process_if_block(match):
             identifier = match.group(1)
@@ -262,7 +269,8 @@ class DocumentService:
         
         # Process {{ IF NOT <<identifier>> }} ... {{ END }} blocks
         # Include content only if the identifier IS empty
-        if_not_pattern = r'\{\{\s*IF\s+NOT\s+<<([^>]+)>>\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        # Supports identifiers with or without << >> brackets
+        if_not_pattern = r'\{\{\s*IF\s+NOT\s+(?:<<)?([^>=!\s\}]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
         
         def process_if_not_block(match):
             identifier = match.group(1)
@@ -280,33 +288,48 @@ class DocumentService:
         
         # Process conditional sections [[ ... ]]
         # If all identifiers inside are empty, remove the entire section
+        # After evaluation, the brackets are removed from the output
+        import logging
+        logger = logging.getLogger(__name__)
+        
         conditional_pattern = r'\[\[(.*?)\]\]'
+        
+        # Debug: Check if pattern matches anything
+        matches = re.findall(conditional_pattern, merged_content, flags=re.DOTALL)
+        logger.info(f"Found {len(matches)} conditional sections: {matches}")
         
         def process_conditional_section(match):
             section_content = match.group(1)
+            logger.info(f"Processing conditional section: '{section_content}'")
             
             # Find all identifiers in this section
             identifier_pattern = r'<<([^>]+)>>'
             identifiers_in_section = re.findall(identifier_pattern, section_content)
+            logger.info(f"Identifiers in section: {identifiers_in_section}")
             
             if not identifiers_in_section:
                 # No identifiers in section, keep the content (without brackets)
+                logger.info(f"No identifiers, keeping content: '{section_content}'")
                 return section_content
             
-            # Check if ALL identifiers in this section are empty
-            all_empty = True
+            # Check if ANY identifier in this section is empty/non-existent
+            # If any identifier is empty, remove the entire section
             for identifier in identifiers_in_section:
                 value = answer_map.get(identifier, '')
-                if not DocumentService._is_value_empty(value):
-                    all_empty = False
-                    break
+                logger.info(f"Checking identifier '{identifier}': value='{value}', is_empty={DocumentService._is_value_empty(value)}")
+                if DocumentService._is_value_empty(value):
+                    # At least one identifier is empty - remove the entire section
+                    logger.info(f"Identifier '{identifier}' is empty, removing entire section")
+                    return ''
             
-            if all_empty:
-                # All identifiers are empty - remove the entire section
-                return ''
-            else:
-                # At least one identifier has a value - keep the section (without brackets)
-                return section_content
+            # All identifiers have values - keep the section content (without brackets)
+            # and replace the identifiers with their values
+            result = section_content
+            for identifier in identifiers_in_section:
+                value = answer_map.get(identifier, '')
+                result = result.replace(f'<<{identifier}>>', value)
+            logger.info(f"All identifiers have values, result: '{result}'")
+            return result
         
         merged_content = re.sub(conditional_pattern, process_conditional_section, merged_content, flags=re.DOTALL)
         
@@ -324,6 +347,7 @@ class DocumentService:
         merged_content = re.sub(pattern, replace_identifier, merged_content)
         
         # Finally, replace ## with auto-incrementing counter
+        # Use a simple pattern - ## anywhere in the text
         counter = [1]  # Use list to allow modification in nested function
         
         def replace_counter(match):
@@ -546,13 +570,15 @@ class DocumentService:
             )
             answer_map[question.identifier] = formatted_value
         
-        # Get template markdown content
+        # Get template markdown content and merge using the shared _merge_template function
+        # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
+        merged_content = DocumentService._merge_template(content, answer_map)
         
-        # Find all identifiers in the template
+        # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
         identifier_pattern = r'<<([^>]+)>>'
         
-        def replace_identifier(match):
+        def replace_person_fields(match):
             identifier = match.group(1).strip()
             
             # Check if this is a person field with dot notation (e.g., person.field)
@@ -584,24 +610,14 @@ class DocumentService:
                         if field_value is not None:
                             return str(field_value)
                 
-                # If person or field not found, return placeholder
-                return f"<<{identifier}>>"
+                # If person or field not found, return empty string
+                return ''
             
-            # Regular identifier - get from answer map
-            value = answer_map.get(identifier, '')
-            
-            # Handle JSON arrays (for person type questions with multiple values)
-            try:
-                parsed = json.loads(value)
-                if isinstance(parsed, list):
-                    value = ', '.join(parsed)
-            except (json.JSONDecodeError, TypeError):
-                pass
-            
-            return value if value else f"<<{identifier}>>"
+            # Regular identifier that wasn't replaced - return empty string
+            return ''
         
-        # Replace all identifiers in the content
-        merged_content = re.sub(identifier_pattern, replace_identifier, content)
+        # Replace any remaining person field identifiers
+        merged_content = re.sub(identifier_pattern, replace_person_fields, merged_content)
         
         # Create a Word document
         doc = Document()

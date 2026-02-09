@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template, TemplateCreate, TemplateType } from '../../types/template'
 import './Templates.css'
 
 const Templates: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
 
   useEffect(() => {
     loadTemplates()
@@ -20,15 +19,12 @@ const Templates: React.FC = () => {
 
   useEffect(() => {
     const templateId = searchParams.get('template')
-    if (templateId && templates.length > 0) {
-      const template = templates.find(t => t.id === parseInt(templateId))
-      if (template) {
-        setSelectedTemplate(template)
-        setShowEditModal(true)
-        setSearchParams({})
-      }
+    if (templateId) {
+      // Navigate to edit page instead of opening modal
+      navigate(`/admin/templates/${templateId}/edit`)
+      setSearchParams({})
     }
-  }, [searchParams, templates])
+  }, [searchParams, navigate, setSearchParams])
 
   const loadTemplates = async () => {
     try {
@@ -57,8 +53,7 @@ const Templates: React.FC = () => {
   }
 
   const handleEdit = (template: Template) => {
-    setSelectedTemplate(template)
-    setShowEditModal(true)
+    navigate(`/admin/templates/${template.id}/edit`)
   }
 
   const getTypeBadgeClass = (type: TemplateType): string => {
@@ -83,23 +78,39 @@ const Templates: React.FC = () => {
         <div className="templates-header">
           <h1 className="templates-title">Document Templates</h1>
           <div className="templates-actions">
-            <div className="search-wrapper">
+            <div style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              background: 'white',
+              border: '2px solid #d1d5db',
+              borderRadius: '0.75rem',
+              paddingLeft: '0.75rem',
+              paddingRight: '0.5rem'
+            }}>
+              <svg 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24" 
+                style={{ width: '1.25rem', height: '1.25rem', color: '#9ca3af', flexShrink: 0 }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 placeholder="Search templates..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="search-input"
+                style={{
+                  flex: 1,
+                  padding: '0.75rem 0.5rem',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '0.875rem',
+                  minWidth: '200px',
+                  background: 'transparent'
+                }}
               />
-              <button
-                onClick={() => loadTemplates()}
-                className="search-icon-button"
-                aria-label="Search"
-              >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="search-icon">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </button>
             </div>
             <button
               onClick={() => setShowCreateModal(true)}
@@ -198,20 +209,6 @@ const Templates: React.FC = () => {
         />
       )}
 
-      {showEditModal && selectedTemplate && (
-        <EditTemplateModal
-          template={selectedTemplate}
-          onClose={() => {
-            setShowEditModal(false)
-            setSelectedTemplate(null)
-          }}
-          onSuccess={() => {
-            setShowEditModal(false)
-            setSelectedTemplate(null)
-            loadTemplates()
-          }}
-        />
-      )}
       </div>
     </div>
   )
@@ -439,6 +436,8 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
               value={markdownContent}
               onChange={(e) => setMarkdownContent(e.target.value)}
               className="form-textarea"
+              rows={25}
+              style={{ minHeight: '350px' }}
               placeholder="Enter your template content here...&#10;&#10;Example:&#10;Name: <<client_name>>&#10;Date of Birth: <<dob>>"
             />
           </div>
@@ -449,92 +448,6 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
             </button>
             <button type="submit" disabled={submitting || !isFormValid} className="submit-button">
               {submitting ? 'Creating...' : 'Create Template'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-interface EditTemplateModalProps {
-  template: Template
-  onClose: () => void
-  onSuccess: () => void
-}
-
-const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ template, onClose, onSuccess }) => {
-  const [name, setName] = useState(template.name)
-  const [description, setDescription] = useState(template.description || '')
-  const [markdownContent, setMarkdownContent] = useState(template.markdown_content)
-  const [submitting, setSubmitting] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    try {
-      setSubmitting(true)
-      await templateService.updateTemplate(template.id, {
-        name,
-        description: description || undefined,
-        markdown_content: markdownContent
-      })
-      onSuccess()
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update template')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">Edit Template</h2>
-          <button onClick={onClose} className="modal-close">&times;</button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="form-input"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Description</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="form-input"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">
-              Text (Use {'<<identifier>>'} for placeholders)
-            </label>
-            <textarea
-              value={markdownContent}
-              onChange={(e) => setMarkdownContent(e.target.value)}
-              className="form-textarea"
-              required
-            />
-          </div>
-
-          <div className="modal-actions">
-            <button type="button" onClick={onClose} className="cancel-button">
-              Cancel
-            </button>
-            <button type="submit" disabled={submitting} className="submit-button">
-              {submitting ? 'Updating...' : 'Update Changes'}
             </button>
           </div>
         </form>
