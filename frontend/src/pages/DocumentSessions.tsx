@@ -797,19 +797,31 @@ const DocumentSessions: React.FC = () => {
               </div>
 
               <div className="question-list">
-                {sessionData.questions.map(question => (
-                  <React.Fragment key={question.id}>
-                    <div className="question-item">
-                      <label className="question-label">
-                        {question.question_text}
-                        {question.is_required && <span className="required-indicator">*</span>}
-                      </label>
-                      {question.help_text && (
-                        <p className="question-help">{question.help_text}</p>
-                      )}
-                      {renderQuestion(question)}
-                    </div>
-                    {conditionalLoading && conditionalLoadingQuestionId === question.id && (
+                {(() => {
+                  // Find the index of the question that triggered the conditional loading
+                  const triggerIndex = conditionalLoading && conditionalLoadingQuestionId
+                    ? sessionData.questions.findIndex(q => q.id === conditionalLoadingQuestionId)
+                    : -1
+                  
+                  return sessionData.questions.map((question, qIndex) => {
+                    // Hide questions after the triggering question while loading
+                    if (conditionalLoading && triggerIndex >= 0 && qIndex > triggerIndex) {
+                      return null
+                    }
+                    
+                    return (
+                      <React.Fragment key={question.id}>
+                        <div className="question-item">
+                          <label className="question-label">
+                            {question.question_text}
+                            {question.is_required && <span className="required-indicator">*</span>}
+                          </label>
+                          {question.help_text && (
+                            <p className="question-help">{question.help_text}</p>
+                          )}
+                          {renderQuestion(question)}
+                        </div>
+                        {conditionalLoading && conditionalLoadingQuestionId === question.id && (
                       <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
@@ -843,9 +855,11 @@ const DocumentSessions: React.FC = () => {
                         </svg>
                         <span>Loading next questions...</span>
                       </div>
-                    )}
-                  </React.Fragment>
-                ))}
+                        )}
+                      </React.Fragment>
+                    )
+                  })
+                })()}
               </div>
 
               <div className="action-buttons">
