@@ -2684,10 +2684,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
               {/* Render conditionals that are associated with this question */}
-              {questionLogic.map((logicItem, logicIndex) => {
-                // Render conditionals whose ifIdentifier matches this question's identifier
-                if (logicItem.type === 'conditional' &&
-                    logicItem.conditional?.ifIdentifier === question.identifier) {
+              {(() => {
+                // Filter conditionals for this question and track their index
+                const conditionalsForQuestion = questionLogic
+                  .map((item, idx) => ({ item, idx }))
+                  .filter(({ item }) => 
+                    item.type === 'conditional' && 
+                    item.conditional?.ifIdentifier === question.identifier
+                  )
+                
+                return conditionalsForQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
                   return (
                     <React.Fragment key={logicItem.id}>
                     <div style={{
@@ -2700,8 +2706,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
-                          Conditional ({qIndex + 1}-1)
+                          Conditional ({qIndex + 1}-{condIndex + 1})
                         </div>
+              
                         <button
                           type="button"
                           onClick={() => removeLogicItem(logicItem.id)}
@@ -2847,9 +2854,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
                     </React.Fragment>
                   )
-                }
-                return null
-              })}
+                })
+              })()}
             </div>
           )})}
 

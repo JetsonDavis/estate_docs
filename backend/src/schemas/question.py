@@ -26,11 +26,11 @@ class QuestionBase(BaseModel):
     include_time: Optional[bool] = Field(None)
     validation_rules: Optional[Dict[str, Any]] = None
     
-    @field_validator('identifier')
+    @field_validator('identifier', mode='before')
     @classmethod
-    def lowercase_identifier(cls, v: str) -> str:
-        """Convert identifier to lowercase before storage."""
-        return v.lower() if v else v
+    def normalize_identifier(cls, v: str) -> str:
+        """Strip whitespace and convert identifier to lowercase before validation."""
+        return v.strip().lower() if v else v
 
 
 class QuestionCreate(QuestionBase):
@@ -113,11 +113,11 @@ class QuestionGroupBase(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_.\\-]+$")
     display_order: int = Field(default=0, ge=0)
     
-    @field_validator('identifier')
+    @field_validator('identifier', mode='before')
     @classmethod
-    def lowercase_identifier(cls, v: str) -> str:
-        """Convert identifier to lowercase before storage."""
-        return v.lower() if v else v
+    def normalize_identifier(cls, v: str) -> str:
+        """Strip whitespace and convert identifier to lowercase before validation."""
+        return v.strip().lower() if v else v
 
 
 class QuestionGroupCreate(QuestionGroupBase):
