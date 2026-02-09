@@ -30,6 +30,8 @@ const DocumentSessions: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [isCompleted, setIsCompleted] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [conditionalLoading, setConditionalLoading] = useState(false)
+  const [conditionalLoadingQuestionId, setConditionalLoadingQuestionId] = useState<number | null>(null)
 
   // Modal state for person-type questions
   const [personModalForQuestion, setPersonModalForQuestion] = useState<number | null>(null)
@@ -167,13 +169,15 @@ const DocumentSessions: React.FC = () => {
 
         conditionalRefreshTimeoutRef.current = setTimeout(async () => {
           try {
+            setConditionalLoading(true)
+            setConditionalLoadingQuestionId(questionId)
+            
             // Save the answer to the database
             await sessionService.saveAnswers(sessionData.session_id, {
               answers: [{ question_id: questionId, answer_value: value }]
             })
 
             // Refresh questions to re-evaluate conditionals
-            // Don't show loading state to avoid UI flicker
             const data = await sessionService.getSessionQuestions(
               sessionData.session_id,
               currentPage,
@@ -247,6 +251,9 @@ const DocumentSessions: React.FC = () => {
             })
           } catch (err) {
             console.error('Failed to refresh questions after answer change:', err)
+          } finally {
+            setConditionalLoading(false)
+            setConditionalLoadingQuestionId(null)
           }
         }, 500) // 500ms debounce
       }
@@ -791,16 +798,53 @@ const DocumentSessions: React.FC = () => {
 
               <div className="question-list">
                 {sessionData.questions.map(question => (
-                  <div key={question.id} className="question-item">
-                    <label className="question-label">
-                      {question.question_text}
-                      {question.is_required && <span className="required-indicator">*</span>}
-                    </label>
-                    {question.help_text && (
-                      <p className="question-help">{question.help_text}</p>
+                  <React.Fragment key={question.id}>
+                    <div className="question-item">
+                      <label className="question-label">
+                        {question.question_text}
+                        {question.is_required && <span className="required-indicator">*</span>}
+                      </label>
+                      {question.help_text && (
+                        <p className="question-help">{question.help_text}</p>
+                      )}
+                      {renderQuestion(question)}
+                    </div>
+                    {conditionalLoading && conditionalLoadingQuestionId === question.id && (
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        color: '#6b7280'
+                      }}>
+                        <svg 
+                          style={{ 
+                            width: '1.5rem', 
+                            height: '1.5rem', 
+                            marginRight: '0.5rem',
+                            animation: 'spin 1s linear infinite'
+                          }} 
+                          fill="none" 
+                          viewBox="0 0 24 24"
+                        >
+                          <circle 
+                            style={{ opacity: 0.25 }} 
+                            cx="12" 
+                            cy="12" 
+                            r="10" 
+                            stroke="currentColor" 
+                            strokeWidth="4"
+                          />
+                          <path 
+                            style={{ opacity: 0.75 }} 
+                            fill="currentColor" 
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        <span>Loading next questions...</span>
+                      </div>
                     )}
-                    {renderQuestion(question)}
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
 
