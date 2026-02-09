@@ -346,7 +346,7 @@ class DocumentService:
         
         merged_content = re.sub(pattern, replace_identifier, merged_content)
         
-        # Finally, replace ## with auto-incrementing counter
+        # Finally, replace ## with auto-incrementing counter and #^. with current counter (no increment)
         # Use a simple pattern - ## anywhere in the text
         counter = [1]  # Use list to allow modification in nested function
         
@@ -355,6 +355,14 @@ class DocumentService:
             counter[0] += 1
             return str(current)
         
+        def replace_counter_peek(match):
+            # Return current counter value without incrementing
+            return str(counter[0])
+        
+        # First replace #^. with current counter (no increment) - must be done before ##
+        merged_content = re.sub(r'#\^\.', replace_counter_peek, merged_content)
+        
+        # Then replace ## with auto-incrementing counter
         merged_content = re.sub(r'##', replace_counter, merged_content)
         
         # Clean up any double spaces or extra whitespace left behind
