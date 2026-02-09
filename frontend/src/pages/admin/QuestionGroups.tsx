@@ -961,18 +961,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       clearTimeout(questionLogicSaveTimeoutRef.current)
     }
 
-    // Debounced save
-    questionLogicSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        console.log('Actually saving question_logic to server:', JSON.stringify(newLogic, null, 2))
-        await questionGroupService.updateQuestionGroup(targetGroupId, {
-          question_logic: newLogic
-        })
-        console.log('question_logic saved successfully')
-      } catch (err) {
-        console.error('Failed to save question logic:', err)
-      }
-    }, 1000)
+    // Save immediately without debounce to avoid race conditions
+    try {
+      console.log('Actually saving question_logic to server:', JSON.stringify(newLogic, null, 2))
+      await questionGroupService.updateQuestionGroup(targetGroupId, {
+        question_logic: newLogic
+      })
+      console.log('question_logic saved successfully')
+    } catch (err) {
+      console.error('Failed to save question logic:', err)
+    }
   }
 
   // Insert a question BEFORE a specific index (for the insert button)
@@ -1035,46 +1033,74 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     const currentGroupId = savedGroupId
     
     if (parentPath && parentPath.length > 0) {
-      // Add to nested items
+      // Add to nested items of a conditional
+      // parentPath is an array of indices pointing to the conditional
+      // e.g., [2] means the conditional is at index 2 of the root questionLogic
+      // afterIndex is the index within nestedItems to insert after (if provided)
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+        console.log('updateNestedItems called:', { depth, pathLength: path.length, pathAtDepth: path[depth], itemsLength: items.length, afterIndex })
+        
         if (depth >= path.length) {
+          // We've reached the target level - add the new item here
+          // If afterIndex is provided, insert after that index; otherwise append to end
+          if (afterIndex !== undefined && afterIndex >= 0) {
+            console.log('Inserting newLogicItem after index', afterIndex)
+            return [...items.slice(0, afterIndex + 1), newLogicItem, ...items.slice(afterIndex + 1)]
+          }
+          console.log('Appending newLogicItem to end of items')
           return [...items, newLogicItem]
         }
+        
         return items.map((item, idx) => {
-          if (idx === path[depth] && item.conditional) {
-            return {
-              ...item,
-              conditional: {
-                ...item.conditional,
-                nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+          console.log('Checking item at idx:', idx, 'path[depth]:', path[depth], 'item.type:', item.type, 'has conditional:', !!item.conditional)
+          if (idx === path[depth]) {
+            if (item.type === 'conditional' && item.conditional) {
+              console.log('Found conditional at path, updating nestedItems')
+              return {
+                ...item,
+                conditional: {
+                  ...item.conditional,
+                  nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+                }
               }
+            } else {
+              console.log('Item at path is not a conditional, type:', item.type)
             }
           }
           return item
         })
       }
       // Use functional update to avoid stale closure
+      // Store the new logic so we can save it after the state update
+      let newLogicToSave: QuestionLogicItem[] | null = null
       setQuestionLogic(prevLogic => {
+        console.log('addQuestionToLogic: parentPath =', parentPath, 'prevLogic length =', prevLogic.length)
+        console.log('addQuestionToLogic: prevLogic =', JSON.stringify(prevLogic, null, 2))
         const newLogic = updateNestedItems(prevLogic, parentPath, 0)
         console.log('addQuestionToLogic: New logic (nested):', JSON.stringify(newLogic, null, 2))
-        if (currentGroupId) {
-          saveQuestionLogic(newLogic, currentGroupId)
-        }
+        newLogicToSave = newLogic
         return newLogic
       })
+      // Save after state update
+      if (currentGroupId && newLogicToSave) {
+        saveQuestionLogic(newLogicToSave, currentGroupId)
+      }
     } else {
       // Add to root level - use functional update to avoid stale closure
+      let newLogicToSave: QuestionLogicItem[] | null = null
       setQuestionLogic(prevLogic => {
         const newLogic = afterIndex !== undefined
           ? [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
           : [...prevLogic, newLogicItem]
         console.log('addQuestionToLogic: New logic (root):', JSON.stringify(newLogic, null, 2))
         console.log('addQuestionToLogic: currentGroupId =', currentGroupId)
-        if (currentGroupId) {
-          saveQuestionLogic(newLogic, currentGroupId)
-        }
+        newLogicToSave = newLogic
         return newLogic
       })
+      // Save after state update
+      if (currentGroupId && newLogicToSave) {
+        saveQuestionLogic(newLogicToSave, currentGroupId)
+      }
     }
   }
 
@@ -1628,6 +1654,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={async () => {
+                    console.log('Deleting nested question:', nestedQuestion.id, nestedQuestion.dbId)
+                    
                     // First remove from database if it has a dbId
                     if (nestedQuestion.dbId) {
                       try {
@@ -1636,37 +1664,41 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         console.error('Failed to delete nested question from database:', err)
                       }
                     }
-                    // Remove the old question from state
+                    
+                    // Remove the question from state
                     setQuestions(prev => prev.filter(q => q.id !== nestedQuestion.id))
 
-                    // Create a new empty question to replace it
-                    const newQuestion = addQuestion()
+                    // Capture savedGroupId before the callback
+                    const currentGroupId = savedGroupId
 
-                    // Update the logic item to point to the new question
+                    // Remove the logic item from nestedItems
                     setQuestionLogic(prev => {
-                      const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-                        return items.map(logicItem => {
+                      const removeFromNestedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+                        return items.filter(logicItem => {
+                          // Filter out the item we're deleting
                           if (logicItem.id === item.id) {
-                            return {
-                              ...logicItem,
-                              questionId: undefined,
-                              localQuestionId: newQuestion.id
-                            } as QuestionLogicItem
+                            return false
                           }
+                          return true
+                        }).map(logicItem => {
+                          // Recursively process nested conditionals
                           if (logicItem.conditional?.nestedItems) {
                             return {
                               ...logicItem,
                               conditional: {
                                 ...logicItem.conditional,
-                                nestedItems: updateLogicItems(logicItem.conditional.nestedItems)
+                                nestedItems: removeFromNestedItems(logicItem.conditional.nestedItems)
                               }
                             }
                           }
                           return logicItem
                         })
                       }
-                      const updated = updateLogicItems(prev)
-                      saveQuestionLogic(updated)
+                      const updated = removeFromNestedItems(prev)
+                      console.log('Updated logic after delete:', JSON.stringify(updated, null, 2))
+                      if (currentGroupId) {
+                        saveQuestionLogic(updated, currentGroupId)
+                      }
                       return updated
                     })
                   }}
@@ -2758,10 +2790,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 ? (
                             renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (qIndex + 1).toString())
                           ) : (
-                            <div style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db' }}>
-                              <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', margin: 0 }}>
-                                Questions added here will only appear when the condition is true
+                            <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db' }}>
+                              <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', margin: '0 0 0.5rem 0' }}>
+                                Questions added here will <u>only</u> appear when the condition is true
                               </p>
+                              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => addQuestionToLogic(0, [logicIndex])}
+                                  className="add-question-button"
+                                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                                >
+                                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon" style={{ width: '0.875rem', height: '0.875rem' }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  Add Question Inside Conditional
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
