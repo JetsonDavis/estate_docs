@@ -822,15 +822,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const addOption = (questionId: string) => {
-    setQuestions(questions.map(q => {
-      if (q.id === questionId) {
-        return {
-          ...q,
-          options: [...q.options, { value: '', label: '' }]
+    setQuestions(prev => {
+      const question = prev.find(q => q.id === questionId)
+      const newOptionIndex = question ? question.options.length : 0
+      
+      // Focus the new option input after state update
+      setTimeout(() => {
+        const input = document.querySelector(`[data-option-input="${questionId}-${newOptionIndex}"]`) as HTMLInputElement
+        if (input) input.focus()
+      }, 0)
+      
+      return prev.map(q => {
+        if (q.id === questionId) {
+          return {
+            ...q,
+            options: [...q.options, { value: '', label: '' }]
+          }
         }
-      }
-      return q
-    }))
+        return q
+      })
+    })
   }
 
   const updateOption = (questionId: string, optionIndex: number, field: 'value' | 'label', value: string) => {
@@ -1644,6 +1655,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                             }}
                             className="form-input option-input"
                             placeholder={`Option ${optIdx + 1}`}
+                            data-option-input={`${nestedQuestion.id}-${optIdx}`}
                           />
                           <button
                             type="button"
@@ -2323,6 +2335,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               }}
                               className="form-input"
                               placeholder={`Option ${optIndex + 1}`}
+                              data-option-input={`${question.id}-${optIndex}`}
                             />
                             <button
                               type="button"
