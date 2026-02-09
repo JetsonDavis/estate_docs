@@ -330,7 +330,7 @@
 .progress-info {
   font-size: 0.875rem;
   color: #6b7280;
-  margin-top: 0.25rem;
+  margin-top: -6px;
 }
 
 /* Question help text */
