@@ -712,15 +712,25 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const autoSaveQuestion = async (question: QuestionFormData) => {
-    if (!savedGroupId) return
+    console.log('autoSaveQuestion called:', { questionId: question.id, savedGroupId, identifier: question.identifier, question_text: question.question_text })
+    
+    // Capture savedGroupId at the start to avoid stale closure issues
+    const currentGroupId = savedGroupId
+    
+    if (!currentGroupId) {
+      console.log('autoSaveQuestion: No savedGroupId, skipping')
+      return
+    }
 
     // Don't save if missing required fields
     if (!question.identifier.trim() || !question.question_text.trim()) {
+      console.log('autoSaveQuestion: Missing required fields, skipping')
       return
     }
 
     // Don't save if identifier is duplicate
     if (question.isDuplicateIdentifier) {
+      console.log('autoSaveQuestion: Duplicate identifier, skipping')
       return
     }
 
@@ -730,7 +740,43 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     ))
 
     try {
-      const questionIndex = questions.findIndex(q => q.id === question.id)
+      // Calculate display_order based on position in questionLogic, not questions array
+      let displayOrder = 1
+      setQuestionLogic(prev => {
+        // Find the position of this question in the logic array (flattened)
+        const findPositionInLogic = (items: QuestionLogicItem[], localId: string, currentPos: number): number => {
+          for (const item of items) {
+            if (item.type === 'question') {
+              currentPos++
+              if ((item as any).localQuestionId === localId || item.questionId === question.dbId) {
+                return currentPos
+              }
+            }
+            if (item.type === 'conditional' && item.conditional?.nestedItems) {
+              const nestedPos = findPositionInLogic(item.conditional.nestedItems, localId, currentPos)
+              if (nestedPos > currentPos) {
+                return nestedPos
+              }
+              // Count questions in nested items for position tracking
+              const countQuestions = (items: QuestionLogicItem[]): number => {
+                let count = 0
+                for (const i of items) {
+                  if (i.type === 'question') count++
+                  if (i.type === 'conditional' && i.conditional?.nestedItems) {
+                    count += countQuestions(i.conditional.nestedItems)
+                  }
+                }
+                return count
+              }
+              currentPos += countQuestions(item.conditional.nestedItems)
+            }
+          }
+          return currentPos
+        }
+        displayOrder = findPositionInLogic(prev, question.id, 0)
+        if (displayOrder === 0) displayOrder = prev.length + 1 // Fallback to end
+        return prev // Don't modify, just read
+      })
 
       if (question.dbId) {
         // Update existing question
@@ -740,21 +786,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           identifier: question.identifier,
           repeatable: question.repeatable,
           is_required: question.is_required,
-          display_order: questionIndex + 1,
+          display_order: displayOrder,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
           person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
           include_time: question.question_type === 'date' ? question.include_time : undefined
         })
       } else {
         // Create new question
-        const created = await questionGroupService.createQuestion(savedGroupId, {
-          question_group_id: savedGroupId,
+        const created = await questionGroupService.createQuestion(currentGroupId, {
+          question_group_id: currentGroupId,
           question_text: question.question_text,
           question_type: question.question_type,
           identifier: question.identifier,
           repeatable: question.repeatable,
           is_required: question.is_required,
-          display_order: questionIndex + 1,
+          display_order: displayOrder,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
           person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
           include_time: question.question_type === 'date' ? question.include_time : undefined
@@ -789,7 +835,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           }
           const updated = updateLogicItems(prev)
           console.log('Updated questionLogic:', JSON.stringify(updated, null, 2))
-          saveQuestionLogic(updated)
+          saveQuestionLogic(updated, currentGroupId)
           return updated
         })
       }
@@ -819,6 +865,39 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     setQuestions(questions.filter(q => q.id !== id))
+    
+    // Also remove the question from questionLogic (including nested items)
+    const removeFromLogic = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+      const result: QuestionLogicItem[] = []
+      for (const item of items) {
+        // Check if this is the question to remove
+        if (item.type === 'question') {
+          const localId = (item as any).localQuestionId
+          if (localId === id || item.questionId === questionToRemove?.dbId) {
+            continue // Skip this item (remove it)
+          }
+        }
+        // Recursively process nested items in conditionals
+        if (item.conditional?.nestedItems) {
+          result.push({
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: removeFromLogic(item.conditional.nestedItems)
+            }
+          })
+        } else {
+          result.push(item)
+        }
+      }
+      return result
+    }
+    
+    setQuestionLogic(prevLogic => {
+      const newLogic = removeFromLogic(prevLogic)
+      saveQuestionLogic(newLogic)
+      return newLogic
+    })
   }
 
   const addOption = (questionId: string) => {
@@ -868,10 +947,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   // Question Logic Functions
-  const saveQuestionLogic = async (newLogic: QuestionLogicItem[]) => {
-    if (!savedGroupId) return
-
-    console.log('saveQuestionLogic called with:', JSON.stringify(newLogic, null, 2))
+  const saveQuestionLogic = async (newLogic: QuestionLogicItem[], groupIdOverride?: number) => {
+    const targetGroupId = groupIdOverride || savedGroupId
+    console.log('saveQuestionLogic called with:', { targetGroupId, savedGroupId, newLogic: JSON.stringify(newLogic, null, 2) })
+    
+    if (!targetGroupId) {
+      console.log('saveQuestionLogic: No targetGroupId, skipping save')
+      return
+    }
 
     // Clear existing timeout
     if (questionLogicSaveTimeoutRef.current) {
@@ -882,7 +965,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     questionLogicSaveTimeoutRef.current = setTimeout(async () => {
       try {
         console.log('Actually saving question_logic to server:', JSON.stringify(newLogic, null, 2))
-        await questionGroupService.updateQuestionGroup(savedGroupId, {
+        await questionGroupService.updateQuestionGroup(targetGroupId, {
           question_logic: newLogic
         })
         console.log('question_logic saved successfully')
@@ -921,10 +1004,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
-    // Insert at the specified index (before the item at that index)
-    const newLogic = [...questionLogic.slice(0, beforeIndex), newLogicItem, ...questionLogic.slice(beforeIndex)]
-    setQuestionLogic(newLogic)
-    saveQuestionLogic(newLogic)
+    // Capture savedGroupId before entering any callbacks to avoid stale closure
+    const currentGroupId = savedGroupId
+
+    // Insert at the specified index (before the item at that index) - use functional update
+    setQuestionLogic(prevLogic => {
+      const newLogic = [...prevLogic.slice(0, beforeIndex), newLogicItem, ...prevLogic.slice(beforeIndex)]
+      if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+      return newLogic
+    })
   }
 
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
@@ -941,6 +1029,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Store the local question ID temporarily for matching
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
+    console.log('addQuestionToLogic: Adding new question to logic', { newLogicItem, afterIndex, parentPath })
+
+    // Capture savedGroupId before entering any callbacks to avoid stale closure
+    const currentGroupId = savedGroupId
+    
     if (parentPath && parentPath.length > 0) {
       // Add to nested items
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
@@ -960,16 +1053,28 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return item
         })
       }
-      const newLogic = updateNestedItems(questionLogic, parentPath, 0)
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      // Use functional update to avoid stale closure
+      setQuestionLogic(prevLogic => {
+        const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+        console.log('addQuestionToLogic: New logic (nested):', JSON.stringify(newLogic, null, 2))
+        if (currentGroupId) {
+          saveQuestionLogic(newLogic, currentGroupId)
+        }
+        return newLogic
+      })
     } else {
-      // Add to root level
-      const newLogic = afterIndex !== undefined
-        ? [...questionLogic.slice(0, afterIndex + 1), newLogicItem, ...questionLogic.slice(afterIndex + 1)]
-        : [...questionLogic, newLogicItem]
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      // Add to root level - use functional update to avoid stale closure
+      setQuestionLogic(prevLogic => {
+        const newLogic = afterIndex !== undefined
+          ? [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
+          : [...prevLogic, newLogicItem]
+        console.log('addQuestionToLogic: New logic (root):', JSON.stringify(newLogic, null, 2))
+        console.log('addQuestionToLogic: currentGroupId =', currentGroupId)
+        if (currentGroupId) {
+          saveQuestionLogic(newLogic, currentGroupId)
+        }
+        return newLogic
+      })
     }
   }
 
@@ -986,6 +1091,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     ;(newLogicItem as any).localQuestionId = newQuestion.id
+
+    // Capture savedGroupId before entering any callbacks to avoid stale closure
+    const currentGroupId = savedGroupId
 
     if (parentPath && parentPath.length > 0) {
       // Add to nested items at specific index
@@ -1007,14 +1115,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return item
         })
       }
-      const newLogic = updateNestedItems(questionLogic, parentPath, 0)
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      // Use functional update to avoid stale closure
+      setQuestionLogic(prevLogic => {
+        const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+        if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+        return newLogic
+      })
     } else {
-      // Add to root level at specific index
-      const newLogic = [...questionLogic.slice(0, afterIndex + 1), newLogicItem, ...questionLogic.slice(afterIndex + 1)]
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      // Add to root level at specific index - use functional update
+      setQuestionLogic(prevLogic => {
+        const newLogic = [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
+        if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+        return newLogic
+      })
     }
   }
 
@@ -1043,6 +1156,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
+    // Capture savedGroupId before entering any callbacks to avoid stale closure
+    const currentGroupId = savedGroupId
+
     // Insert at the specified index within the nested items
     const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
       if (depth >= path.length) {
@@ -1063,9 +1179,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       })
     }
 
-    const newLogic = updateNestedItems(questionLogic, parentPath, 0)
-    setQuestionLogic(newLogic)
-    saveQuestionLogic(newLogic)
+    // Use functional update to avoid stale closure
+    setQuestionLogic(prevLogic => {
+      const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+      if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+      return newLogic
+    })
   }
 
   const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
@@ -1135,6 +1254,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     console.log('Creating conditional:', { newConditional, previousQuestion, nestedQuestion })
 
+    // Capture savedGroupId before entering any callbacks to avoid stale closure
+    const currentGroupId = savedGroupId
+
     if (parentPath && parentPath.length > 0) {
       // Add to nested items - insert after the specified index, not at the end
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
@@ -1156,15 +1278,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return item
         })
       }
-      const newLogic = updateNestedItems(questionLogic, parentPath, 0)
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      setQuestionLogic(prevLogic => {
+        const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+        if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+        return newLogic
+      })
     } else {
       // Add to root level - if afterIndex is -1 or invalid, just append to the end
-      const insertIndex = afterIndex >= 0 ? afterIndex + 1 : questionLogic.length
-      const newLogic = [...questionLogic.slice(0, insertIndex), newConditional, ...questionLogic.slice(insertIndex)]
-      setQuestionLogic(newLogic)
-      saveQuestionLogic(newLogic)
+      setQuestionLogic(prevLogic => {
+        const insertIndex = afterIndex >= 0 ? afterIndex + 1 : prevLogic.length
+        const newLogic = [...prevLogic.slice(0, insertIndex), newConditional, ...prevLogic.slice(insertIndex)]
+        if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+        return newLogic
+      })
     }
   }
 
@@ -1198,11 +1324,28 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const removeLogicItem = (itemId: string) => {
+    console.log('removeLogicItem called with itemId:', itemId)
+    
+    // Helper to flatten all nested questions from a conditional tree
+    const flattenNestedQuestions = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+      const result: QuestionLogicItem[] = []
+      for (const item of items) {
+        if (item.type === 'question') {
+          result.push({ ...item, depth: 0 })
+        }
+        if (item.type === 'conditional' && item.conditional?.nestedItems) {
+          result.push(...flattenNestedQuestions(item.conditional.nestedItems))
+        }
+      }
+      return result
+    }
+    
     const removeItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
       const result: QuestionLogicItem[] = []
       
       for (const item of items) {
         if (item.id === itemId) {
+          console.log('Found item to remove:', item)
           // If this is a conditional being removed, promote its nested questions to the current level
           if (item.type === 'conditional' && item.conditional?.nestedItems) {
             // Add all nested question items (not nested conditionals) to the current level
@@ -1239,23 +1382,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       return result
     }
     
-    // Helper to flatten all nested questions from a conditional tree
-    const flattenNestedQuestions = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-      const result: QuestionLogicItem[] = []
-      for (const item of items) {
-        if (item.type === 'question') {
-          result.push({ ...item, depth: 0 })
-        }
-        if (item.type === 'conditional' && item.conditional?.nestedItems) {
-          result.push(...flattenNestedQuestions(item.conditional.nestedItems))
-        }
-      }
-      return result
-    }
-    
-    const newLogic = removeItem(questionLogic)
-    setQuestionLogic(newLogic)
-    saveQuestionLogic(newLogic)
+    // Use functional update to ensure we have the latest state
+    setQuestionLogic(prevLogic => {
+      console.log('Current questionLogic:', JSON.stringify(prevLogic, null, 2))
+      const newLogic = removeItem(prevLogic)
+      console.log('New logic after removal:', JSON.stringify(newLogic, null, 2))
+      saveQuestionLogic(newLogic)
+      return newLogic
+    })
   }
 
   const toggleEndFlow = (itemId: string) => {
@@ -1384,10 +1518,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   // Get questions that are NOT nested inside conditionals (main level only)
-  const mainLevelQuestions = questions.filter(q => {
+  // AND sort them according to their order in questionLogic
+  const mainLevelQuestions = (() => {
     const nestedIds = getNestedQuestionIds(questionLogic)
-    return !nestedIds.has(q.id) && !nestedIds.has(q.dbId?.toString() || '')
-  })
+    const filtered = questions.filter(q => {
+      return !nestedIds.has(q.id) && !nestedIds.has(q.dbId?.toString() || '')
+    })
+    
+    // Sort by position in questionLogic
+    return filtered.sort((a, b) => {
+      const aIndex = questionLogic.findIndex(item => 
+        item.type === 'question' && 
+        ((item as any).localQuestionId === a.id || item.questionId === a.dbId)
+      )
+      const bIndex = questionLogic.findIndex(item => 
+        item.type === 'question' && 
+        ((item as any).localQuestionId === b.id || item.questionId === b.dbId)
+      )
+      // If not found in logic, put at end
+      const aPos = aIndex === -1 ? Infinity : aIndex
+      const bPos = bIndex === -1 ? Infinity : bIndex
+      return aPos - bPos
+    })
+  })()
 
   // Recursive function to render nested items within a conditional
   const renderNestedItems = (
