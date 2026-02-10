@@ -182,6 +182,7 @@ class QuestionService:
             question_text=question_data.question_text,
             question_type=question_data.question_type,
             identifier=question_data.identifier,
+            repeatable=question_data.repeatable,
             display_order=question_data.display_order,
             is_required=question_data.is_required,
             help_text=question_data.help_text,
@@ -237,6 +238,8 @@ class QuestionService:
             question.validation_rules = question_data.validation_rules
         if question_data.is_active is not None:
             question.is_active = question_data.is_active
+        if question_data.repeatable is not None:
+            question.repeatable = question_data.repeatable
         
         db.commit()
         db.refresh(question)
