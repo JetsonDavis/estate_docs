@@ -470,16 +470,18 @@ const EditFlow: React.FC = () => {
                 required
                 placeholder="Enter flow name"
               />
-              {isCheckingName && (
-                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Checking name...
-                </p>
-              )}
-              {isDuplicateName && !isCheckingName && (
-                <p style={{ fontSize: '0.875rem', color: '#dc2626', marginTop: '0.25rem' }}>
-                  This name is already in use. Please choose a unique name.
-                </p>
-              )}
+              <div style={{ height: '1.5rem', marginTop: '0.25rem' }}>
+                {isCheckingName && (
+                  <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
+                    Checking name...
+                  </p>
+                )}
+                {isDuplicateName && !isCheckingName && (
+                  <p style={{ fontSize: '0.875rem', color: '#dc2626', margin: 0 }}>
+                    This name is already in use. Please choose a unique name.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="form-group description-group">

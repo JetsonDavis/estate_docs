@@ -343,16 +343,18 @@ const FlowBuilder: React.FC = () => {
               fontSize: '0.875rem'
             }}
           />
-          {isCheckingName && (
-            <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
-              Checking...
-            </span>
-          )}
-          {isDuplicateName && (
-            <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-              A flow with this name already exists
-            </div>
-          )}
+          <div style={{ height: '1.25rem', marginTop: '0.25rem' }}>
+            {isCheckingName && (
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                Checking...
+              </span>
+            )}
+            {isDuplicateName && !isCheckingName && (
+              <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>
+                A flow with this name already exists
+              </span>
+            )}
+          </div>
         </div>
 
         <div>

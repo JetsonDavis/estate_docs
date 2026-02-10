@@ -390,12 +390,14 @@ const CreateTemplateModal: React.FC<CreateTemplateModalProps> = ({ onClose, onSu
               className="form-input"
               style={{ borderColor: nameError ? '#dc2626' : undefined }}
             />
-            {checkingName && (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.25rem' }}>Checking name...</p>
-            )}
-            {nameError && !checkingName && (
-              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>{nameError}</p>
-            )}
+            <div style={{ height: '1.5rem', marginTop: '0.25rem' }}>
+              {checkingName && (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>Checking name...</p>
+              )}
+              {nameError && !checkingName && (
+                <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: 0 }}>{nameError}</p>
+              )}
+            </div>
           </div>
 
           <div className="form-group">

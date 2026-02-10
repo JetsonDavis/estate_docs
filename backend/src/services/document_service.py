@@ -338,6 +338,43 @@ class DocumentService:
         
         def replace_identifier(match):
             identifier = match.group(1)
+            
+            # Check if this is a person field with dot notation (e.g., person.field)
+            if '.' in identifier:
+                parts = identifier.split('.', 1)
+                person_identifier = parts[0]
+                field_name = parts[1]
+                
+                # Get the person JSON from answers
+                person_json = answer_map.get(person_identifier, '')
+                
+                if person_json:
+                    try:
+                        # Person data is stored as JSON object with all fields
+                        person_data = json.loads(person_json)
+                        
+                        if isinstance(person_data, dict):
+                            # New format: JSON object with person fields
+                            field_value = person_data.get(field_name)
+                            if field_value is not None:
+                                return str(field_value)
+                        elif isinstance(person_data, list) and len(person_data) > 0:
+                            # Legacy format: array of person objects or names
+                            first_person = person_data[0]
+                            if isinstance(first_person, dict):
+                                field_value = first_person.get(field_name)
+                                if field_value is not None:
+                                    return str(field_value)
+                            elif isinstance(first_person, str) and field_name == 'name':
+                                return first_person
+                    except (json.JSONDecodeError, TypeError):
+                        # Not JSON, might be a plain string - only return if asking for 'name'
+                        if field_name == 'name':
+                            return person_json
+                
+                # Person field not found - return empty string
+                return ''
+            
             value = answer_map.get(identifier, '')
             # Return answer value if available and not empty, otherwise return empty string
             if not DocumentService._is_value_empty(value):
@@ -586,37 +623,58 @@ class DocumentService:
         # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
         identifier_pattern = r'<<([^>]+)>>'
         
+        # Build a raw answer map (before formatting) for person JSON data
+        raw_answer_map = {}
+        for answer, question in answers_query:
+            raw_answer_map[question.identifier] = answer.answer_value
+        
+        # Debug: log all identifiers and their values
+        print(f"DEBUG: raw_answer_map keys: {list(raw_answer_map.keys())}")
+        for k, v in raw_answer_map.items():
+            print(f"DEBUG: raw_answer_map['{k}'] = {v[:100] if v else 'None'}...")
+        
         def replace_person_fields(match):
             identifier = match.group(1).strip()
+            print(f"DEBUG: Processing identifier: '{identifier}'")
             
             # Check if this is a person field with dot notation (e.g., person.field)
             if '.' in identifier:
                 parts = identifier.split('.', 1)
                 person_identifier = parts[0]
                 field_name = parts[1]
+                print(f"DEBUG: person_identifier='{person_identifier}', field_name='{field_name}'")
                 
-                # Get the person name from answers
-                person_name = answer_map.get(person_identifier, '')
+                # Get the raw person JSON from answers (not the formatted version)
+                person_json = raw_answer_map.get(person_identifier, '')
+                print(f"DEBUG: person_json for '{person_identifier}': {person_json[:200] if person_json else 'NOT FOUND'}")
                 
-                # Handle JSON array of person names (multiple people)
-                try:
-                    person_names = json.loads(person_name)
-                    if isinstance(person_names, list) and len(person_names) > 0:
-                        person_name = person_names[0]  # Use first person for now
-                except (json.JSONDecodeError, TypeError):
-                    pass  # person_name is already a string
-                
-                if person_name:
-                    # Look up the person in the database
-                    person = db.query(Person).filter(
-                        Person.name == person_name
-                    ).first()
-                    
-                    if person:
-                        # Get the specified field from the person
-                        field_value = getattr(person, field_name, None)
-                        if field_value is not None:
-                            return str(field_value)
+                if person_json:
+                    try:
+                        # Person data is now stored as JSON object with all fields
+                        person_data = json.loads(person_json)
+                        
+                        if isinstance(person_data, dict):
+                            # New format: JSON object with person fields
+                            field_value = person_data.get(field_name)
+                            if field_value is not None:
+                                return str(field_value)
+                        elif isinstance(person_data, list) and len(person_data) > 0:
+                            # Legacy format: array of person objects or names
+                            first_person = person_data[0]
+                            if isinstance(first_person, dict):
+                                field_value = first_person.get(field_name)
+                                if field_value is not None:
+                                    return str(field_value)
+                                # Also check 'name' field for legacy format
+                                if field_name == 'name' and 'name' in first_person:
+                                    return str(first_person['name'])
+                            elif isinstance(first_person, str) and field_name == 'name':
+                                # Old format: just array of name strings
+                                return first_person
+                    except (json.JSONDecodeError, TypeError):
+                        # Not JSON, might be a plain string - only return if asking for 'name'
+                        if field_name == 'name':
+                            return person_json
                 
                 # If person or field not found, return empty string
                 return ''
