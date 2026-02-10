@@ -106,6 +106,7 @@ class SessionQuestionsResponse(BaseModel):
     is_last_group: bool
     can_go_back: bool
     existing_answers: dict  # question_id -> answer_value
+    conditional_identifiers: List[str] = []  # identifiers that have conditionals depending on them
 
 
 class SaveAnswersRequest(BaseModel):

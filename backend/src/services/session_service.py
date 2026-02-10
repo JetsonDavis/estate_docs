@@ -434,6 +434,23 @@ class SessionService:
         
         is_last_group = current_group_index >= len(ordered_groups) - 1
         
+        # Extract identifiers that have conditionals depending on them
+        conditional_identifiers = []
+        if current_group.question_logic:
+            def extract_conditional_identifiers(items):
+                identifiers = []
+                for item in items:
+                    if item.get('type') == 'conditional' and item.get('conditional'):
+                        cond = item['conditional']
+                        if_identifier = cond.get('ifIdentifier')
+                        if if_identifier:
+                            identifiers.append(if_identifier)
+                        # Check nested items recursively
+                        if cond.get('nestedItems'):
+                            identifiers.extend(extract_conditional_identifiers(cond['nestedItems']))
+                return identifiers
+            conditional_identifiers = list(set(extract_conditional_identifiers(current_group.question_logic)))
+        
         return SessionQuestionsResponse(
             session_id=session_id,
             client_identifier=session.client_identifier,
@@ -450,7 +467,8 @@ class SessionService:
             is_completed=session.is_completed,
             is_last_group=is_last_group,
             can_go_back=current_group_index > 0 or page > 1,
-            existing_answers=existing_answers
+            existing_answers=existing_answers,
+            conditional_identifiers=conditional_identifiers
         )
     
     @staticmethod

@@ -84,11 +84,15 @@ const DocumentSessions: React.FC = () => {
       data.questions.forEach(q => {
         if (data.existing_answers[q.id]) {
           if (q.question_type === 'person') {
-            // Person answers might be JSON array with conjunction info
+            // Person answers are now stored as JSON objects with all person fields
+            // Put them in initialAnswers so the inline form can use them
+            initialAnswers[q.id] = data.existing_answers[q.id]
+            
+            // Also handle legacy format for backwards compatibility
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
               if (Array.isArray(parsed)) {
-                // Check if it's the new format with objects containing name and conjunction
+                // Check if it's the old format with objects containing name and conjunction
                 if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
                   initialPersonAnswers[q.id] = parsed.map((p: any) => p.name)
                   initialPersonConjunctions[q.id] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
@@ -96,11 +100,9 @@ const DocumentSessions: React.FC = () => {
                   // Old format - just an array of strings
                   initialPersonAnswers[q.id] = parsed
                 }
-              } else {
-                initialPersonAnswers[q.id] = [data.existing_answers[q.id]]
               }
             } catch {
-              initialPersonAnswers[q.id] = [data.existing_answers[q.id]]
+              // Not an array, it's the new JSON object format - already in initialAnswers
             }
           } else {
             initialAnswers[q.id] = data.existing_answers[q.id]
@@ -134,7 +136,8 @@ const DocumentSessions: React.FC = () => {
           is_completed: true,
           is_last_group: true,
           can_go_back: false,
-          existing_answers: {}
+          existing_answers: {},
+          conditional_identifiers: []
         })
       } else {
         setError(err.response?.data?.detail || 'Failed to load session')
@@ -156,107 +159,110 @@ const DocumentSessions: React.FC = () => {
     if (previousValue !== value) {
       setHasChanges(true)
     }
+    // Note: Saving to database is now done on blur via handleAnswerBlur
+  }
 
-    // If the value actually changed, check if we need to refresh for conditionals
-    if (previousValue !== value && sessionData) {
-      // Find the question to get its identifier
-      const question = sessionData.questions.find(q => q.id === questionId)
-      if (question) {
-        // Debounce the save and refresh to avoid too many API calls
-        if (conditionalRefreshTimeoutRef.current) {
-          clearTimeout(conditionalRefreshTimeoutRef.current)
-        }
+  // Handle blur (input exit) - saves answer and triggers conditional refresh if needed
+  const handleAnswerBlur = async (questionId: number) => {
+    if (!sessionData) return
 
-        conditionalRefreshTimeoutRef.current = setTimeout(async () => {
-          try {
-            setConditionalLoading(true)
-            setConditionalLoadingQuestionId(questionId)
-            
-            // Save the answer to the database
-            await sessionService.saveAnswers(sessionData.session_id, {
-              answers: [{ question_id: questionId, answer_value: value }]
-            })
+    const question = sessionData.questions.find(q => q.id === questionId)
+    if (!question) return
 
-            // Refresh questions to re-evaluate conditionals
-            const data = await sessionService.getSessionQuestions(
-              sessionData.session_id,
-              currentPage,
-              QUESTIONS_PER_PAGE
-            )
+    // Save the current answer value
+    const currentValue = answers[questionId] || ''
+    try {
+      await sessionService.saveAnswers(sessionData.session_id, {
+        answers: [{ question_id: questionId, answer_value: currentValue }]
+      })
+    } catch (err) {
+      console.error('Failed to save answer:', err)
+    }
 
-            // Update session data with new questions
-            setSessionData(data)
+    // Check if this question's identifier is used by any conditional
+    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) || false
+    if (!isConditionalDependency) return
 
-            // Use functional updates to get current state and merge with new data
-            setAnswers(currentAnswers => {
-              const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: value }
+    // Trigger conditional refresh
+    try {
+      setConditionalLoading(true)
+      setConditionalLoadingQuestionId(questionId)
 
-              data.questions.forEach(q => {
-                // Only set from existing_answers if we don't have a local answer
-                if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
-                  newAnswers[q.id] = data.existing_answers[q.id]
-                }
-              })
+      // Refresh questions to re-evaluate conditionals
+      const data = await sessionService.getSessionQuestions(
+        sessionData.session_id,
+        currentPage,
+        QUESTIONS_PER_PAGE
+      )
 
-              return newAnswers
-            })
+      // Update session data with new questions
+      setSessionData(data)
 
-            setPersonAnswers(currentPersonAnswers => {
-              const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
+      // Use functional updates to get current state and merge with new data
+      setAnswers(currentAnswers => {
+        const value = currentAnswers[questionId] || ''
+        const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: value }
 
-              data.questions.forEach(q => {
-                if (q.question_type === 'person') {
-                  if (!(q.id in newPersonAnswers) && data.existing_answers[q.id]) {
-                    try {
-                      const parsed = JSON.parse(data.existing_answers[q.id])
-                      if (Array.isArray(parsed)) {
-                        // Check if it's the new format with objects
-                        if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
-                          newPersonAnswers[q.id] = parsed.map((p: any) => p.name)
-                        } else {
-                          newPersonAnswers[q.id] = parsed
-                        }
-                      } else {
-                        newPersonAnswers[q.id] = [data.existing_answers[q.id]]
-                      }
-                    } catch {
-                      newPersonAnswers[q.id] = [data.existing_answers[q.id]]
-                    }
-                  } else if (!(q.id in newPersonAnswers)) {
-                    newPersonAnswers[q.id] = ['']
-                  }
-                }
-              })
-
-              return newPersonAnswers
-            })
-
-            setPersonConjunctions(currentConjunctions => {
-              const newConjunctions: Record<number, Array<'and' | 'then'>> = { ...currentConjunctions }
-
-              data.questions.forEach(q => {
-                if (q.question_type === 'person' && data.existing_answers[q.id]) {
-                  try {
-                    const parsed = JSON.parse(data.existing_answers[q.id])
-                    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
-                      newConjunctions[q.id] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
-                    }
-                  } catch {
-                    // Ignore parse errors
-                  }
-                }
-              })
-
-              return newConjunctions
-            })
-          } catch (err) {
-            console.error('Failed to refresh questions after answer change:', err)
-          } finally {
-            setConditionalLoading(false)
-            setConditionalLoadingQuestionId(null)
+        data.questions.forEach(q => {
+          // Only set from existing_answers if we don't have a local answer
+          if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
+            newAnswers[q.id] = data.existing_answers[q.id]
           }
-        }, 500) // 500ms debounce
-      }
+        })
+
+        return newAnswers
+      })
+
+      setPersonAnswers(currentPersonAnswers => {
+        const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
+
+        data.questions.forEach(q => {
+          if (q.question_type === 'person') {
+            if (!(q.id in newPersonAnswers) && data.existing_answers[q.id]) {
+              try {
+                const parsed = JSON.parse(data.existing_answers[q.id])
+                if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+                  newPersonAnswers[q.id] = parsed.map((p: any) => p.name || '')
+                } else if (Array.isArray(parsed)) {
+                  newPersonAnswers[q.id] = parsed
+                } else {
+                  newPersonAnswers[q.id] = [data.existing_answers[q.id]]
+                }
+              } catch {
+                newPersonAnswers[q.id] = [data.existing_answers[q.id]]
+              }
+            } else if (!(q.id in newPersonAnswers)) {
+              newPersonAnswers[q.id] = ['']
+            }
+          }
+        })
+
+        return newPersonAnswers
+      })
+
+      setPersonConjunctions(currentConjunctions => {
+        const newConjunctions: Record<number, Array<'and' | 'then'>> = { ...currentConjunctions }
+
+        data.questions.forEach(q => {
+          if (q.question_type === 'person' && data.existing_answers[q.id]) {
+            try {
+              const parsed = JSON.parse(data.existing_answers[q.id])
+              if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'conjunction' in parsed[0]) {
+                newConjunctions[q.id] = parsed.slice(0, -1).map((p: any) => p.conjunction || 'and')
+              }
+            } catch {
+              // ignore
+            }
+          }
+        })
+
+        return newConjunctions
+      })
+    } catch (err) {
+      console.error('Failed to refresh conditionals:', err)
+    } finally {
+      setConditionalLoading(false)
+      setConditionalLoadingQuestionId(null)
     }
   }
 
@@ -493,6 +499,7 @@ const DocumentSessions: React.FC = () => {
                     value={optionValue}
                     checked={value === optionValue}
                     onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                    onBlur={() => handleAnswerBlur(question.id)}
                   />
                   <label htmlFor={`q${question.id}-${index}`}>{option.label}</label>
                 </div>
@@ -507,6 +514,7 @@ const DocumentSessions: React.FC = () => {
             className="question-textarea"
             value={value}
             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onBlur={() => handleAnswerBlur(question.id)}
             placeholder="Enter your answer..."
           />
         )
@@ -518,91 +526,433 @@ const DocumentSessions: React.FC = () => {
             className="question-input"
             value={value}
             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onBlur={() => handleAnswerBlur(question.id)}
           />
         )
 
       case 'person':
-        const personValues = personAnswers[question.id] || ['']
-        const suggestions = personSuggestions[question.id] || []
-        const conjunctions = personConjunctions[question.id] || []
+        // Parse the current answer as JSON object with person fields
+        let personData: Record<string, any> = {}
+        try {
+          if (value) {
+            personData = JSON.parse(value)
+          }
+        } catch {
+          personData = {}
+        }
+
+        // Collect person data from questions that appear BEFORE this question in the list
+        // This ensures the first entry of a person shows all fields, only subsequent ones are hidden
+        const earlierPeople: Array<{ name: string; data: Record<string, any> }> = []
+        if (sessionData) {
+          const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
+          for (let i = 0; i < currentQuestionIndex; i++) {
+            const q = sessionData.questions[i]
+            if (q.question_type === 'person') {
+              const answerValue = answers[q.id]
+              if (answerValue) {
+                try {
+                  const parsed = JSON.parse(answerValue)
+                  if (parsed.name && parsed.name.trim()) {
+                    earlierPeople.push({ name: parsed.name, data: parsed })
+                  }
+                } catch {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+        }
+
+        // Check if current name matches an earlier person
+        const matchedPerson = earlierPeople.find(p => 
+          p.name.toLowerCase() === (personData.name || '').toLowerCase() && personData.name?.trim()
+        )
+
+        // Update person field in local state only (called on every keystroke)
+        const updatePersonField = (field: string, fieldValue: string) => {
+          // If updating name and it matches an earlier person, copy all their data
+          if (field === 'name') {
+            const match = earlierPeople.find(p => p.name.toLowerCase() === fieldValue.toLowerCase())
+            if (match) {
+              handleAnswerChange(question.id, JSON.stringify(match.data))
+              return
+            }
+          }
+          const newData = { ...personData, [field]: fieldValue }
+          handleAnswerChange(question.id, JSON.stringify(newData))
+        }
+
+        const updatePersonAddressField = (addressType: 'mailing_address' | 'physical_address', field: string, fieldValue: string) => {
+          const currentAddress = personData[addressType] || {}
+          const newAddress = { ...currentAddress, [field]: fieldValue }
+          const newData = { ...personData, [addressType]: newAddress }
+          handleAnswerChange(question.id, JSON.stringify(newData))
+        }
+
+        // Save person data on blur (called when field loses focus)
+        const savePersonOnBlur = () => {
+          handleAnswerBlur(question.id)
+        }
+
+        const US_STATES = [
+          { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
+          { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+          { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' }, { value: 'FL', label: 'Florida' },
+          { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' }, { value: 'ID', label: 'Idaho' },
+          { value: 'IL', label: 'Illinois' }, { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+          { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' }, { value: 'LA', label: 'Louisiana' },
+          { value: 'ME', label: 'Maine' }, { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+          { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' }, { value: 'MS', label: 'Mississippi' },
+          { value: 'MO', label: 'Missouri' }, { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+          { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' }, { value: 'NJ', label: 'New Jersey' },
+          { value: 'NM', label: 'New Mexico' }, { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+          { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' }, { value: 'OK', label: 'Oklahoma' },
+          { value: 'OR', label: 'Oregon' }, { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
+          { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+          { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
+          { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+          { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' }
+        ]
 
         return (
-          <div className="person-field-container">
-            {personValues.map((personValue, index) => (
-              <div key={index} className="person-field-row">
-                <div className="person-input-wrapper" style={{ maxWidth: 'calc(100% - 120px)', flex: 1 }}>
+          <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Name with type-ahead from earlier form entries */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
+              <input
+                type="text"
+                className="question-input"
+                value={personData.name || ''}
+                onChange={(e) => updatePersonField('name', e.target.value)}
+                onBlur={savePersonOnBlur}
+                placeholder="Full name"
+                list={`person-typeahead-${question.id}`}
+              />
+              <datalist id={`person-typeahead-${question.id}`}>
+                {earlierPeople.map((person, idx) => (
+                  <option key={idx} value={person.name} />
+                ))}
+              </datalist>
+              {matchedPerson && (
+                <p style={{ fontSize: '0.75rem', color: '#059669', marginTop: '0.25rem', margin: 0 }}>
+                  Using information from earlier entry
+                </p>
+              )}
+            </div>
+
+            {/* Only show other fields if no match found */}
+            {!matchedPerson && (
+              <>
+                {/* Email and Phone in a row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
+                    <input
+                      type="email"
+                      className="question-input"
+                      value={personData.email || ''}
+                      onChange={(e) => updatePersonField('email', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Phone Number</label>
+                    <input
+                      type="tel"
+                      className="question-input"
+                      value={personData.phone_number || ''}
+                      onChange={(e) => updatePersonField('phone_number', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    />
+                  </div>
+                </div>
+
+                {/* Date of Birth and SSN in a row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Birth</label>
+                    <input
+                      type="date"
+                      className="question-input"
+                      value={personData.date_of_birth || ''}
+                      onChange={(e) => updatePersonField('date_of_birth', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Social Security Number</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personData.ssn || ''}
+                      onChange={(e) => updatePersonField('ssn', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                      placeholder="XXX-XX-XXXX"
+                      maxLength={11}
+                      autoComplete="off"
+                    />
+                  </div>
+            </div>
+
+            {/* Employer and Occupation in a row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Employer</label>
+                <input
+                  type="text"
+                  className="question-input"
+                  value={personData.employer || ''}
+                  onChange={(e) => updatePersonField('employer', e.target.value)}
+                  onBlur={savePersonOnBlur}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Occupation</label>
+                <input
+                  type="text"
+                  className="question-input"
+                  value={personData.occupation || ''}
+                  onChange={(e) => updatePersonField('occupation', e.target.value)}
+                  onBlur={savePersonOnBlur}
+                />
+              </div>
+            </div>
+
+            {/* Mailing Address Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Mailing Address</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
                   <input
                     type="text"
                     className="question-input"
-                    value={personValue}
-                    onChange={(e) => {
-                      handlePersonAnswerChange(question.id, index, e.target.value)
-                      searchPeople(question.id, e.target.value)
-                    }}
-                    list={`person-list-${question.id}-${index}`}
-                    placeholder="Type to search people..."
+                    value={personData.mailing_address?.line1 || ''}
+                    onChange={(e) => updatePersonAddressField('mailing_address', 'line1', e.target.value)}
+                    onBlur={savePersonOnBlur}
+                    placeholder="Street address"
                   />
-                  <datalist id={`person-list-${question.id}-${index}`}>
-                    {suggestions.map((person) => (
-                      <option key={person.id} value={person.name} />
-                    ))}
-                  </datalist>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personData.mailing_address?.line2 || ''}
+                    onChange={(e) => updatePersonAddressField('mailing_address', 'line2', e.target.value)}
+                    onBlur={savePersonOnBlur}
+                    placeholder="Apt, suite, etc. (optional)"
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personData.mailing_address?.city || ''}
+                      onChange={(e) => updatePersonAddressField('mailing_address', 'city', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
+                    <select
+                      className="question-select"
+                      value={personData.mailing_address?.state || ''}
+                      onChange={(e) => updatePersonAddressField('mailing_address', 'state', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    >
+                      <option value="">Select State</option>
+                      {US_STATES.map(state => (
+                        <option key={state.value} value={state.value}>{state.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personData.mailing_address?.zip || ''}
+                      onChange={(e) => updatePersonAddressField('mailing_address', 'zip', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                      placeholder="12345"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Physical Address Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Physical Address</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personData.physical_address?.line1 || ''}
+                    onChange={(e) => updatePersonAddressField('physical_address', 'line1', e.target.value)}
+                    onBlur={savePersonOnBlur}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personData.physical_address?.line2 || ''}
+                    onChange={(e) => updatePersonAddressField('physical_address', 'line2', e.target.value)}
+                    onBlur={savePersonOnBlur}
+                    placeholder="Apt, suite, etc. (optional)"
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personData.physical_address?.city || ''}
+                      onChange={(e) => updatePersonAddressField('physical_address', 'city', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
+                    <select
+                      className="question-select"
+                      value={personData.physical_address?.state || ''}
+                      onChange={(e) => updatePersonAddressField('physical_address', 'state', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    >
+                      <option value="">Select State</option>
+                      {US_STATES.map(state => (
+                        <option key={state.value} value={state.value}>{state.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personData.physical_address?.zip || ''}
+                      onChange={(e) => updatePersonAddressField('physical_address', 'zip', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                      placeholder="12345"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Trustor Information Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Trustor Information</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Trustor Is Living</label>
+                    <select
+                      className="question-select"
+                      value={personData.trustor_is_living ?? 1}
+                      onChange={(e) => updatePersonField('trustor_is_living', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    >
+                      <option value={1}>Yes</option>
+                      <option value={0}>No (Deceased)</option>
+                    </select>
+                  </div>
+                  {String(personData.trustor_is_living) === '0' && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Death</label>
+                      <input
+                        type="date"
+                        className="question-input"
+                        value={personData.date_of_death || ''}
+                        onChange={(e) => updatePersonField('date_of_death', e.target.value)}
+                        onBlur={savePersonOnBlur}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* Show trailing conjunction for non-last items */}
-                {index < personValues.length - 1 && conjunctions[index] && (
-                  <span style={{ 
-                    marginLeft: '0.5rem', 
-                    fontWeight: 500, 
-                    color: '#6b7280',
-                    minWidth: '2.5rem'
-                  }}>
-                    {conjunctions[index]}
-                  </span>
-                )}
-
-                {index === personValues.length - 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => addPersonField(question.id, 'and')}
-                      className="person-add-btn"
-                      title="Add another person with 'and'"
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Death Certificate Received</label>
+                    <select
+                      className="question-select"
+                      value={personData.trustor_death_certificate_received ?? 0}
+                      onChange={(e) => updatePersonField('trustor_death_certificate_received', e.target.value)}
+                      onBlur={savePersonOnBlur}
                     >
-                      + and
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => addPersonField(question.id, 'then')}
-                      className="person-add-btn"
-                      title="Add another person with 'then'"
-                      style={{ marginLeft: '0.25rem' }}
+                      <option value={0}>No</option>
+                      <option value={1}>Yes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Of Sound Mind</label>
+                    <select
+                      className="question-select"
+                      value={personData.trustor_of_sound_mind ?? 1}
+                      onChange={(e) => updatePersonField('trustor_of_sound_mind', e.target.value)}
+                      onBlur={savePersonOnBlur}
                     >
-                      + then
-                    </button>
-                  </>
-                )}
+                      <option value={1}>Yes</option>
+                      <option value={0}>No</option>
+                    </select>
+                  </div>
+                </div>
 
-                {personValues.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removePersonField(question.id, index)}
-                    className="person-remove-btn"
-                    title="Remove this person"
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Has Relinquished</label>
+                    <select
+                      className="question-select"
+                      value={personData.trustor_has_relinquished ?? 0}
+                      onChange={(e) => updatePersonField('trustor_has_relinquished', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    >
+                      <option value={0}>No</option>
+                      <option value={1}>Yes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquished Date</label>
+                    <input
+                      type="date"
+                      className="question-input"
+                      value={personData.trustor_relinquished_date || ''}
+                      onChange={(e) => updatePersonField('trustor_relinquished_date', e.target.value)}
+                      onBlur={savePersonOnBlur}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquishment Doc Received</label>
+                  <select
+                    className="question-select"
+                    value={personData.trustor_reling_doc_received ?? 0}
+                    onChange={(e) => updatePersonField('trustor_reling_doc_received', e.target.value)}
+                    onBlur={savePersonOnBlur}
                   >
-                    ×
-                  </button>
-                )}
+                    <option value={0}>No</option>
+                    <option value={1}>Yes</option>
+                  </select>
+                </div>
               </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setPersonModalForQuestion(question.id)}
-              className="add-new-person-btn"
-            >
-              + Add New Person
-            </button>
+            </div>
+              </>
+            )}
           </div>
         )
 
@@ -613,6 +963,7 @@ const DocumentSessions: React.FC = () => {
             className="question-select"
             value={value}
             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onBlur={() => handleAnswerBlur(question.id)}
           >
             <option value="">Select an option...</option>
             {question.options?.map((option, index) => (
@@ -628,6 +979,7 @@ const DocumentSessions: React.FC = () => {
             className="question-input"
             value={value}
             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onBlur={() => handleAnswerBlur(question.id)}
             placeholder="Enter your answer..."
           />
         )

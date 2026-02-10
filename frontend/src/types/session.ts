@@ -86,6 +86,7 @@ export interface SessionQuestionsResponse {
   is_last_group: boolean
   can_go_back: boolean
   existing_answers: Record<number, string>
+  conditional_identifiers: string[]  // identifiers that have conditionals depending on them
 }
 
 export interface SaveAnswersRequest {
