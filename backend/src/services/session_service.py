@@ -246,6 +246,10 @@ class SessionService:
                         if q.identifier == if_identifier:
                             actual_value = answer_by_question_id.get(q.id)
                             
+                            # Skip if the field is empty
+                            if actual_value is None or actual_value == '':
+                                break
+                            
                             # Evaluate based on operator
                             if operator == 'not_equals':
                                 condition_met = actual_value != expected_value
@@ -580,8 +584,14 @@ class SessionService:
                     logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
                     
                     # Check if condition is met
+                    # Don't show conditional questions if the referenced field is empty
                     if identifier and identifier in answer_by_identifier:
                         actual_value = answer_by_identifier[identifier]
+                        
+                        # If the actual value is empty/None, don't show conditional questions
+                        if actual_value is None or actual_value == '':
+                            logger.info(f"{indent}  Condition NOT MET (field is empty)")
+                            continue
                         
                         # Evaluate based on operator
                         if operator == 'not_equals':
