@@ -559,13 +559,45 @@ const DocumentSessions: React.FC = () => {
     }
   }
 
-  const removeRepeatableInstance = (questionIndex: number, instanceIndex: number) => {
+  const removeRepeatableInstance = async (questionIndex: number, instanceIndex: number) => {
+    if (!sessionData) return
+    
     const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
+    const answersToSave: { question_id: number; answer_value: string }[] = []
+    
     for (const qId of setQuestionIds) {
       const current = getRepeatableAnswerArray(qId)
       if (current.length > 1) {
         const updated = current.filter((_, i) => i !== instanceIndex)
         setRepeatableAnswerArray(qId, updated)
+        answersToSave.push({ question_id: qId, answer_value: JSON.stringify(updated) })
+      }
+    }
+    
+    // Save updated answers to database
+    if (answersToSave.length > 0) {
+      try {
+        await sessionService.saveAnswers(sessionData.session_id, { answers: answersToSave })
+        
+        // Check if any of the removed questions are conditional dependencies
+        const questions = sessionData.questions.filter(q => setQuestionIds.includes(q.id))
+        const isConditionalDependency = questions.some(q => 
+          sessionData.conditional_identifiers?.includes(q.identifier)
+        )
+        
+        if (isConditionalDependency) {
+          // Trigger conditional refresh
+          setConditionalLoading(true)
+          const data = await sessionService.getSessionQuestions(
+            sessionData.session_id,
+            currentPage,
+            QUESTIONS_PER_PAGE
+          )
+          setSessionData(data)
+          setConditionalLoading(false)
+        }
+      } catch (err) {
+        console.error('Failed to save after removing instance:', err)
       }
     }
   }

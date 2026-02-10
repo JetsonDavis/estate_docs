@@ -63,7 +63,7 @@ export interface QuestionUpdate {
   is_active?: boolean
 }
 
-export type ConditionalOperator = 'equals' | 'not_equals'
+export type ConditionalOperator = 'equals' | 'not_equals' | 'count_greater_than' | 'count_equals' | 'count_less_than'
 
 export interface QuestionLogicItem {
   id: string

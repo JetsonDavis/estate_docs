@@ -20,7 +20,7 @@ from ..schemas.session import (
 
 class SessionService:
     """Service for document session operations."""
-    
+
     @staticmethod
     def create_session(
         db: Session,
@@ -29,50 +29,50 @@ class SessionService:
     ) -> DocumentSession:
         """
         Create a new document session.
-        
+
         Args:
             db: Database session
             session_data: Session creation data
             user_id: User ID creating the session
-            
+
         Returns:
             Created document session
         """
         from ..models.flow import DocumentFlow
-        
+
         # Determine starting group
         starting_group_id = session_data.starting_group_id
         flow_id = session_data.flow_id
-        
+
         # If flow is specified, use its starting group
         if flow_id:
             flow = db.query(DocumentFlow).filter(
                 DocumentFlow.id == flow_id,
                 DocumentFlow.is_active == True
             ).first()
-            
+
             if not flow:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Flow not found"
                 )
-            
+
             if flow.starting_group_id:
                 starting_group_id = flow.starting_group_id
-        
+
         # If still no starting group, get first available group
         if not starting_group_id:
             first_group = db.query(QuestionGroup).filter(
                 QuestionGroup.is_active == True
             ).order_by(QuestionGroup.display_order).first()
-            
+
             if not first_group:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No question groups available"
                 )
             starting_group_id = first_group.id
-        
+
         session = DocumentSession(
             client_identifier=session_data.client_identifier,
             user_id=user_id,
@@ -80,23 +80,23 @@ class SessionService:
             current_group_id=starting_group_id,
             is_completed=False
         )
-        
+
         db.add(session)
         db.commit()
         db.refresh(session)
-        
+
         return session
-    
+
     @staticmethod
     def get_session(db: Session, session_id: int, user_id: int) -> Optional[DocumentSession]:
         """
         Get session by ID (user can only access their own sessions).
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
-            
+
         Returns:
             Session if found and belongs to user, None otherwise
         """
@@ -104,7 +104,7 @@ class SessionService:
             DocumentSession.id == session_id,
             DocumentSession.user_id == user_id
         ).first()
-    
+
     @staticmethod
     def list_sessions(
         db: Session,
@@ -114,25 +114,25 @@ class SessionService:
     ) -> Tuple[List[DocumentSession], int]:
         """
         List sessions for a user.
-        
+
         Args:
             db: Database session
             user_id: User ID
             skip: Number of records to skip
             limit: Maximum number of records to return
-            
+
         Returns:
             Tuple of (sessions list, total count)
         """
         query = db.query(DocumentSession).filter(
             DocumentSession.user_id == user_id
         )
-        
+
         total = query.count()
         sessions = query.order_by(DocumentSession.created_at.desc()).offset(skip).limit(limit).all()
-        
+
         return sessions, total
-    
+
     @staticmethod
     def submit_answers(
         db: Session,
@@ -142,13 +142,13 @@ class SessionService:
     ) -> DocumentSession:
         """
         Submit answers for current question group and navigate to next group.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
             answers: List of answers to submit
-            
+
         Returns:
             Updated session
         """
@@ -158,20 +158,20 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Allow saving answers on completed sessions for editing
-        
+
         # Get current group
         current_group = db.query(QuestionGroup).filter(
             QuestionGroup.id == session.current_group_id
         ).first()
-        
+
         if not current_group:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Current question group not found"
             )
-        
+
         # Save answers
         for answer_data in answers:
             # Check if answer already exists for this question
@@ -179,7 +179,7 @@ class SessionService:
                 SessionAnswer.session_id == session_id,
                 SessionAnswer.question_id == answer_data.question_id
             ).first()
-            
+
             if existing_answer:
                 # Update existing answer
                 existing_answer.answer_value = answer_data.answer_value
@@ -191,24 +191,24 @@ class SessionService:
                     answer_value=answer_data.answer_value
                 )
                 db.add(answer)
-        
+
         db.commit()
-        
+
         # Determine next group based on conditional flow
         next_group_id = SessionService._get_next_group(db, session, current_group, answers)
-        
+
         if next_group_id:
             session.current_group_id = next_group_id
         else:
             # No next group - mark as completed
             session.is_completed = True
             session.completed_at = datetime.utcnow()
-        
+
         db.commit()
         db.refresh(session)
-        
+
         return session
-    
+
     @staticmethod
     def _get_next_group(
         db: Session,
@@ -218,19 +218,19 @@ class SessionService:
     ) -> Optional[int]:
         """
         Determine next group based on conditional flow logic.
-        
+
         Args:
             db: Database session
             session: Current session
             current_group: Current question group
             answers: Submitted answers
-            
+
         Returns:
             Next group ID or None if completed
         """
         # Build answer lookup by question identifier
         answer_by_question_id = {a.question_id: a.answer_value for a in answers}
-        
+
         # Check if current group has question logic with conditionals
         if current_group.question_logic:
             for item in current_group.question_logic:
@@ -240,34 +240,57 @@ class SessionService:
                     expected_value = cond.get('value')
                     operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
                     next_group_id = cond.get('nextGroupId')
-                    
+
                     # Find question by identifier to get its ID
                     for q in current_group.questions:
                         if q.identifier == if_identifier:
                             actual_value = answer_by_question_id.get(q.id)
-                            
+
                             # Skip if the field is empty
                             if actual_value is None or actual_value == '':
                                 break
-                            
+
                             # Evaluate based on operator
                             if operator == 'not_equals':
                                 condition_met = actual_value != expected_value
+                            elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
+                                # Count operators for repeatable fields - parse JSON array and compare length
+                                try:
+                                    import json
+                                    parsed = json.loads(actual_value)
+                                    if isinstance(parsed, list):
+                                        count = len(parsed)
+                                    else:
+                                        count = 1  # Non-array value counts as 1
+                                except (json.JSONDecodeError, TypeError):
+                                    count = 1 if actual_value else 0  # Non-JSON value counts as 1 if not empty
+                                
+                                try:
+                                    threshold = int(expected_value)
+                                except (ValueError, TypeError):
+                                    threshold = 0
+                                
+                                if operator == 'count_greater_than':
+                                    condition_met = count > threshold
+                                elif operator == 'count_equals':
+                                    condition_met = count == threshold
+                                else:  # count_less_than
+                                    condition_met = count < threshold
                             else:  # 'equals' or default
                                 condition_met = actual_value == expected_value
-                            
+
                             if condition_met:
                                 if next_group_id:
                                     return next_group_id
                                 break
-        
+
         # If no conditional flow matched, find next group by display_order
         next_group = db.query(QuestionGroup).filter(
             QuestionGroup.display_order > current_group.display_order
         ).order_by(QuestionGroup.display_order).first()
-        
+
         return next_group.id if next_group else None
-    
+
     @staticmethod
     def get_session_answers(
         db: Session,
@@ -276,12 +299,12 @@ class SessionService:
     ) -> List[SessionAnswer]:
         """
         Get all answers for a session.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
-            
+
         Returns:
             List of session answers
         """
@@ -291,33 +314,33 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         return db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id
         ).all()
-    
+
     @staticmethod
     def delete_session(db: Session, session_id: int, user_id: int) -> bool:
         """
         Delete a session.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
-            
+
         Returns:
             True if deleted, False if not found
         """
         session = SessionService.get_session(db, session_id, user_id)
         if not session:
             return False
-        
+
         db.delete(session)
         db.commit()
-        
+
         return True
-    
+
     @staticmethod
     def get_session_questions(
         db: Session,
@@ -328,14 +351,14 @@ class SessionService:
     ) -> SessionQuestionsResponse:
         """
         Get questions to display for a session based on flow_logic and question_logic.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
             page: Current page number (1-indexed)
             questions_per_page: Number of questions per page
-            
+
         Returns:
             SessionQuestionsResponse with questions and navigation info
         """
@@ -345,14 +368,14 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Allow viewing/editing completed sessions - don't block access
-        
+
         # Get flow and its groups
         flow = None
         flow_name = None
         ordered_groups = []
-        
+
         if session.flow_id:
             flow = db.query(DocumentFlow).filter(
                 DocumentFlow.id == session.flow_id
@@ -364,7 +387,7 @@ class SessionService:
                     ordered_groups = SessionService._get_groups_from_flow_logic(
                         db, flow.flow_logic, session_id
                     )
-        
+
         # If no flow or no groups from flow_logic, use current_group_id
         if not ordered_groups and session.current_group_id:
             group = db.query(QuestionGroup).filter(
@@ -372,13 +395,13 @@ class SessionService:
             ).first()
             if group:
                 ordered_groups = [group]
-        
+
         if not ordered_groups:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No question groups available"
             )
-        
+
         # Find current group index
         current_group_index = 0
         current_group = None
@@ -387,34 +410,34 @@ class SessionService:
                 current_group_index = i
                 current_group = group
                 break
-        
+
         if not current_group:
             current_group = ordered_groups[0]
             current_group_index = 0
             # Update session's current_group_id
             session.current_group_id = current_group.id
             db.commit()
-        
+
         # Get existing answers for this session
         existing_answers_list = db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id
         ).all()
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
-        
+
         # Get questions to display based on question_logic
         questions_to_display = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
-        
+
         # Paginate questions
         total_questions = len(questions_to_display)
         total_pages = max(1, math.ceil(total_questions / questions_per_page))
         page = max(1, min(page, total_pages))
-        
+
         start_idx = (page - 1) * questions_per_page
         end_idx = start_idx + questions_per_page
         paginated_questions = questions_to_display[start_idx:end_idx]
-        
+
         # Convert to response format
         question_responses = []
         for q in paginated_questions:
@@ -432,9 +455,9 @@ class SessionService:
                 validation_rules=q.validation_rules,
                 current_answer=existing_answers.get(q.id)
             ))
-        
+
         is_last_group = current_group_index >= len(ordered_groups) - 1
-        
+
         # Extract identifiers that have conditionals depending on them
         conditional_identifiers = []
         if current_group.question_logic:
@@ -451,7 +474,7 @@ class SessionService:
                             identifiers.extend(extract_conditional_identifiers(cond['nestedItems']))
                 return identifiers
             conditional_identifiers = list(set(extract_conditional_identifiers(current_group.question_logic)))
-        
+
         return SessionQuestionsResponse(
             session_id=session_id,
             client_identifier=session.client_identifier,
@@ -471,7 +494,7 @@ class SessionService:
             existing_answers=existing_answers,
             conditional_identifiers=conditional_identifiers
         )
-    
+
     @staticmethod
     def _get_groups_from_flow_logic(
         db: Session,
@@ -483,7 +506,7 @@ class SessionService:
         Evaluates conditionals based on existing answers.
         """
         groups = []
-        
+
         # Get existing answers for conditional evaluation
         existing_answers = db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id
@@ -493,7 +516,7 @@ class SessionService:
             question = db.query(Question).filter(Question.id == answer.question_id).first()
             if question:
                 answer_map[question.identifier] = answer.answer_value
-        
+
         def process_steps(steps: List[Dict]):
             for step in steps:
                 if step.get('type') == 'group' and step.get('groupId'):
@@ -503,12 +526,12 @@ class SessionService:
                     ).first()
                     if group and group not in groups:
                         groups.append(group)
-                
+
                 elif step.get('type') == 'conditional' and step.get('conditional'):
                     cond = step['conditional']
                     identifier = cond.get('identifier')
                     expected_value = cond.get('value')
-                    
+
                     # Check if condition is met
                     if identifier and identifier in answer_map:
                         if answer_map[identifier] == expected_value:
@@ -521,14 +544,14 @@ class SessionService:
                                 ).first()
                                 if target_group and target_group not in groups:
                                     groups.append(target_group)
-                            
+
                             # Process nested steps
                             if cond.get('nestedSteps'):
                                 process_steps(cond['nestedSteps'])
-        
+
         process_steps(flow_logic)
         return groups
-    
+
     @staticmethod
     def _get_questions_from_logic(
         db: Session,
@@ -541,11 +564,11 @@ class SessionService:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         logger.info(f"_get_questions_from_logic called for group {group.id} ({group.name})")
         logger.info(f"question_logic: {group.question_logic}")
         logger.info(f"existing_answers: {existing_answers}")
-        
+
         if not group.question_logic:
             # No logic defined - return all questions in order
             logger.info("No question_logic defined, returning all questions")
@@ -553,7 +576,7 @@ class SessionService:
                 Question.question_group_id == group.id,
                 Question.is_active == True
             ).order_by(Question.display_order).all()
-        
+
         questions = []
         # Build answer map by identifier
         answer_by_identifier = {}
@@ -561,17 +584,17 @@ class SessionService:
             question = db.query(Question).filter(Question.id == q_id).first()
             if question:
                 answer_by_identifier[question.identifier] = answer
-        
+
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
-        
+
         def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
             """Process logic items. Returns False if stop flag encountered."""
             indent = "  " * depth
             logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
-            
+
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
-                
+
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
                     if question_id:
@@ -586,35 +609,60 @@ class SessionService:
                             logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
                     else:
                         logger.warning(f"{indent}  Question item has no questionId")
-                    
+
                     # Check for stop flag
                     if item.get('stopFlow'):
                         logger.info(f"{indent}  Stop flag encountered")
                         return False
-                
+
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     cond = item['conditional']
                     identifier = cond.get('ifIdentifier')
                     expected_value = cond.get('value')
                     operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
-                    
+
                     operator_display = '==' if operator == 'equals' else '!='
                     logger.info(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
                     logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
-                    
+
                     # Check if condition is met
                     # Don't show conditional questions if the referenced field is empty
                     if identifier and identifier in answer_by_identifier:
                         actual_value = answer_by_identifier[identifier]
-                        
+
                         # If the actual value is empty/None, don't show conditional questions
                         if actual_value is None or actual_value == '':
                             logger.info(f"{indent}  Condition NOT MET (field is empty)")
                             continue
-                        
+
                         # Evaluate based on operator
                         if operator == 'not_equals':
                             condition_met = actual_value != expected_value
+                        elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
+                            # Count operators for repeatable fields - parse JSON array and compare length
+                            try:
+                                import json
+                                parsed = json.loads(actual_value)
+                                if isinstance(parsed, list):
+                                    count = len(parsed)
+                                else:
+                                    count = 1  # Non-array value counts as 1
+                            except (json.JSONDecodeError, TypeError):
+                                count = 1 if actual_value else 0  # Non-JSON value counts as 1 if not empty
+                            
+                            try:
+                                threshold = int(expected_value)
+                            except (ValueError, TypeError):
+                                threshold = 0
+                            
+                            if operator == 'count_greater_than':
+                                condition_met = count > threshold
+                            elif operator == 'count_equals':
+                                condition_met = count == threshold
+                            else:  # count_less_than
+                                condition_met = count < threshold
+                            
+                            logger.info(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
                         else:  # 'equals' or default
                             condition_met = actual_value == expected_value
                         

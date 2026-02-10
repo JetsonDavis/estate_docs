@@ -2137,15 +2137,31 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
                   Operator
                 </label>
-                <select
-                  value={item.conditional.operator || 'equals'}
-                  onChange={(e) => updateConditionalValue(item.id, 'operator', e.target.value)}
-                  className="form-select"
-                  style={{ fontSize: '0.8rem' }}
-                >
-                  <option value="equals">equals</option>
-                  <option value="not_equals">does not equal</option>
-                </select>
+                {(() => {
+                  // Find the selected question by ifIdentifier to check if it's repeatable
+                  const selectedIdentifier = item.conditional.ifIdentifier || prevNestedQuestion?.identifier || ''
+                  const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
+                  const isRepeatable = selectedQuestion?.repeatable || false
+                  
+                  return (
+                    <select
+                      value={item.conditional.operator || 'equals'}
+                      onChange={(e) => updateConditionalValue(item.id, 'operator', e.target.value)}
+                      className="form-select"
+                      style={{ fontSize: '0.8rem' }}
+                    >
+                      <option value="equals">equals</option>
+                      <option value="not_equals">does not equal</option>
+                      {isRepeatable && (
+                        <>
+                          <option value="count_greater_than">entry count &gt;</option>
+                          <option value="count_equals">entry count =</option>
+                          <option value="count_less_than">entry count &lt;</option>
+                        </>
+                      )}
+                    </select>
+                  )
+                })()}
               </div>
 
               {/* Value */}
@@ -2154,6 +2170,24 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   Value
                 </label>
                 {(() => {
+                  const currentOperator = item.conditional.operator || 'equals'
+                  const isCountOperator = ['count_greater_than', 'count_equals', 'count_less_than'].includes(currentOperator)
+                  
+                  // If count operator, show numeric input
+                  if (isCountOperator) {
+                    return (
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.conditional.value || ''}
+                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        className="form-input"
+                        style={{ fontSize: '0.8rem', width: '80px' }}
+                        placeholder="0"
+                      />
+                    )
+                  }
+                  
                   const isChoiceType = prevNestedQuestion && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(prevNestedQuestion.question_type)
                   const isDateType = prevNestedQuestion && prevNestedQuestion.question_type === 'date'
                   const isPersonType = prevNestedQuestion && prevNestedQuestion.question_type === 'person'
@@ -2844,15 +2878,31 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
                             Operator
                           </label>
-                          <select
-                            value={logicItem.conditional?.operator || 'equals'}
-                            onChange={(e) => updateConditionalValue(logicItem.id, 'operator', e.target.value)}
-                            className="form-select"
-                            style={{ fontSize: '0.875rem' }}
-                          >
-                            <option value="equals">equals</option>
-                            <option value="not_equals">does not equal</option>
-                          </select>
+                          {(() => {
+                            // Find the selected question by ifIdentifier to check if it's repeatable
+                            const selectedIdentifier = logicItem.conditional?.ifIdentifier || question?.identifier || ''
+                            const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
+                            const isRepeatable = selectedQuestion?.repeatable || false
+                            
+                            return (
+                              <select
+                                value={logicItem.conditional?.operator || 'equals'}
+                                onChange={(e) => updateConditionalValue(logicItem.id, 'operator', e.target.value)}
+                                className="form-select"
+                                style={{ fontSize: '0.875rem' }}
+                              >
+                                <option value="equals">equals</option>
+                                <option value="not_equals">does not equal</option>
+                                {isRepeatable && (
+                                  <>
+                                    <option value="count_greater_than">entry count &gt;</option>
+                                    <option value="count_equals">entry count =</option>
+                                    <option value="count_less_than">entry count &lt;</option>
+                                  </>
+                                )}
+                              </select>
+                            )
+                          })()}
                         </div>
 
                         {/* Value - based on question type */}
@@ -2861,6 +2911,24 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                             Value
                           </label>
                           {(() => {
+                            const currentOperator = logicItem.conditional?.operator || 'equals'
+                            const isCountOperator = ['count_greater_than', 'count_equals', 'count_less_than'].includes(currentOperator)
+                            
+                            // If count operator, show numeric input
+                            if (isCountOperator) {
+                              return (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem', width: '80px' }}
+                                  placeholder="0"
+                                />
+                              )
+                            }
+                            
                             const prevQuestion = question
                             const isChoiceType = prevQuestion && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(prevQuestion.question_type)
                             const isPersonType = prevQuestion && prevQuestion.question_type === 'person'
