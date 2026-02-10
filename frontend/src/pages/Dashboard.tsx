@@ -77,7 +77,7 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <Link to="/document" className="card-button secondary">
-                  View Sessions
+                  View Input Forms
                 </Link>
               </div>
 

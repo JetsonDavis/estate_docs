@@ -659,7 +659,7 @@ const DocumentSessions: React.FC = () => {
         }
 
         // Collect person data from questions that appear BEFORE this question in the list
-        // This ensures the first entry of a person shows all fields, only subsequent ones are hidden
+        // AND from earlier instances of the same repeatable question
         const earlierPeople: Array<{ name: string; data: Record<string, any> }> = []
         if (sessionData) {
           const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
@@ -670,7 +670,32 @@ const DocumentSessions: React.FC = () => {
               if (answerValue) {
                 try {
                   const parsed = JSON.parse(answerValue)
-                  if (parsed.name && parsed.name.trim()) {
+                  if (Array.isArray(parsed)) {
+                    // Repeatable person - add all instances
+                    for (const personObj of parsed) {
+                      if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
+                        earlierPeople.push({ name: personObj.name, data: personObj })
+                      }
+                    }
+                  } else if (parsed.name && parsed.name.trim()) {
+                    earlierPeople.push({ name: parsed.name, data: parsed })
+                  }
+                } catch {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+          
+          // For repeatable questions, also include earlier instances of THIS question
+          if (question.repeatable && instanceIndex > 0) {
+            const arr = getRepeatableAnswerArray(question.id)
+            for (let i = 0; i < instanceIndex; i++) {
+              const instanceValue = arr[i]
+              if (instanceValue) {
+                try {
+                  const parsed = JSON.parse(instanceValue)
+                  if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
                     earlierPeople.push({ name: parsed.name, data: parsed })
                   }
                 } catch {
@@ -692,19 +717,19 @@ const DocumentSessions: React.FC = () => {
           if (field === 'name') {
             const match = earlierPeople.find(p => p.name.toLowerCase() === fieldValue.toLowerCase())
             if (match) {
-              handleAnswerChange(question.id, JSON.stringify(match.data))
+              handleValueChange(JSON.stringify(match.data))
               return
             }
           }
           const newData = { ...personData, [field]: fieldValue }
-          handleAnswerChange(question.id, JSON.stringify(newData))
+          handleValueChange(JSON.stringify(newData))
         }
 
         const updatePersonAddressField = (addressType: 'mailing_address' | 'physical_address', field: string, fieldValue: string) => {
           const currentAddress = personData[addressType] || {}
           const newAddress = { ...currentAddress, [field]: fieldValue }
           const newData = { ...personData, [addressType]: newAddress }
-          handleAnswerChange(question.id, JSON.stringify(newData))
+          handleValueChange(JSON.stringify(newData))
         }
 
         // Save person data on blur (called when field loses focus)
@@ -744,9 +769,10 @@ const DocumentSessions: React.FC = () => {
                 onChange={(e) => updatePersonField('name', e.target.value)}
                 onBlur={savePersonOnBlur}
                 placeholder="Full name"
-                list={`person-typeahead-${question.id}`}
+                list={`person-typeahead-${question.id}-${instanceIndex}`}
+                autoComplete="off"
               />
-              <datalist id={`person-typeahead-${question.id}`}>
+              <datalist id={`person-typeahead-${question.id}-${instanceIndex}`}>
                 {earlierPeople.map((person, idx) => (
                   <option key={idx} value={person.name} />
                 ))}
