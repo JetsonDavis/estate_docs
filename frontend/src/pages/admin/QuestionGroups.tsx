@@ -1602,10 +1602,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
         return (
           <div key={item.id} style={{ marginBottom: '1rem' }}>
-            {/* Insert Question button before each nested question */}
+            {/* Insert Question and Insert Conditional buttons before each nested question */}
             <div style={{
               display: 'flex',
               justifyContent: 'center',
+              gap: '0.5rem',
               marginBottom: '0.5rem',
               marginTop: itemIndex === 0 ? '0' : '0.25rem'
             }}>
@@ -1633,8 +1634,44 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Insert
+                Insert Question
               </button>
+              {itemIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Find the previous nested question to use as the conditional's ifIdentifier
+                    const prevItems = nestedItems.slice(0, itemIndex).filter(i => i.type === 'question')
+                    const prevNestedItem = prevItems[prevItems.length - 1]
+                    const prevNestedQ = prevNestedItem ? questions.find(q => 
+                      q.id === (prevNestedItem as any).localQuestionId || q.dbId === prevNestedItem.questionId
+                    ) : undefined
+                    addConditionalToLogic(itemIndex - 1, parentPath, prevNestedQ)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.65rem',
+                    background: 'white',
+                    color: '#7c3aed',
+                    border: '1px dashed #7c3aed',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a nested conditional here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Insert Conditional
+                </button>
+              )}
             </div>
 
             {/* Nested Question Block */}
@@ -1935,7 +1972,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Add Conditional
+                    Add Nested Conditional
                   </button>
                 )}
                 {/* Add question at parent level (one less indent) - only show for last question in group */}
@@ -2076,18 +2113,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {/* If identifier */}
+              {/* If identifier - dropdown of all questions */}
               <div>
                 <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
                   If identifier
                 </label>
-                <input
-                  type="text"
+                <select
                   value={item.conditional.ifIdentifier || prevNestedQuestion?.identifier || ''}
-                  readOnly
-                  className="form-input"
-                  style={{ fontSize: '0.8rem', backgroundColor: '#f3f4f6' }}
-                />
+                  onChange={(e) => updateConditionalValue(item.id, 'ifIdentifier', e.target.value)}
+                  className="form-select"
+                  style={{ fontSize: '0.8rem' }}
+                >
+                  {questions.filter(q => q.identifier.trim()).map(q => (
+                    <option key={q.id} value={q.identifier}>
+                      {q.identifier}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Operator dropdown */}
@@ -2299,12 +2341,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               style={{ borderColor: isDuplicateName ? '#dc2626' : undefined }}
               required
             />
-            {isCheckingName && (
-              <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.25rem' }}>Checking name...</p>
-            )}
-            {isDuplicateName && !isCheckingName && (
-              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>A question group with this name already exists. Please use a unique name.</p>
-            )}
+            <div style={{ minHeight: '1.5rem', marginTop: '0.25rem' }}>
+              {isCheckingName && (
+                <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>Checking name...</p>
+              )}
+              {isDuplicateName && !isCheckingName && (
+                <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: 0 }}>A question group with this name already exists. Please use a unique name.</p>
+              )}
+            </div>
           </div>
 
           <div className="form-group form-group-description" style={{ maxWidth: '50%' }}>
@@ -2347,10 +2391,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
             return (
             <div key={question.id} className="question-builder">
-              {/* Insert Question button before each question */}
+              {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
+                gap: '0.5rem',
                 marginBottom: '0.5rem',
                 marginTop: '12px'
               }}>
@@ -2380,6 +2425,42 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   </svg>
                   Insert Question
                 </button>
+                {qIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Find the previous question to use as the conditional's ifIdentifier
+                      const prevQuestion = mainLevelQuestions[qIndex - 1]
+                      const prevLogicIndex = questionLogic.findIndex(item =>
+                        item.type === 'question' &&
+                        ((item as any).localQuestionId === prevQuestion.id || item.questionId === prevQuestion.dbId)
+                      )
+                      addConditionalToLogic(prevLogicIndex >= 0 ? prevLogicIndex : qIndex - 1, undefined, prevQuestion)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.75rem',
+                      fontSize: '0.7rem',
+                      background: 'white',
+                      color: '#7c3aed',
+                      border: '1px dashed #7c3aed',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      opacity: 0.7,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                    title="Insert a new conditional here"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Insert Conditional
+                  </button>
+                )}
               </div>
 
               <div className="question-builder-header">
@@ -2425,16 +2506,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     style={{ borderColor: question.isDuplicateIdentifier ? '#dc2626' : undefined }}
                     placeholder="e.g., full_name"
                   />
-                  {question.isCheckingIdentifier && (
-                    <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                      Checking identifier...
-                    </p>
-                  )}
-                  {question.isDuplicateIdentifier && !question.isCheckingIdentifier && (
-                    <p style={{ fontSize: '0.875rem', color: '#dc2626', marginTop: '0.25rem' }}>
-                      This identifier is already in use. Please choose a unique identifier.
-                    </p>
-                  )}
+                  <div style={{ minHeight: '1.5rem', marginTop: '0.25rem' }}>
+                    {question.isCheckingIdentifier && (
+                      <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
+                        Checking identifier...
+                      </p>
+                    )}
+                    {question.isDuplicateIdentifier && !question.isCheckingIdentifier && (
+                      <p style={{ fontSize: '0.875rem', color: '#dc2626', margin: 0 }}>
+                        This identifier is already in use. Please choose a unique identifier.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="question-text-section">
@@ -2683,22 +2766,31 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </button>
               </div>
 
-              {/* Render conditionals that are associated with this question */}
+              {/* Render conditionals that follow this question in questionLogic */}
               {(() => {
-                // Filter conditionals for this question and track their index
-                const conditionalsForQuestion = questionLogic
-                  .map((item, idx) => ({ item, idx }))
-                  .filter(({ item }) => 
-                    item.type === 'conditional' && 
-                    item.conditional?.ifIdentifier === question.identifier
-                  )
+                // Find the index of this question in questionLogic
+                const thisQuestionLogicIndex = questionLogic.findIndex(item =>
+                  item.type === 'question' &&
+                  ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+                )
                 
-                return conditionalsForQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
+                // Find conditionals that come after this question but before the next question
+                const conditionalsAfterQuestion: { item: QuestionLogicItem; idx: number }[] = []
+                if (thisQuestionLogicIndex >= 0) {
+                  for (let i = thisQuestionLogicIndex + 1; i < questionLogic.length; i++) {
+                    const item = questionLogic[i]
+                    if (item.type === 'question') break // Stop at next question
+                    if (item.type === 'conditional') {
+                      conditionalsAfterQuestion.push({ item, idx: i })
+                    }
+                  }
+                }
+                
+                return conditionalsAfterQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
                   return (
                     <React.Fragment key={logicItem.id}>
                     <div style={{
                       marginTop: '0.75rem',
-                      marginLeft: '2rem',
                       padding: '1rem',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -2706,7 +2798,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
-                          Conditional ({qIndex + 1}-{condIndex + 1})
+                          Conditional ({logicIndex + 1})
                         </div>
               
                         <button
@@ -2728,18 +2820,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {/* If identifier - always the previous question */}
+                        {/* If identifier - dropdown of all questions */}
                         <div>
                           <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
                             If identifier
                           </label>
-                          <input
-                            type="text"
+                          <select
                             value={logicItem.conditional?.ifIdentifier || question.identifier}
-                            readOnly
-                            className="form-input"
-                            style={{ fontSize: '0.875rem', backgroundColor: '#f3f4f6' }}
-                          />
+                            onChange={(e) => updateConditionalValue(logicItem.id, 'ifIdentifier', e.target.value)}
+                            className="form-select"
+                            style={{ fontSize: '0.875rem' }}
+                          >
+                            {questions.filter(q => q.identifier.trim()).map(q => (
+                              <option key={q.id} value={q.identifier}>
+                                {q.identifier}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Operator dropdown */}
@@ -2866,7 +2963,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             </div>
           )}
 
-          <div style={{ marginTop: '1rem' }}>
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
             <button
               type="button"
               onClick={() => addQuestionToLogic()}
@@ -2878,6 +2975,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               Add Question
+            </button>
+            <button
+              type="button"
+              onClick={() => addConditionalToLogic(questionLogic.length - 1)}
+              className="action-button"
+              disabled={questions.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 1rem',
+                fontSize: '0.875rem',
+                background: questions.length === 0 ? '#d1d5db' : '#7c3aed',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: questions.length === 0 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Add Conditional
             </button>
           </div>
         </div>
