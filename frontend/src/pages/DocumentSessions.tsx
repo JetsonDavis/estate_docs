@@ -480,8 +480,125 @@ const DocumentSessions: React.FC = () => {
     }
   }
 
-  const renderQuestion = (question: QuestionToDisplay) => {
-    const value = answers[question.id] || ''
+  // Helper functions for repeatable questions
+  const getRepeatableAnswerArray = (questionId: number): string[] => {
+    const value = answers[questionId] || ''
+    if (!value) return ['']
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 ? parsed : ['']
+      }
+    } catch {
+      // Not JSON, treat as single value
+    }
+    return [value]
+  }
+
+  const setRepeatableAnswerArray = (questionId: number, values: string[]) => {
+    const jsonValue = JSON.stringify(values)
+    handleAnswerChange(questionId, jsonValue)
+  }
+
+  const isLastInRepeatableSet = (questionIndex: number): boolean => {
+    if (!sessionData) return false
+    const questions = sessionData.questions
+    const currentQuestion = questions[questionIndex]
+    if (!currentQuestion?.repeatable) return false
+    
+    // Check if next question exists and is also repeatable
+    const nextQuestion = questions[questionIndex + 1]
+    if (!nextQuestion || !nextQuestion.repeatable) return true
+    return false
+  }
+
+  const getRepeatableSetStartIndex = (questionIndex: number): number => {
+    if (!sessionData) return questionIndex
+    const questions = sessionData.questions
+    let startIndex = questionIndex
+    
+    // Walk backwards to find the start of the repeatable set
+    while (startIndex > 0 && questions[startIndex - 1]?.repeatable) {
+      startIndex--
+    }
+    return startIndex
+  }
+
+  const getRepeatableSetQuestionIds = (questionIndex: number): number[] => {
+    if (!sessionData) return []
+    const questions = sessionData.questions
+    const startIndex = getRepeatableSetStartIndex(questionIndex)
+    const ids: number[] = []
+    
+    // Collect all consecutive repeatable questions
+    for (let i = startIndex; i < questions.length && questions[i]?.repeatable; i++) {
+      ids.push(questions[i].id)
+    }
+    return ids
+  }
+
+  const getInstanceCount = (questionIndex: number): number => {
+    if (!sessionData) return 1
+    const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
+    if (setQuestionIds.length === 0) return 1
+    
+    // Get the max instance count from all questions in the set
+    let maxCount = 1
+    for (const qId of setQuestionIds) {
+      const arr = getRepeatableAnswerArray(qId)
+      if (arr.length > maxCount) maxCount = arr.length
+    }
+    return maxCount
+  }
+
+  const addRepeatableInstance = (questionIndex: number) => {
+    const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
+    for (const qId of setQuestionIds) {
+      const current = getRepeatableAnswerArray(qId)
+      setRepeatableAnswerArray(qId, [...current, ''])
+    }
+  }
+
+  const removeRepeatableInstance = (questionIndex: number, instanceIndex: number) => {
+    const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
+    for (const qId of setQuestionIds) {
+      const current = getRepeatableAnswerArray(qId)
+      if (current.length > 1) {
+        const updated = current.filter((_, i) => i !== instanceIndex)
+        setRepeatableAnswerArray(qId, updated)
+      }
+    }
+  }
+
+  const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
+    const current = getRepeatableAnswerArray(questionId)
+    const updated = [...current]
+    // Ensure array is long enough
+    while (updated.length <= instanceIndex) {
+      updated.push('')
+    }
+    updated[instanceIndex] = value
+    setRepeatableAnswerArray(questionId, updated)
+  }
+
+  const renderQuestion = (question: QuestionToDisplay, instanceIndex: number = 0) => {
+    // For repeatable questions, get the value at the specific instance index
+    let value: string
+    if (question.repeatable) {
+      const arr = getRepeatableAnswerArray(question.id)
+      value = arr[instanceIndex] || ''
+    } else {
+      value = answers[question.id] || ''
+    }
+
+    // Handler for value changes - uses repeatable-aware update if needed
+    const handleValueChange = (newValue: string) => {
+      if (question.repeatable) {
+        updateRepeatableInstance(question.id, instanceIndex, newValue)
+      } else {
+        handleAnswerChange(question.id, newValue)
+      }
+    }
 
     switch (question.question_type) {
       case 'multiple_choice':
@@ -494,14 +611,14 @@ const DocumentSessions: React.FC = () => {
                 <div key={index} className="radio-option">
                   <input
                     type="radio"
-                    id={`q${question.id}-${index}`}
-                    name={`question-${question.id}`}
+                    id={`q${question.id}-${instanceIndex}-${index}`}
+                    name={`question-${question.id}-${instanceIndex}`}
                     value={optionValue}
                     checked={value === optionValue}
-                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                    onChange={(e) => handleValueChange(e.target.value)}
                     onBlur={() => handleAnswerBlur(question.id)}
                   />
-                  <label htmlFor={`q${question.id}-${index}`}>{option.label}</label>
+                  <label htmlFor={`q${question.id}-${instanceIndex}-${index}`}>{option.label}</label>
                 </div>
               )
             })}
@@ -513,7 +630,7 @@ const DocumentSessions: React.FC = () => {
           <textarea
             className="question-textarea"
             value={value}
-            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
             onBlur={() => handleAnswerBlur(question.id)}
             placeholder="Enter your answer..."
           />
@@ -525,7 +642,7 @@ const DocumentSessions: React.FC = () => {
             type={question.include_time ? 'datetime-local' : 'date'}
             className="question-input"
             value={value}
-            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
             onBlur={() => handleAnswerBlur(question.id)}
           />
         )
@@ -962,7 +1079,7 @@ const DocumentSessions: React.FC = () => {
           <select
             className="question-select"
             value={value}
-            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
             onBlur={() => handleAnswerBlur(question.id)}
           >
             <option value="">Select an option...</option>
@@ -978,7 +1095,7 @@ const DocumentSessions: React.FC = () => {
             type="text"
             className="question-input"
             value={value}
-            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
             onBlur={() => handleAnswerBlur(question.id)}
             placeholder="Enter your answer..."
           />
@@ -1155,10 +1272,109 @@ const DocumentSessions: React.FC = () => {
                     ? sessionData.questions.findIndex(q => q.id === conditionalLoadingQuestionId)
                     : -1
                   
+                  // Track which repeatable sets we've already rendered
+                  const renderedRepeatableSets = new Set<number>()
+                  
                   return sessionData.questions.map((question, qIndex) => {
                     // Hide questions after the triggering question while loading
                     if (conditionalLoading && triggerIndex >= 0 && qIndex > triggerIndex) {
                       return null
+                    }
+                    
+                    // For repeatable questions, we need special handling
+                    if (question.repeatable) {
+                      // Check if this is the start of a repeatable set
+                      const setStartIndex = getRepeatableSetStartIndex(qIndex)
+                      
+                      // Skip if we've already rendered this set
+                      if (renderedRepeatableSets.has(setStartIndex)) {
+                        return null
+                      }
+                      renderedRepeatableSets.add(setStartIndex)
+                      
+                      // Get all questions in this repeatable set
+                      const setQuestionIds = getRepeatableSetQuestionIds(qIndex)
+                      const setQuestions = setQuestionIds.map(id => 
+                        sessionData.questions.find(q => q.id === id)!
+                      ).filter(Boolean)
+                      
+                      const instanceCount = getInstanceCount(qIndex)
+                      const isLastInSet = isLastInRepeatableSet(qIndex + setQuestions.length - 1)
+                      
+                      return (
+                        <React.Fragment key={`repeatable-set-${setStartIndex}`}>
+                          {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
+                            <div 
+                              key={`instance-${instanceIdx}`}
+                              className="repeatable-instance"
+                              style={{
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '0.5rem',
+                                padding: '1rem',
+                                marginBottom: '0.75rem',
+                                backgroundColor: '#fafafa',
+                                position: 'relative'
+                              }}
+                            >
+                              {instanceCount > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeRepeatableInstance(qIndex, instanceIdx)}
+                                  style={{
+                                    position: 'absolute',
+                                    top: '0.5rem',
+                                    right: '0.5rem',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontSize: '1.25rem',
+                                    lineHeight: 1,
+                                    padding: '0.25rem'
+                                  }}
+                                  title="Remove this entry"
+                                >
+                                  ×
+                                </button>
+                              )}
+                              {setQuestions.map((setQuestion) => (
+                                <div key={setQuestion.id} className="question-item" style={{ marginBottom: '0.75rem' }}>
+                                  <label className="question-label">
+                                    {setQuestion.question_text}
+                                    {setQuestion.is_required && <span className="required-indicator">*</span>}
+                                  </label>
+                                  {setQuestion.help_text && (
+                                    <p className="question-help">{setQuestion.help_text}</p>
+                                  )}
+                                  {renderQuestion(setQuestion, instanceIdx)}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                          {isLastInSet && (
+                            <button
+                              type="button"
+                              onClick={() => addRepeatableInstance(qIndex)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 1rem',
+                                backgroundColor: '#f3f4f6',
+                                border: '1px dashed #9ca3af',
+                                borderRadius: '0.375rem',
+                                color: '#4b5563',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                marginBottom: '1rem'
+                              }}
+                            >
+                              <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
+                              Add Another
+                            </button>
+                          )}
+                        </React.Fragment>
+                      )
                     }
                     
                     return (

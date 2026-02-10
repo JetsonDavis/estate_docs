@@ -80,6 +80,7 @@ class QuestionToDisplay(BaseModel):
     question_text: str
     question_type: str
     is_required: bool
+    repeatable: bool = False
     help_text: Optional[str]
     options: Optional[List[dict]]
     person_display_mode: Optional[str]

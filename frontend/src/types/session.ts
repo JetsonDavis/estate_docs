@@ -61,6 +61,7 @@ export interface QuestionToDisplay {
   question_text: string
   question_type: string
   is_required: boolean
+  repeatable: boolean
   help_text: string | null
   options: Array<{ value: string; label: string }> | null
   person_display_mode: string | null

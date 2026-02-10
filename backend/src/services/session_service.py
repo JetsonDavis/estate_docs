@@ -424,6 +424,7 @@ class SessionService:
                 question_text=q.question_text,
                 question_type=q.question_type,
                 is_required=q.is_required,
+                repeatable=q.repeatable,
                 help_text=q.help_text,
                 options=q.options,
                 person_display_mode=q.person_display_mode,
