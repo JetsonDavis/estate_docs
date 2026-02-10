@@ -41,9 +41,6 @@ const Header: React.FC = () => {
               <div className="header-links">
                 {isAdmin && (
                   <>
-                    <Link to="/admin/people" className="header-link">
-                      People
-                    </Link>
                     <Link to="/admin/question-groups" className="header-link">
                       Question Groups
                     </Link>
