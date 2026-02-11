@@ -242,8 +242,11 @@ class SessionService:
                     next_group_id = cond.get('nextGroupId')
 
                     # Find question by identifier to get its ID
+                    # Support both namespaced and non-namespaced identifiers
                     for q in current_group.questions:
-                        if q.identifier == if_identifier:
+                        # Check both full identifier and stripped version
+                        q_stripped = q.identifier.split('.', 1)[1] if '.' in q.identifier else q.identifier
+                        if q.identifier == if_identifier or q_stripped == if_identifier:
                             actual_value = answer_by_question_id.get(q.id)
 
                             # Skip if the field is empty
@@ -425,22 +428,23 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        questions_to_display = SessionService._get_questions_from_logic(
+        # Returns list of (question, depth) tuples
+        questions_with_depth = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
         # Paginate questions
-        total_questions = len(questions_to_display)
+        total_questions = len(questions_with_depth)
         total_pages = max(1, math.ceil(total_questions / questions_per_page))
         page = max(1, min(page, total_pages))
 
         start_idx = (page - 1) * questions_per_page
         end_idx = start_idx + questions_per_page
-        paginated_questions = questions_to_display[start_idx:end_idx]
+        paginated_questions = questions_with_depth[start_idx:end_idx]
 
         # Convert to response format
         question_responses = []
-        for q in paginated_questions:
+        for q, depth in paginated_questions:
             question_responses.append(QuestionToDisplay(
                 id=q.id,
                 identifier=q.identifier,
@@ -453,7 +457,8 @@ class SessionService:
                 person_display_mode=q.person_display_mode,
                 include_time=q.include_time,
                 validation_rules=q.validation_rules,
-                current_answer=existing_answers.get(q.id)
+                current_answer=existing_answers.get(q.id),
+                depth=depth
             ))
 
         is_last_group = current_group_index >= len(ordered_groups) - 1
@@ -570,20 +575,28 @@ class SessionService:
         logger.info(f"existing_answers: {existing_answers}")
 
         if not group.question_logic:
-            # No logic defined - return all questions in order
+            # No logic defined - return all questions in order with depth 0
             logger.info("No question_logic defined, returning all questions")
-            return db.query(Question).filter(
+            questions = db.query(Question).filter(
                 Question.question_group_id == group.id,
                 Question.is_active == True
             ).order_by(Question.display_order).all()
+            return [(q, 0) for q in questions]
 
-        questions = []
+        questions_with_depth = []  # List of (question, depth) tuples
+        question_ids_added = set()  # Track which question IDs have been added
         # Build answer map by identifier
+        # Store both namespaced and non-namespaced versions for compatibility
         answer_by_identifier = {}
         for q_id, answer in existing_answers.items():
             question = db.query(Question).filter(Question.id == q_id).first()
             if question:
+                # Store with full namespaced identifier
                 answer_by_identifier[question.identifier] = answer
+                # Also store with stripped identifier (without namespace prefix)
+                if '.' in question.identifier:
+                    stripped_identifier = question.identifier.split('.', 1)[1]
+                    answer_by_identifier[stripped_identifier] = answer
 
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
 
@@ -602,9 +615,10 @@ class SessionService:
                             Question.id == question_id,
                             Question.is_active == True
                         ).first()
-                        if question and question not in questions:
-                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id})")
-                            questions.append(question)
+                        if question and question.id not in question_ids_added:
+                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth})")
+                            questions_with_depth.append((question, depth))
+                            question_ids_added.add(question.id)
                         elif not question:
                             logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
                     else:
@@ -687,8 +701,8 @@ class SessionService:
             return True
         
         process_logic_items(group.question_logic)
-        logger.info(f"Final questions to display: {[q.identifier for q in questions]}")
-        return questions
+        logger.info(f"Final questions to display: {[(q.identifier, d) for q, d in questions_with_depth]}")
+        return questions_with_depth
     
     @staticmethod
     def save_answers(

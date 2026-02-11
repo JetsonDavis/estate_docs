@@ -1,7 +1,7 @@
 import React from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { Link } from 'react-router-dom'
 import './Dashboard.css'
+import { Link } from 'react-router-dom'
 
 const Dashboard: React.FC = () => {
   const { user, isAdmin } = useAuth()

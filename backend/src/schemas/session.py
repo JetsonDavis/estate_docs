@@ -87,6 +87,7 @@ class QuestionToDisplay(BaseModel):
     include_time: Optional[bool]
     validation_rules: Optional[dict]
     current_answer: Optional[str] = None
+    depth: int = 0  # Nesting level for conditional questions
 
 
 class SessionQuestionsResponse(BaseModel):

@@ -68,6 +68,7 @@ export interface QuestionToDisplay {
   include_time: boolean | null
   validation_rules: Record<string, any> | null
   current_answer: string | null
+  depth: number  // Nesting level for conditional questions
 }
 
 export interface SessionQuestionsResponse {

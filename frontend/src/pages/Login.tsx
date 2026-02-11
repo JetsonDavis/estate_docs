@@ -33,7 +33,7 @@ const Login: React.FC = () => {
       <div className="login-card">
         <div className="login-header">
           <h2 className="login-title">Estate-Doc(tor)</h2>
-          <p className="login-subtitle">Sign in to your account</p>
+          <p className="login-subtitle">Sign in to your account.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">

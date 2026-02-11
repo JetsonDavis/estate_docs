@@ -12,17 +12,17 @@ from fastapi import HTTPException, status
 
 class QuestionGroupService:
     """Service for question group operations."""
-    
+
     @staticmethod
     def get_question_group_by_id(db: Session, group_id: int) -> Optional[QuestionGroup]:
         """Get question group by ID."""
         return db.query(QuestionGroup).filter(QuestionGroup.id == group_id).first()
-    
+
     @staticmethod
     def get_question_group_by_identifier(db: Session, identifier: str) -> Optional[QuestionGroup]:
         """Get question group by identifier."""
         return db.query(QuestionGroup).filter(QuestionGroup.identifier == identifier).first()
-    
+
     @staticmethod
     def list_question_groups(
         db: Session,
@@ -32,17 +32,17 @@ class QuestionGroupService:
     ) -> tuple[List[QuestionGroup], int]:
         """List question groups with pagination."""
         query = db.query(QuestionGroup)
-        
+
         if not include_inactive:
             query = query.filter(QuestionGroup.is_active == True)
-        
+
         query = query.order_by(QuestionGroup.display_order, QuestionGroup.name)
-        
+
         total = query.count()
         groups = query.offset(skip).limit(limit).all()
-        
+
         return groups, total
-    
+
     @staticmethod
     def create_question_group(db: Session, group_data: QuestionGroupCreate) -> QuestionGroup:
         """Create a new question group."""
@@ -55,20 +55,20 @@ class QuestionGroupService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Question group with this identifier already exists"
             )
-        
+
         new_group = QuestionGroup(
             name=group_data.name,
             description=group_data.description,
             identifier=group_data.identifier,
             display_order=group_data.display_order
         )
-        
+
         db.add(new_group)
         db.commit()
         db.refresh(new_group)
-        
+
         return new_group
-    
+
     @staticmethod
     def update_question_group(
         db: Session,
@@ -82,7 +82,7 @@ class QuestionGroupService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Question group not found"
             )
-        
+
         # Update fields
         if group_data.name is not None:
             group.name = group_data.name
@@ -94,12 +94,12 @@ class QuestionGroupService:
             group.question_logic = group_data.question_logic
         if group_data.is_active is not None:
             group.is_active = group_data.is_active
-        
+
         db.commit()
         db.refresh(group)
-        
+
         return group
-    
+
     @staticmethod
     def delete_question_group(db: Session, group_id: int) -> bool:
         """Hard delete a question group and its questions."""
@@ -109,30 +109,30 @@ class QuestionGroupService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Question group not found"
             )
-        
+
         # Delete all questions in this group first
         db.query(Question).filter(Question.question_group_id == group_id).delete()
-        
+
         # Delete the group
         db.delete(group)
         db.commit()
-        
+
         return True
 
 
 class QuestionService:
     """Service for question operations."""
-    
+
     @staticmethod
     def get_question_by_id(db: Session, question_id: int) -> Optional[Question]:
         """Get question by ID."""
         return db.query(Question).filter(Question.id == question_id).first()
-    
+
     @staticmethod
     def get_question_by_identifier(db: Session, identifier: str) -> Optional[Question]:
         """Get question by identifier."""
         return db.query(Question).filter(Question.identifier == identifier).first()
-    
+
     @staticmethod
     def list_questions_by_group(
         db: Session,
@@ -141,28 +141,18 @@ class QuestionService:
     ) -> List[Question]:
         """List questions for a specific group."""
         query = db.query(Question).filter(Question.question_group_id == group_id)
-        
+
         if not include_inactive:
             query = query.filter(Question.is_active == True)
-        
+
         query = query.order_by(Question.display_order)
-        
+
         return query.all()
-    
+
     @staticmethod
     def create_question(db: Session, question_data: QuestionCreate) -> Question:
         """Create a new question."""
-        # Check if identifier already exists
-        existing = db.query(Question).filter(
-            Question.identifier == question_data.identifier
-        ).first()
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Question with this identifier already exists"
-            )
-        
-        # Verify question group exists
+        # Verify question group exists first (needed for namespace)
         group = db.query(QuestionGroup).filter(
             QuestionGroup.id == question_data.question_group_id
         ).first()
@@ -172,6 +162,17 @@ class QuestionService:
                 detail="Question group not found"
             )
         
+        # Build namespaced identifier and check if it already exists
+        namespaced_identifier = f"{group.identifier}.{question_data.identifier}"
+        existing = db.query(Question).filter(
+            Question.identifier == namespaced_identifier
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Question with this identifier already exists in this group"
+            )
+
         # Convert options to dict format if provided
         options_dict = None
         if question_data.options:
@@ -181,7 +182,7 @@ class QuestionService:
             question_group_id=question_data.question_group_id,
             question_text=question_data.question_text,
             question_type=question_data.question_type,
-            identifier=question_data.identifier,
+            identifier=namespaced_identifier,
             repeatable=question_data.repeatable,
             display_order=question_data.display_order,
             is_required=question_data.is_required,
@@ -219,7 +220,12 @@ class QuestionService:
         if question_data.question_type is not None:
             question.question_type = question_data.question_type
         if question_data.identifier is not None:
-            question.identifier = question_data.identifier
+            # Build namespaced identifier using the question's group
+            group = db.query(QuestionGroup).filter(QuestionGroup.id == question.question_group_id).first()
+            if group:
+                question.identifier = f"{group.identifier}.{question_data.identifier}"
+            else:
+                question.identifier = question_data.identifier
         if question_data.display_order is not None:
             question.display_order = question_data.display_order
         if question_data.is_required is not None:

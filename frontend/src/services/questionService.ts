@@ -76,6 +76,7 @@ export const questionGroupService = {
 
   async checkQuestionIdentifier(
     identifier: string,
+    groupId: number,
     excludeId?: number
   ): Promise<{ exists: boolean; question_id: number | null }> {
     const response = await apiClient.get<{ exists: boolean; question_id: number | null }>(
@@ -83,6 +84,7 @@ export const questionGroupService = {
       {
         params: {
           identifier,
+          group_id: groupId,
           exclude_id: excludeId,
         },
       }

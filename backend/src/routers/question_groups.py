@@ -220,15 +220,25 @@ async def delete_question(
 @router.get("/questions/check-identifier")
 async def check_question_identifier(
     identifier: str = Query(..., description="Identifier to check"),
+    group_id: int = Query(..., description="Question group ID for namespace"),
     exclude_id: int = Query(None, description="Question ID to exclude from check"),
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db)
 ) -> dict:
     """
-    Check if a question identifier already exists (admin only).
+    Check if a question identifier already exists within a group (admin only).
+    The identifier is namespaced with the group identifier before checking.
     Returns { exists: bool, question_id: int | null }
     """
-    question = QuestionService.get_question_by_identifier(db, identifier)
+    # Get the group to build the namespaced identifier
+    group = db.query(QuestionGroup).filter(QuestionGroup.id == group_id).first()
+    if not group:
+        return {"exists": False, "question_id": None}
+    
+    # Build the namespaced identifier
+    namespaced_identifier = f"{group.identifier}.{identifier}"
+    
+    question = QuestionService.get_question_by_identifier(db, namespaced_identifier)
     if question and (exclude_id is None or question.id != exclude_id):
         return {"exists": True, "question_id": question.id}
     return {"exists": False, "question_id": None}

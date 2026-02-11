@@ -162,6 +162,95 @@ const DocumentSessions: React.FC = () => {
     // Note: Saving to database is now done on blur via handleAnswerBlur
   }
 
+  // Handle radio button change - saves immediately and triggers conditional refresh
+  const handleRadioChange = async (questionId: number, newValue: string) => {
+    if (!sessionData) return
+
+    const question = sessionData.questions.find(q => q.id === questionId)
+    if (!question) return
+
+    console.log('handleRadioChange called:', { questionId, newValue, identifier: question.identifier })
+
+    // Save the answer immediately
+    try {
+      await sessionService.saveAnswers(sessionData.session_id, {
+        answers: [{ question_id: questionId, answer_value: newValue }]
+      })
+      console.log('Answer saved successfully')
+    } catch (err) {
+      console.error('Failed to save answer:', err)
+    }
+
+    // Check if this question's identifier is used by any conditional
+    // Support both namespaced and non-namespaced identifiers
+    const strippedId = question.identifier.includes('.') 
+      ? question.identifier.split('.').slice(1).join('.') 
+      : question.identifier
+    console.log('Checking conditional dependency:', { 
+      identifier: question.identifier, 
+      strippedId, 
+      conditional_identifiers: sessionData.conditional_identifiers 
+    })
+    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) 
+      || sessionData.conditional_identifiers?.includes(strippedId) 
+      || false
+    console.log('isConditionalDependency:', isConditionalDependency)
+    if (!isConditionalDependency) return
+
+    // Trigger conditional refresh
+    try {
+      setConditionalLoading(true)
+      setConditionalLoadingQuestionId(questionId)
+
+      // Refresh questions to re-evaluate conditionals
+      const data = await sessionService.getSessionQuestions(
+        sessionData.session_id,
+        currentPage,
+        QUESTIONS_PER_PAGE
+      )
+
+      // Update session data with new questions
+      setSessionData(data)
+
+      // Preserve the just-changed answer and merge with new data
+      setAnswers(currentAnswers => {
+        const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: newValue }
+
+        data.questions.forEach(q => {
+          if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
+            newAnswers[q.id] = data.existing_answers[q.id]
+          }
+        })
+
+        return newAnswers
+      })
+
+      setPersonAnswers(currentPersonAnswers => {
+        const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
+
+        data.questions.forEach(q => {
+          if (q.question_type === 'person' && data.existing_answers[q.id]) {
+            try {
+              const parsed = JSON.parse(data.existing_answers[q.id])
+              if (Array.isArray(parsed)) {
+                newPersonAnswers[q.id] = parsed
+              }
+            } catch {
+              // Not an array, ignore
+            }
+          }
+        })
+
+        return newPersonAnswers
+      })
+    } catch (err) {
+      console.error('Failed to refresh conditionals:', err)
+    } finally {
+      setConditionalLoading(false)
+      setConditionalLoadingQuestionId(null)
+    }
+  }
+
   // Handle blur (input exit) - saves answer and triggers conditional refresh if needed
   const handleAnswerBlur = async (questionId: number) => {
     if (!sessionData) return
@@ -180,7 +269,13 @@ const DocumentSessions: React.FC = () => {
     }
 
     // Check if this question's identifier is used by any conditional
-    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) || false
+    // Support both namespaced and non-namespaced identifiers
+    const strippedId = question.identifier.includes('.') 
+      ? question.identifier.split('.').slice(1).join('.') 
+      : question.identifier
+    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) 
+      || sessionData.conditional_identifiers?.includes(strippedId) 
+      || false
     if (!isConditionalDependency) return
 
     // Trigger conditional refresh
@@ -515,10 +610,14 @@ const DocumentSessions: React.FC = () => {
   const getRepeatableSetStartIndex = (questionIndex: number): number => {
     if (!sessionData) return questionIndex
     const questions = sessionData.questions
+    const currentDepth = questions[questionIndex]?.depth ?? 0
     let startIndex = questionIndex
     
     // Walk backwards to find the start of the repeatable set
-    while (startIndex > 0 && questions[startIndex - 1]?.repeatable) {
+    // Only include questions at the same depth level
+    while (startIndex > 0 && 
+           questions[startIndex - 1]?.repeatable && 
+           (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
       startIndex--
     }
     return startIndex
@@ -527,11 +626,14 @@ const DocumentSessions: React.FC = () => {
   const getRepeatableSetQuestionIds = (questionIndex: number): number[] => {
     if (!sessionData) return []
     const questions = sessionData.questions
+    const currentDepth = questions[questionIndex]?.depth ?? 0
     const startIndex = getRepeatableSetStartIndex(questionIndex)
     const ids: number[] = []
     
-    // Collect all consecutive repeatable questions
-    for (let i = startIndex; i < questions.length && questions[i]?.repeatable; i++) {
+    // Collect all consecutive repeatable questions at the same depth level
+    for (let i = startIndex; i < questions.length && 
+         questions[i]?.repeatable && 
+         (questions[i]?.depth ?? 0) === currentDepth; i++) {
       ids.push(questions[i].id)
     }
     return ids
@@ -647,8 +749,12 @@ const DocumentSessions: React.FC = () => {
                     name={`question-${question.id}-${instanceIndex}`}
                     value={optionValue}
                     checked={value === optionValue}
-                    onChange={(e) => handleValueChange(e.target.value)}
-                    onBlur={() => handleAnswerBlur(question.id)}
+                    onChange={(e) => {
+                      // Update local state
+                      handleValueChange(e.target.value)
+                      // Save immediately and trigger conditional refresh for radio buttons
+                      handleRadioChange(question.id, e.target.value)
+                    }}
                   />
                   <label htmlFor={`q${question.id}-${instanceIndex}-${index}`}>{option.label}</label>
                 </div>
