@@ -65,7 +65,18 @@ async def list_sessions(
         limit
     )
     
-    return [DocumentSessionResponse.model_validate(s) for s in sessions]
+    # Build response with question group names
+    result = []
+    for s in sessions:
+        response = DocumentSessionResponse.model_validate(s)
+        # Get the question group name if there's a current_group_id
+        if s.current_group_id:
+            group = QuestionGroupService.get_question_group_by_id(db, s.current_group_id)
+            if group:
+                response.current_group_name = group.name
+        result.append(response)
+    
+    return result
 
 
 @router.get("/{session_id}", response_model=DocumentSessionWithAnswers)

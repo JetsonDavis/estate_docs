@@ -45,6 +45,7 @@ class DocumentSessionResponse(BaseModel):
     user_id: int
     flow_id: Optional[int]
     current_group_id: Optional[int]
+    current_group_name: Optional[str] = None
     is_completed: bool
     completed_at: Optional[datetime]
     created_at: datetime
@@ -81,6 +82,7 @@ class QuestionToDisplay(BaseModel):
     question_type: str
     is_required: bool
     repeatable: bool = False
+    repeatable_group_id: Optional[str] = None
     help_text: Optional[str]
     options: Optional[List[dict]]
     person_display_mode: Optional[str]

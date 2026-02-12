@@ -601,22 +601,29 @@ const DocumentSessions: React.FC = () => {
     const currentQuestion = questions[questionIndex]
     if (!currentQuestion?.repeatable) return false
     
-    // Check if next question exists and is also repeatable
+    // Check if next question exists and is in the same repeatable group
     const nextQuestion = questions[questionIndex + 1]
     if (!nextQuestion || !nextQuestion.repeatable) return true
+    // Different group ID means this is the last in the current set
+    if (nextQuestion.repeatable_group_id !== currentQuestion.repeatable_group_id) return true
+    // Different depth means this is the last in the current set
+    if ((nextQuestion.depth ?? 0) !== (currentQuestion.depth ?? 0)) return true
     return false
   }
 
   const getRepeatableSetStartIndex = (questionIndex: number): number => {
     if (!sessionData) return questionIndex
     const questions = sessionData.questions
-    const currentDepth = questions[questionIndex]?.depth ?? 0
+    const currentQuestion = questions[questionIndex]
+    const currentGroupId = currentQuestion?.repeatable_group_id
+    const currentDepth = currentQuestion?.depth ?? 0
     let startIndex = questionIndex
     
     // Walk backwards to find the start of the repeatable set
-    // Only include questions at the same depth level
+    // Only include questions with the same repeatable_group_id and depth
     while (startIndex > 0 && 
            questions[startIndex - 1]?.repeatable && 
+           questions[startIndex - 1]?.repeatable_group_id === currentGroupId &&
            (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
       startIndex--
     }
@@ -626,13 +633,16 @@ const DocumentSessions: React.FC = () => {
   const getRepeatableSetQuestionIds = (questionIndex: number): number[] => {
     if (!sessionData) return []
     const questions = sessionData.questions
-    const currentDepth = questions[questionIndex]?.depth ?? 0
+    const currentQuestion = questions[questionIndex]
+    const currentGroupId = currentQuestion?.repeatable_group_id
+    const currentDepth = currentQuestion?.depth ?? 0
     const startIndex = getRepeatableSetStartIndex(questionIndex)
     const ids: number[] = []
     
-    // Collect all consecutive repeatable questions at the same depth level
+    // Collect all consecutive repeatable questions with the same group ID and depth
     for (let i = startIndex; i < questions.length && 
          questions[i]?.repeatable && 
+         questions[i]?.repeatable_group_id === currentGroupId &&
          (questions[i]?.depth ?? 0) === currentDepth; i++) {
       ids.push(questions[i].id)
     }
@@ -1330,7 +1340,14 @@ const DocumentSessions: React.FC = () => {
                     onClick={() => navigate(`/document?session=${session.id}`)}
                   >
                     <div className="session-card-header">
-                      <div className="session-name">{session.client_identifier}</div>
+                      <div>
+                        <div className="session-name">{session.client_identifier}</div>
+                        {session.current_group_name && (
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                            <span style={{ fontWeight: 500 }}>Question Group:</span> {session.current_group_name}
+                          </div>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}>
                           {session.is_completed ? 'Completed' : 'In Progress'}

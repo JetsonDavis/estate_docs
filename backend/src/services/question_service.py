@@ -184,6 +184,7 @@ class QuestionService:
             question_type=question_data.question_type,
             identifier=namespaced_identifier,
             repeatable=question_data.repeatable,
+            repeatable_group_id=question_data.repeatable_group_id,
             display_order=question_data.display_order,
             is_required=question_data.is_required,
             help_text=question_data.help_text,
@@ -246,6 +247,8 @@ class QuestionService:
             question.is_active = question_data.is_active
         if question_data.repeatable is not None:
             question.repeatable = question_data.repeatable
+        if question_data.repeatable_group_id is not None:
+            question.repeatable_group_id = question_data.repeatable_group_id
         
         db.commit()
         db.refresh(question)

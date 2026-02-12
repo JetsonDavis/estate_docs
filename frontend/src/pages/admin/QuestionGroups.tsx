@@ -427,19 +427,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
           // Load questions if they exist
           const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
-            ? groupData.questions.map(q => ({
-                id: q.id.toString(),
-                dbId: q.id,
-                question_text: q.question_text,
-                question_type: q.question_type,
-                identifier: stripIdentifierNamespace(q.identifier),
-                repeatable: q.repeatable || false,
-                is_required: q.is_required,
-                options: q.options || [],
-                person_display_mode: q.person_display_mode || undefined,
-                include_time: q.include_time || false,
-                lastSaved: new Date()
-              }))
+            ? groupData.questions.map(q => {
+                console.log('Loading question from DB:', { id: q.id, identifier: q.identifier, repeatable: q.repeatable, repeatable_group_id: q.repeatable_group_id })
+                return {
+                  id: q.id.toString(),
+                  dbId: q.id,
+                  question_text: q.question_text,
+                  question_type: q.question_type,
+                  identifier: stripIdentifierNamespace(q.identifier),
+                  repeatable: q.repeatable || false,
+                  repeatable_group_id: q.repeatable_group_id || undefined,
+                  is_required: q.is_required,
+                  options: q.options || [],
+                  person_display_mode: q.person_display_mode || undefined,
+                  include_time: q.include_time || false,
+                  lastSaved: new Date()
+                }
+              })
             : []
           setQuestions(loadedQuestions)
 
@@ -615,9 +619,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const updateQuestion = (id: string, field: keyof QuestionFormData, value: any) => {
-    setQuestions(questions.map(q => {
+    console.log('updateQuestion called:', { id, field, value })
+    setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
         const updated = { ...q, [field]: value }
+        console.log('Question updated:', { id, field, oldValue: q[field], newValue: value })
         // Trigger identifier uniqueness check if identifier field changed
         if (field === 'identifier') {
           checkIdentifierUniqueness(updated)
@@ -726,7 +732,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const autoSaveQuestion = async (question: QuestionFormData) => {
-    console.log('autoSaveQuestion called:', { questionId: question.id, savedGroupId, identifier: question.identifier, question_text: question.question_text })
+    console.log('autoSaveQuestion called:', { questionId: question.id, savedGroupId, identifier: question.identifier, question_text: question.question_text, repeatable: question.repeatable, repeatable_group_id: question.repeatable_group_id })
     
     // Capture savedGroupId at the start to avoid stale closure issues
     const currentGroupId = savedGroupId
@@ -799,6 +805,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           question_type: question.question_type,
           identifier: question.identifier,
           repeatable: question.repeatable,
+          repeatable_group_id: question.repeatable_group_id,
           is_required: question.is_required,
           display_order: displayOrder,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
@@ -813,6 +820,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           question_type: question.question_type,
           identifier: question.identifier,
           repeatable: question.repeatable,
+          repeatable_group_id: question.repeatable_group_id,
           is_required: question.is_required,
           display_order: displayOrder,
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
@@ -1464,30 +1472,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const removeLogicItem = (itemId: string) => {
     console.log('removeLogicItem called with itemId:', itemId)
     
-    // Helper to collect all question IDs from a conditional tree (for deletion)
-    const collectNestedQuestionIds = (items: QuestionLogicItem[]): string[] => {
+    // Helper to collect all question IDs from logic items (for deletion)
+    const collectQuestionIds = (items: QuestionLogicItem[]): string[] => {
       const ids: string[] = []
       for (const item of items) {
         if (item.type === 'question' && item.questionId) {
           ids.push(item.questionId.toString())
         }
         if (item.type === 'conditional' && item.conditional?.nestedItems) {
-          ids.push(...collectNestedQuestionIds(item.conditional.nestedItems))
+          ids.push(...collectQuestionIds(item.conditional.nestedItems))
         }
       }
       return ids
-    }
-    
-    // Find the item being removed to collect nested question IDs
-    const findItem = (items: QuestionLogicItem[], targetId: string): QuestionLogicItem | null => {
-      for (const item of items) {
-        if (item.id === targetId) return item
-        if (item.conditional?.nestedItems) {
-          const found = findItem(item.conditional.nestedItems, targetId)
-          if (found) return found
-        }
-      }
-      return null
     }
     
     const removeItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
@@ -1498,7 +1494,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           console.log('Found item to remove:', item)
           // If this is a conditional being removed, delete all nested questions
           if (item.type === 'conditional' && item.conditional?.nestedItems) {
-            const nestedQuestionIds = collectNestedQuestionIds(item.conditional.nestedItems)
+            const nestedQuestionIds = collectQuestionIds(item.conditional.nestedItems)
             console.log('Deleting nested questions with IDs:', nestedQuestionIds)
             // Remove nested questions from the questions state
             setQuestions(prevQuestions => 
@@ -1877,14 +1873,92 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
-                    <input
-                      type="checkbox"
-                      checked={nestedQuestion.repeatable}
-                      onChange={(e) => updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)}
-                    />
-                    Repeatable
-                  </label>
+                  {(() => {
+                    // Find the previous repeatable question in nested items
+                    let prevRepeatableNestedQuestion: QuestionFormData | null = null
+                    for (let i = itemIndex - 1; i >= 0; i--) {
+                      const prevItem = nestedItems[i]
+                      if (prevItem.type === 'question') {
+                        const q = questions.find(q => 
+                          q.id === (prevItem as any).localQuestionId || q.dbId === prevItem.questionId
+                        )
+                        if (q?.repeatable) {
+                          prevRepeatableNestedQuestion = q
+                        }
+                        break // Stop at the first question we find
+                      }
+                    }
+                    
+                    // If no previous repeatable in nested items, check if parent question is repeatable
+                    if (!prevRepeatableNestedQuestion && parentQuestion?.repeatable) {
+                      prevRepeatableNestedQuestion = parentQuestion
+                    }
+                    
+                    const prevIsRepeatable = prevRepeatableNestedQuestion !== null
+                    
+                    if (prevIsRepeatable && prevRepeatableNestedQuestion) {
+                      // Show radio buttons for repeatable options
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={!nestedQuestion.repeatable}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', false)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                              }}
+                            />
+                            Not Repeatable
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id === prevRepeatableNestedQuestion?.repeatable_group_id}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', true)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id)
+                              }}
+                            />
+                            Join Repeatable Group
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id !== prevRepeatableNestedQuestion?.repeatable_group_id && nestedQuestion.repeatable_group_id !== undefined}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', true)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                              }}
+                            />
+                            Start New Repeatable Group
+                          </label>
+                        </div>
+                      )
+                    } else {
+                      // Show simple checkbox
+                      return (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                          <input
+                            type="checkbox"
+                            checked={nestedQuestion.repeatable}
+                            onChange={(e) => {
+                              updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
+                              if (e.target.checked) {
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                              } else {
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                              }
+                            }}
+                          />
+                          Repeatable
+                        </label>
+                      )
+                    }
+                  })()}
                 </div>
                 <input
                   type="text"
@@ -2669,11 +2743,34 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                     <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
                     {(() => {
-                      // Check if previous question is repeatable
-                      const prevQuestion = qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null
-                      const prevIsRepeatable = prevQuestion?.repeatable || false
+                      // Find the previous repeatable question by checking the actual order in questionLogic
+                      // This handles cases where there's a conditional between questions
+                      const currentLogicIndex = questionLogic.findIndex(item =>
+                        item.type === 'question' &&
+                        ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+                      )
                       
-                      if (prevIsRepeatable) {
+                      // Walk backwards through questionLogic to find the previous question item
+                      let prevRepeatableQuestion: QuestionFormData | null = null
+                      for (let i = currentLogicIndex - 1; i >= 0; i--) {
+                        const item = questionLogic[i]
+                        if (item.type === 'question') {
+                          const q = questions.find(q => 
+                            q.id === (item as any).localQuestionId || q.dbId === item.questionId
+                          )
+                          if (q?.repeatable) {
+                            prevRepeatableQuestion = q
+                          }
+                          break // Stop at the first question we find (whether repeatable or not)
+                        }
+                        // If we hit a conditional, check if it has repeatable questions inside
+                        // For now, we just continue looking backwards
+                      }
+                      
+                      const prevIsRepeatable = prevRepeatableQuestion !== null
+                      console.log('Repeatable check:', { qIndex, questionId: question.id, currentLogicIndex, prevRepeatableQuestionId: prevRepeatableQuestion?.id, prevIsRepeatable })
+                      
+                      if (prevIsRepeatable && prevRepeatableQuestion) {
                         // Show radio buttons for repeatable options
                         return (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
@@ -2693,11 +2790,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               <input
                                 type="radio"
                                 name={`repeatable-${question.id}`}
-                                checked={question.repeatable && question.repeatable_group_id === prevQuestion?.repeatable_group_id}
+                                checked={question.repeatable && question.repeatable_group_id === prevRepeatableQuestion?.repeatable_group_id}
                                 onChange={() => {
                                   updateQuestion(question.id, 'repeatable', true)
                                   // Join the previous question's group
-                                  updateQuestion(question.id, 'repeatable_group_id', prevQuestion?.repeatable_group_id || prevQuestion?.id)
+                                  updateQuestion(question.id, 'repeatable_group_id', prevRepeatableQuestion?.repeatable_group_id || prevRepeatableQuestion?.id)
                                 }}
                               />
                               Join Repeatable Group
@@ -2706,7 +2803,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               <input
                                 type="radio"
                                 name={`repeatable-${question.id}`}
-                                checked={question.repeatable && question.repeatable_group_id !== prevQuestion?.repeatable_group_id && question.repeatable_group_id !== undefined}
+                                checked={question.repeatable && question.repeatable_group_id !== prevRepeatableQuestion?.repeatable_group_id && question.repeatable_group_id !== undefined}
                                 onChange={() => {
                                   updateQuestion(question.id, 'repeatable', true)
                                   // Start a new group with this question's ID

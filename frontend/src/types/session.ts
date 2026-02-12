@@ -12,6 +12,7 @@ export interface DocumentSession {
   client_identifier: string
   user_id: number
   current_group_id: number | null
+  current_group_name: string | null
   is_completed: boolean
   completed_at: string | null
   created_at: string
@@ -62,6 +63,7 @@ export interface QuestionToDisplay {
   question_type: string
   is_required: boolean
   repeatable: boolean
+  repeatable_group_id: string | null
   help_text: string | null
   options: Array<{ value: string; label: string }> | null
   person_display_mode: string | null

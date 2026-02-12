@@ -452,6 +452,7 @@ class SessionService:
                 question_type=q.question_type,
                 is_required=q.is_required,
                 repeatable=q.repeatable,
+                repeatable_group_id=q.repeatable_group_id,
                 help_text=q.help_text,
                 options=q.options,
                 person_display_mode=q.person_display_mode,

@@ -12,6 +12,7 @@ export interface Question {
   question_type: QuestionType
   identifier: string
   repeatable: boolean
+  repeatable_group_id: string | null
   display_order: number
   is_required: boolean
   help_text: string | null
@@ -33,6 +34,7 @@ export interface QuestionCreate {
   question_type: QuestionType
   identifier: string
   repeatable?: boolean
+  repeatable_group_id?: string
   display_order?: number
   is_required?: boolean
   help_text?: string
@@ -50,6 +52,7 @@ export interface QuestionUpdate {
   question_type?: QuestionType
   identifier?: string
   repeatable?: boolean
+  repeatable_group_id?: string
   display_order?: number
   is_required?: boolean
   help_text?: string
