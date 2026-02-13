@@ -15,7 +15,7 @@ import Templates from './pages/admin/Templates'
 import EditTemplate from './pages/admin/EditTemplate'
 import Flows from './pages/admin/Flows'
 import FlowBuilder from './pages/admin/FlowBuilder'
-import DocumentSessions from './pages/DocumentSessions'
+import InputForms from './pages/InputForms'
 import DocumentNew from './pages/DocumentNew'
 import Documents from './pages/Documents'
 import MergeDocuments from './pages/MergeDocuments'
@@ -184,7 +184,7 @@ function App() {
                 <ProtectedRoute>
                   <div className="min-h-screen bg-gray-50">
                     <Header />
-                    <DocumentSessions />
+                    <InputForms />
                   </div>
                 </ProtectedRoute>
               }

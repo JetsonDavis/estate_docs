@@ -6,12 +6,12 @@ from fastapi import HTTPException, status
 from datetime import datetime
 import math
 
-from ..models.session import DocumentSession, SessionAnswer
+from ..models.session import InputForm, SessionAnswer
 from ..models.question import QuestionGroup, Question
 from ..models.flow import DocumentFlow, flow_question_groups
 from ..schemas.session import (
-    DocumentSessionCreate,
-    DocumentSessionUpdate,
+    InputFormCreate,
+    InputFormUpdate,
     SessionAnswerCreate,
     QuestionToDisplay,
     SessionQuestionsResponse
@@ -24,9 +24,9 @@ class SessionService:
     @staticmethod
     def create_session(
         db: Session,
-        session_data: DocumentSessionCreate,
+        session_data: InputFormCreate,
         user_id: int
-    ) -> DocumentSession:
+    ) -> InputForm:
         """
         Create a new document session.
 
@@ -73,7 +73,7 @@ class SessionService:
                 )
             starting_group_id = first_group.id
 
-        session = DocumentSession(
+        session = InputForm(
             client_identifier=session_data.client_identifier,
             user_id=user_id,
             flow_id=flow_id,
@@ -88,7 +88,7 @@ class SessionService:
         return session
 
     @staticmethod
-    def get_session(db: Session, session_id: int, user_id: int) -> Optional[DocumentSession]:
+    def get_session(db: Session, session_id: int, user_id: int) -> Optional[InputForm]:
         """
         Get session by ID (user can only access their own sessions).
 
@@ -100,9 +100,9 @@ class SessionService:
         Returns:
             Session if found and belongs to user, None otherwise
         """
-        return db.query(DocumentSession).filter(
-            DocumentSession.id == session_id,
-            DocumentSession.user_id == user_id
+        return db.query(InputForm).filter(
+            InputForm.id == session_id,
+            InputForm.user_id == user_id
         ).first()
 
     @staticmethod
@@ -111,7 +111,7 @@ class SessionService:
         user_id: int,
         skip: int = 0,
         limit: int = 100
-    ) -> Tuple[List[DocumentSession], int]:
+    ) -> Tuple[List[InputForm], int]:
         """
         List sessions for a user.
 
@@ -124,12 +124,12 @@ class SessionService:
         Returns:
             Tuple of (sessions list, total count)
         """
-        query = db.query(DocumentSession).filter(
-            DocumentSession.user_id == user_id
+        query = db.query(InputForm).filter(
+            InputForm.user_id == user_id
         )
 
         total = query.count()
-        sessions = query.order_by(DocumentSession.created_at.desc()).offset(skip).limit(limit).all()
+        sessions = query.order_by(InputForm.created_at.desc()).offset(skip).limit(limit).all()
 
         return sessions, total
 
@@ -139,7 +139,7 @@ class SessionService:
         session_id: int,
         user_id: int,
         answers: List[SessionAnswerCreate]
-    ) -> DocumentSession:
+    ) -> InputForm:
         """
         Submit answers for current question group and navigate to next group.
 
@@ -212,7 +212,7 @@ class SessionService:
     @staticmethod
     def _get_next_group(
         db: Session,
-        session: DocumentSession,
+        session: InputForm,
         current_group: QuestionGroup,
         answers: List[SessionAnswerCreate]
     ) -> Optional[int]:
@@ -747,7 +747,7 @@ class SessionService:
         user_id: int,
         direction: str,
         answers: Optional[List[SessionAnswerCreate]] = None
-    ) -> DocumentSession:
+    ) -> InputForm:
         """
         Navigate to next or previous group in the flow.
         

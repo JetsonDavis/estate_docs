@@ -26,7 +26,7 @@ class GeneratedDocument(Base, TimestampMixin):
     generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     
     # Relationships
-    session = relationship("DocumentSession")
+    session = relationship("InputForm")
     template = relationship("Template")
     generator = relationship("User", foreign_keys=[generated_by])
     

@@ -7,9 +7,9 @@ from typing import List
 from ..database import get_db
 from ..middleware.auth_middleware import require_auth
 from ..schemas.session import (
-    DocumentSessionCreate,
-    DocumentSessionResponse,
-    DocumentSessionWithAnswers,
+    InputFormCreate,
+    InputFormResponse,
+    InputFormWithAnswers,
     SubmitAnswersRequest,
     SessionProgressResponse,
     SessionAnswerResponse,
@@ -24,12 +24,12 @@ from ..services.question_service import QuestionGroupService
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-@router.post("/", response_model=DocumentSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=InputFormResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(
-    session_data: DocumentSessionCreate,
+    session_data: InputFormCreate,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentSessionResponse:
+) -> InputFormResponse:
     """
     Create a new document session.
     
@@ -42,16 +42,16 @@ async def create_session(
         int(current_user["sub"])
     )
     
-    return DocumentSessionResponse.model_validate(session)
+    return InputFormResponse.model_validate(session)
 
 
-@router.get("/", response_model=List[DocumentSessionResponse])
+@router.get("/", response_model=List[InputFormResponse])
 async def list_sessions(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> List[DocumentSessionResponse]:
+) -> List[InputFormResponse]:
     """
     List all document sessions for the current user.
     
@@ -68,7 +68,7 @@ async def list_sessions(
     # Build response with question group names
     result = []
     for s in sessions:
-        response = DocumentSessionResponse.model_validate(s)
+        response = InputFormResponse.model_validate(s)
         # Get the question group name if there's a current_group_id
         if s.current_group_id:
             group = QuestionGroupService.get_question_group_by_id(db, s.current_group_id)
@@ -79,12 +79,12 @@ async def list_sessions(
     return result
 
 
-@router.get("/{session_id}", response_model=DocumentSessionWithAnswers)
+@router.get("/{session_id}", response_model=InputFormWithAnswers)
 async def get_session(
     session_id: int,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentSessionWithAnswers:
+) -> InputFormWithAnswers:
     """
     Get a specific document session with all answers.
     
@@ -99,7 +99,7 @@ async def get_session(
     
     answers = SessionService.get_session_answers(db, session_id, int(current_user["sub"]))
     
-    return DocumentSessionWithAnswers(
+    return InputFormWithAnswers(
         **session.to_dict(),
         answers=[SessionAnswerResponse.model_validate(a) for a in answers]
     )
@@ -140,7 +140,7 @@ async def get_session_progress(
             }
     
     return SessionProgressResponse(
-        session=DocumentSessionResponse.model_validate(session),
+        session=InputFormResponse.model_validate(session),
         current_group=current_group,
         next_group_id=None,  # Next group is determined dynamically based on answers
         is_completed=session.is_completed,
@@ -148,13 +148,13 @@ async def get_session_progress(
     )
 
 
-@router.post("/{session_id}/submit", response_model=DocumentSessionResponse)
+@router.post("/{session_id}/submit", response_model=InputFormResponse)
 async def submit_answers(
     session_id: int,
     answers_data: SubmitAnswersRequest,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentSessionResponse:
+) -> InputFormResponse:
     """
     Submit answers for the current question group and navigate to next group.
     
@@ -170,7 +170,7 @@ async def submit_answers(
         answers_data.answers
     )
     
-    return DocumentSessionResponse.model_validate(session)
+    return InputFormResponse.model_validate(session)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -239,13 +239,13 @@ async def save_answers(
     )
 
 
-@router.post("/{session_id}/navigate", response_model=DocumentSessionResponse)
+@router.post("/{session_id}/navigate", response_model=InputFormResponse)
 async def navigate_session(
     session_id: int,
     navigate_data: NavigateRequest,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> DocumentSessionResponse:
+) -> InputFormResponse:
     """
     Navigate to next or previous group in the flow.
     
@@ -261,7 +261,7 @@ async def navigate_session(
         navigate_data.answers
     )
     
-    return DocumentSessionResponse.model_validate(session)
+    return InputFormResponse.model_validate(session)
 
 
 @router.get("/{session_id}/identifiers", response_model=List[str])

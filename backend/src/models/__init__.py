@@ -41,9 +41,9 @@ class VersionMixin:
 from .user import User, PasswordResetToken  # noqa: E402, F401
 from .question import QuestionGroup, Question  # noqa: E402, F401
 from .template import Template  # noqa: E402, F401
-from .session import DocumentSession, SessionAnswer  # noqa: E402, F401
+from .session import InputForm, SessionAnswer  # noqa: E402, F401
 from .document import GeneratedDocument  # noqa: E402, F401
 from .flow import DocumentFlow  # noqa: E402, F401
 from .person import Person, person_relationships  # noqa: E402, F401
 
-__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question", "Template", "DocumentSession", "SessionAnswer", "GeneratedDocument", "DocumentFlow", "Person", "person_relationships"]
+__all__ = ["Base", "TimestampMixin", "SoftDeleteMixin", "VersionMixin", "User", "PasswordResetToken", "QuestionGroup", "Question", "Template", "InputForm", "SessionAnswer", "GeneratedDocument", "DocumentFlow", "Person", "person_relationships"]

@@ -12,7 +12,7 @@ import json
 
 from ..models.document import GeneratedDocument
 from ..models.template import Template
-from ..models.session import DocumentSession, SessionAnswer
+from ..models.session import InputForm, SessionAnswer
 from ..models.question import Question
 from ..models.person import Person
 from ..schemas.document import GenerateDocumentRequest
@@ -51,9 +51,9 @@ class DocumentService:
             )
 
         # Get session (verify user owns it)
-        session = db.query(DocumentSession).filter(
-            DocumentSession.id == request.session_id,
-            DocumentSession.user_id == user_id
+        session = db.query(InputForm).filter(
+            InputForm.id == request.session_id,
+            InputForm.user_id == user_id
         ).first()
 
         if not session:
@@ -460,9 +460,9 @@ class DocumentService:
             )
         
         # Get session
-        session = db.query(DocumentSession).filter(
-            DocumentSession.id == session_id,
-            DocumentSession.user_id == user_id
+        session = db.query(InputForm).filter(
+            InputForm.id == session_id,
+            InputForm.user_id == user_id
         ).first()
         
         if not session:
@@ -519,11 +519,11 @@ class DocumentService:
             Generated document if found and user has access
         """
         return db.query(GeneratedDocument).join(
-            DocumentSession,
-            GeneratedDocument.session_id == DocumentSession.id
+            InputForm,
+            GeneratedDocument.session_id == InputForm.id
         ).filter(
             GeneratedDocument.id == document_id,
-            DocumentSession.user_id == user_id
+            InputForm.user_id == user_id
         ).first()
     
     @staticmethod
@@ -546,10 +546,10 @@ class DocumentService:
             Tuple of (documents list, total count)
         """
         query = db.query(GeneratedDocument).join(
-            DocumentSession,
-            GeneratedDocument.session_id == DocumentSession.id
+            InputForm,
+            GeneratedDocument.session_id == InputForm.id
         ).filter(
-            DocumentSession.user_id == user_id
+            InputForm.user_id == user_id
         )
         
         total = query.count()
@@ -612,9 +612,9 @@ class DocumentService:
             raise ValueError("Template not found")
         
         # Get session (verify user owns it)
-        session = db.query(DocumentSession).filter(
-            DocumentSession.id == session_id,
-            DocumentSession.user_id == user_id
+        session = db.query(InputForm).filter(
+            InputForm.id == session_id,
+            InputForm.user_id == user_id
         ).first()
         
         if not session:

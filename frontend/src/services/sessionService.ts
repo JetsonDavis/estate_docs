@@ -1,7 +1,7 @@
 import apiClient from './api'
 import {
-  DocumentSession,
-  DocumentSessionWithAnswers,
+  InputForm,
+  InputFormWithAnswers,
   SessionCreate,
   SubmitAnswersRequest,
   SessionProgress,
@@ -14,24 +14,24 @@ export const sessionService = {
   /**
    * Create a new document session
    */
-  createSession: async (data: SessionCreate): Promise<DocumentSession> => {
-    const response = await apiClient.post<DocumentSession>('/sessions/', data)
+  createSession: async (data: SessionCreate): Promise<InputForm> => {
+    const response = await apiClient.post<InputForm>('/sessions/', data)
     return response.data
   },
 
   /**
    * Get all sessions for the current user
    */
-  getSessions: async (): Promise<DocumentSession[]> => {
-    const response = await apiClient.get<DocumentSession[]>('/sessions/')
+  getSessions: async (): Promise<InputForm[]> => {
+    const response = await apiClient.get<InputForm[]>('/sessions/')
     return response.data
   },
 
   /**
    * Get a specific session with all answers
    */
-  getSession: async (sessionId: number): Promise<DocumentSessionWithAnswers> => {
-    const response = await apiClient.get<DocumentSessionWithAnswers>(`/sessions/${sessionId}`)
+  getSession: async (sessionId: number): Promise<InputFormWithAnswers> => {
+    const response = await apiClient.get<InputFormWithAnswers>(`/sessions/${sessionId}`)
     return response.data
   },
 
@@ -68,8 +68,8 @@ export const sessionService = {
   /**
    * Navigate to next or previous group
    */
-  navigate: async (sessionId: number, data: NavigateRequest): Promise<DocumentSession> => {
-    const response = await apiClient.post<DocumentSession>(
+  navigate: async (sessionId: number, data: NavigateRequest): Promise<InputForm> => {
+    const response = await apiClient.post<InputForm>(
       `/sessions/${sessionId}/navigate`,
       data
     )
@@ -82,8 +82,8 @@ export const sessionService = {
   submitAnswers: async (
     sessionId: number,
     answers: SubmitAnswersRequest
-  ): Promise<DocumentSession> => {
-    const response = await apiClient.post<DocumentSession>(
+  ): Promise<InputForm> => {
+    const response = await apiClient.post<InputForm>(
       `/sessions/${sessionId}/submit`,
       answers
     )

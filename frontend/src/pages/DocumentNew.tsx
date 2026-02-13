@@ -6,7 +6,7 @@ import { Person } from '../types/person'
 import { QuestionGroup } from '../types/question'
 import PersonTypeahead from '../components/common/PersonTypeahead'
 import PersonFormModal from '../components/common/PersonFormModal'
-import './DocumentSessions.css'
+import './InputForms.css'
 
 const DocumentNew: React.FC = () => {
   const navigate = useNavigate()
@@ -73,28 +73,7 @@ const DocumentNew: React.FC = () => {
 
           <form onSubmit={handleCreateSession} className="new-session-form">
             <div className="form-group">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <label className="form-label" style={{ margin: 0 }}>Document For:</label>
-                <button
-                  type="button"
-                  onClick={() => setShowNewPersonModal(true)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.25rem 0.75rem',
-                    backgroundColor: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '9999px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  + New Person
-                </button>
-              </div>
+              <label className="form-label">Document For:</label>
               <PersonTypeahead
                 value={documentFor}
                 onChange={(value) => setDocumentFor(value)}

@@ -4,8 +4,8 @@ from datetime import datetime
 from . import Base, TimestampMixin
 
 
-class DocumentSession(Base, TimestampMixin):
-    """Document session model for tracking client document progress."""
+class InputForm(Base, TimestampMixin):
+    """Input form model for tracking client document progress."""
     
     __tablename__ = "document_sessions"
     
@@ -24,7 +24,7 @@ class DocumentSession(Base, TimestampMixin):
     answers = relationship("SessionAnswer", back_populates="session", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
-        return f"<DocumentSession(id={self.id}, client='{self.client_identifier}', completed={self.is_completed})>"
+        return f"<InputForm(id={self.id}, client='{self.client_identifier}', completed={self.is_completed})>"
     
     def to_dict(self) -> dict:
         """Convert session to dictionary."""
@@ -52,7 +52,7 @@ class SessionAnswer(Base, TimestampMixin):
     answer_value = Column(Text, nullable=False)
     
     # Relationships
-    session = relationship("DocumentSession", back_populates="answers")
+    session = relationship("InputForm", back_populates="answers")
     question = relationship("Question")
     
     def __repr__(self) -> str:

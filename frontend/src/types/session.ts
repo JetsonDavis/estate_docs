@@ -7,7 +7,7 @@ export interface SessionAnswer {
   updated_at: string
 }
 
-export interface DocumentSession {
+export interface InputForm {
   id: number
   client_identifier: string
   user_id: number
@@ -19,7 +19,7 @@ export interface DocumentSession {
   updated_at: string
 }
 
-export interface DocumentSessionWithAnswers extends DocumentSession {
+export interface InputFormWithAnswers extends InputForm {
   answers: SessionAnswer[]
 }
 
@@ -36,7 +36,7 @@ export interface SubmitAnswersRequest {
 }
 
 export interface SessionProgress {
-  session: DocumentSession
+  session: InputForm
   current_group: {
     id: number
     name: string

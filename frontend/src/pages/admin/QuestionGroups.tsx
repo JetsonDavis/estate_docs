@@ -1036,6 +1036,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
+    console.log('addQuestionToLogic called with:', { afterIndex, parentPath, afterIndexType: typeof afterIndex })
     const newQuestion = addQuestion()
     if (!newQuestion) return
 
@@ -1049,7 +1050,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Store the local question ID temporarily for matching
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
-    console.log('addQuestionToLogic: Adding new question to logic', { newLogicItem, afterIndex, parentPath })
+    console.log('addQuestionToLogic: Adding new question to logic', { newLogicItem, afterIndex, parentPath, willAppendToEnd: afterIndex === undefined })
 
     // Capture savedGroupId before entering any callbacks to avoid stale closure
     const currentGroupId = savedGroupId
@@ -1109,20 +1110,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       }
     } else {
       // Add to root level - use functional update to avoid stale closure
-      let newLogicToSave: QuestionLogicItem[] | null = null
       setQuestionLogic(prevLogic => {
         const newLogic = afterIndex !== undefined
           ? [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
           : [...prevLogic, newLogicItem]
-        console.log('addQuestionToLogic: New logic (root):', JSON.stringify(newLogic, null, 2))
+        console.log('addQuestionToLogic: New logic (root), afterIndex:', afterIndex, 'prevLogic.length:', prevLogic.length, 'newLogic.length:', newLogic.length)
         console.log('addQuestionToLogic: currentGroupId =', currentGroupId)
-        newLogicToSave = newLogic
+        // Save inside the callback to ensure we have the correct newLogic
+        if (currentGroupId) {
+          saveQuestionLogic(newLogic, currentGroupId)
+        }
         return newLogic
       })
-      // Save after state update
-      if (currentGroupId && newLogicToSave) {
-        saveQuestionLogic(newLogicToSave, currentGroupId)
-      }
     }
   }
 
@@ -1894,70 +1893,51 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       prevRepeatableNestedQuestion = parentQuestion
                     }
                     
-                    const prevIsRepeatable = prevRepeatableNestedQuestion !== null
+                    const hasPrevRepeatable = prevRepeatableNestedQuestion !== null
                     
-                    if (prevIsRepeatable && prevRepeatableNestedQuestion) {
-                      // Show radio buttons for repeatable options
-                      return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
+                    // Always show radio buttons for nested questions
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                          <input
+                            type="radio"
+                            name={`repeatable-${nestedQuestion.id}`}
+                            checked={!nestedQuestion.repeatable}
+                            onChange={() => {
+                              updateQuestion(nestedQuestion.id, 'repeatable', false)
+                              updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                            }}
+                          />
+                          Not Repeatable
+                        </label>
+                        {hasPrevRepeatable && prevRepeatableNestedQuestion && (
                           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
                             <input
                               type="radio"
                               name={`repeatable-${nestedQuestion.id}`}
-                              checked={!nestedQuestion.repeatable}
-                              onChange={() => {
-                                updateQuestion(nestedQuestion.id, 'repeatable', false)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
-                              }}
-                            />
-                            Not Repeatable
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
-                            <input
-                              type="radio"
-                              name={`repeatable-${nestedQuestion.id}`}
-                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id === prevRepeatableNestedQuestion?.repeatable_group_id}
+                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id === (prevRepeatableNestedQuestion.repeatable_group_id || prevRepeatableNestedQuestion.id)}
                               onChange={() => {
                                 updateQuestion(nestedQuestion.id, 'repeatable', true)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', prevRepeatableNestedQuestion.repeatable_group_id || prevRepeatableNestedQuestion.id)
                               }}
                             />
                             Join Repeatable Group
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
-                            <input
-                              type="radio"
-                              name={`repeatable-${nestedQuestion.id}`}
-                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id !== prevRepeatableNestedQuestion?.repeatable_group_id && nestedQuestion.repeatable_group_id !== undefined}
-                              onChange={() => {
-                                updateQuestion(nestedQuestion.id, 'repeatable', true)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
-                              }}
-                            />
-                            Start New Repeatable Group
-                          </label>
-                        </div>
-                      )
-                    } else {
-                      // Show simple checkbox
-                      return (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                        )}
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
                           <input
-                            type="checkbox"
-                            checked={nestedQuestion.repeatable}
-                            onChange={(e) => {
-                              updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
-                              if (e.target.checked) {
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
-                              } else {
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
-                              }
+                            type="radio"
+                            name={`repeatable-${nestedQuestion.id}`}
+                            checked={nestedQuestion.repeatable && (!hasPrevRepeatable || nestedQuestion.repeatable_group_id !== (prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id))}
+                            onChange={() => {
+                              updateQuestion(nestedQuestion.id, 'repeatable', true)
+                              updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
                             }}
                           />
-                          Repeatable
+                          Start New Repeatable Group
                         </label>
-                      )
-                    }
+                      </div>
+                    )
                   })()}
                 </div>
                 <input
@@ -3101,8 +3081,69 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 return conditionalsAfterQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
                   return (
                     <React.Fragment key={logicItem.id}>
+                    {/* Insert Question and Insert Conditional buttons before each conditional */}
                     <div style={{
-                      marginTop: '0.75rem',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      marginTop: '0.5rem',
+                      marginBottom: '0.25rem'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => insertQuestionBeforeIndex(logicIndex, qIndex + 1)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.25rem 0.75rem',
+                          fontSize: '0.75rem',
+                          background: 'white',
+                          color: '#7c3aed',
+                          border: '1px dashed #7c3aed',
+                          borderRadius: '0.375rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Insert a new question here"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Insert Question
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addConditionalToLogic(logicIndex - 1, undefined, question)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.25rem 0.75rem',
+                          fontSize: '0.75rem',
+                          background: 'white',
+                          color: '#7c3aed',
+                          border: '1px dashed #7c3aed',
+                          borderRadius: '0.375rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Insert a new conditional here"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Insert Conditional
+                      </button>
+                    </div>
+                    <div style={{
+                      marginTop: '0.25rem',
                       padding: '1rem',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',

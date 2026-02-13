@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
-import { DocumentSession } from '../types/session'
+import { InputForm } from '../types/session'
 import { Template } from '../types/template'
 import './MergeDocuments.css'
 
 const MergeDocuments: React.FC = () => {
   const navigate = useNavigate()
-  const [sessions, setSessions] = useState<DocumentSession[]>([])
+  const [sessions, setSessions] = useState<InputForm[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

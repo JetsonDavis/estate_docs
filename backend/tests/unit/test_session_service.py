@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from datetime import datetime
 
 from src.services.session_service import SessionService
-from src.models.session import DocumentSession, SessionAnswer
+from src.models.session import InputForm, SessionAnswer
 from src.models.question import QuestionGroup, Question
-from src.schemas.session import DocumentSessionCreate, SessionAnswerCreate
+from src.schemas.session import InputFormCreate, SessionAnswerCreate
 
 
 class TestSessionService:
@@ -17,7 +17,7 @@ class TestSessionService:
     
     def test_create_session_success(self, db_session: Session, sample_question_group):
         """Test successful session creation."""
-        session_data = DocumentSessionCreate(
+        session_data = InputFormCreate(
             client_identifier="John Doe",
             starting_group_id=sample_question_group.id
         )
@@ -31,7 +31,7 @@ class TestSessionService:
     
     def test_create_session_default_starting_group(self, db_session: Session, sample_question_group):
         """Test session creation with default starting group."""
-        session_data = DocumentSessionCreate(
+        session_data = InputFormCreate(
             client_identifier="Jane Doe"
         )
         
@@ -41,7 +41,7 @@ class TestSessionService:
     
     def test_create_session_no_groups_available(self, db_session: Session):
         """Test session creation when no question groups exist."""
-        session_data = DocumentSessionCreate(
+        session_data = InputFormCreate(
             client_identifier="Test Client"
         )
         
@@ -69,7 +69,7 @@ class TestSessionService:
         """Test listing sessions for a user."""
         # Create multiple sessions
         for i in range(3):
-            session_data = DocumentSessionCreate(
+            session_data = InputFormCreate(
                 client_identifier=f"Client {i}",
                 starting_group_id=sample_question_group.id
             )
@@ -84,7 +84,7 @@ class TestSessionService:
         """Test listing sessions with pagination."""
         # Create 5 sessions
         for i in range(5):
-            session_data = DocumentSessionCreate(
+            session_data = InputFormCreate(
                 client_identifier=f"Client {i}",
                 starting_group_id=sample_question_group.id
             )
@@ -255,8 +255,8 @@ class TestSessionService:
         assert success == True
         
         # Verify session is deleted
-        deleted = db_session.query(DocumentSession).filter(
-            DocumentSession.id == sample_session.id
+        deleted = db_session.query(InputForm).filter(
+            InputForm.id == sample_session.id
         ).first()
         assert deleted is None
     
@@ -325,7 +325,7 @@ def sample_questions(db_session, sample_question_group):
 @pytest.fixture
 def sample_session(db_session, sample_question_group):
     """Create a sample session."""
-    session = DocumentSession(
+    session = InputForm(
         client_identifier="Test Client",
         user_id=1,
         current_group_id=sample_question_group.id,
@@ -359,7 +359,7 @@ def sample_session_with_flow(db_session, sample_question_group, sample_questions
     ]
     db_session.commit()
     
-    session = DocumentSession(
+    session = InputForm(
         client_identifier="Flow Test Client",
         user_id=1,
         current_group_id=sample_question_group.id,
@@ -377,7 +377,7 @@ def sample_session_last_group(db_session, sample_question_group):
     sample_question_group.next_group_id = None
     db_session.commit()
     
-    session = DocumentSession(
+    session = InputForm(
         client_identifier="Last Group Client",
         user_id=1,
         current_group_id=sample_question_group.id,

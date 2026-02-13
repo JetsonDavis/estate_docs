@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
-import { DocumentSession, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
+import { InputForm, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
-import './DocumentSessions.css'
+import './InputForms.css'
 
 const QUESTIONS_PER_PAGE = 10
 
-const DocumentSessions: React.FC = () => {
+const InputForms: React.FC = () => {
   const [searchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
   const navigate = useNavigate()
 
   // Session list state
-  const [sessions, setSessions] = useState<DocumentSession[]>([])
+  const [sessions, setSessions] = useState<InputForm[]>([])
 
   // Current session document state
   const [sessionData, setSessionData] = useState<SessionQuestionsResponse | null>(null)
@@ -87,7 +87,7 @@ const DocumentSessions: React.FC = () => {
             // Person answers are now stored as JSON objects with all person fields
             // Put them in initialAnswers so the inline form can use them
             initialAnswers[q.id] = data.existing_answers[q.id]
-            
+
             // Also handle legacy format for backwards compatibility
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
@@ -183,16 +183,16 @@ const DocumentSessions: React.FC = () => {
 
     // Check if this question's identifier is used by any conditional
     // Support both namespaced and non-namespaced identifiers
-    const strippedId = question.identifier.includes('.') 
-      ? question.identifier.split('.').slice(1).join('.') 
+    const strippedId = question.identifier.includes('.')
+      ? question.identifier.split('.').slice(1).join('.')
       : question.identifier
-    console.log('Checking conditional dependency:', { 
-      identifier: question.identifier, 
-      strippedId, 
-      conditional_identifiers: sessionData.conditional_identifiers 
+    console.log('Checking conditional dependency:', {
+      identifier: question.identifier,
+      strippedId,
+      conditional_identifiers: sessionData.conditional_identifiers
     })
-    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) 
-      || sessionData.conditional_identifiers?.includes(strippedId) 
+    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier)
+      || sessionData.conditional_identifiers?.includes(strippedId)
       || false
     console.log('isConditionalDependency:', isConditionalDependency)
     if (!isConditionalDependency) return
@@ -270,11 +270,11 @@ const DocumentSessions: React.FC = () => {
 
     // Check if this question's identifier is used by any conditional
     // Support both namespaced and non-namespaced identifiers
-    const strippedId = question.identifier.includes('.') 
-      ? question.identifier.split('.').slice(1).join('.') 
+    const strippedId = question.identifier.includes('.')
+      ? question.identifier.split('.').slice(1).join('.')
       : question.identifier
-    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier) 
-      || sessionData.conditional_identifiers?.includes(strippedId) 
+    const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier)
+      || sessionData.conditional_identifiers?.includes(strippedId)
       || false
     if (!isConditionalDependency) return
 
@@ -375,13 +375,13 @@ const DocumentSessions: React.FC = () => {
         // Filter out empty values
         const filteredValues = values.filter(v => v.trim() !== '')
         const conjunctions = personConjunctions[questionId] || []
-        
+
         // Build array with person names and conjunctions
         const personData = filteredValues.map((name, idx) => ({
           name,
           conjunction: conjunctions[idx] || undefined
         }))
-        
+
         const answerValue = JSON.stringify(personData)
 
         await sessionService.saveAnswers(sessionData.session_id, {
@@ -545,13 +545,13 @@ const DocumentSessions: React.FC = () => {
       } else {
         // Check if this is an Exit (no changes) on the last group/page
         const isLastGroupAndPage = sessionData.is_last_group && currentPage >= sessionData.total_pages
-        
+
         if (direction === 'forward' && isLastGroupAndPage && !hasChanges) {
           // No changes - just navigate directly to menu without saving
           navigate('/document')
           return
         }
-        
+
         // Navigate between groups (with saving)
         const result = await sessionService.navigate(sessionData.session_id, {
           direction,
@@ -600,7 +600,7 @@ const DocumentSessions: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     if (!currentQuestion?.repeatable) return false
-    
+
     // Check if next question exists and is in the same repeatable group
     const nextQuestion = questions[questionIndex + 1]
     if (!nextQuestion || !nextQuestion.repeatable) return true
@@ -618,11 +618,11 @@ const DocumentSessions: React.FC = () => {
     const currentGroupId = currentQuestion?.repeatable_group_id
     const currentDepth = currentQuestion?.depth ?? 0
     let startIndex = questionIndex
-    
+
     // Walk backwards to find the start of the repeatable set
     // Only include questions with the same repeatable_group_id and depth
-    while (startIndex > 0 && 
-           questions[startIndex - 1]?.repeatable && 
+    while (startIndex > 0 &&
+           questions[startIndex - 1]?.repeatable &&
            questions[startIndex - 1]?.repeatable_group_id === currentGroupId &&
            (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
       startIndex--
@@ -638,10 +638,10 @@ const DocumentSessions: React.FC = () => {
     const currentDepth = currentQuestion?.depth ?? 0
     const startIndex = getRepeatableSetStartIndex(questionIndex)
     const ids: number[] = []
-    
+
     // Collect all consecutive repeatable questions with the same group ID and depth
-    for (let i = startIndex; i < questions.length && 
-         questions[i]?.repeatable && 
+    for (let i = startIndex; i < questions.length &&
+         questions[i]?.repeatable &&
          questions[i]?.repeatable_group_id === currentGroupId &&
          (questions[i]?.depth ?? 0) === currentDepth; i++) {
       ids.push(questions[i].id)
@@ -653,7 +653,7 @@ const DocumentSessions: React.FC = () => {
     if (!sessionData) return 1
     const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
     if (setQuestionIds.length === 0) return 1
-    
+
     // Get the max instance count from all questions in the set
     let maxCount = 1
     for (const qId of setQuestionIds) {
@@ -673,10 +673,10 @@ const DocumentSessions: React.FC = () => {
 
   const removeRepeatableInstance = async (questionIndex: number, instanceIndex: number) => {
     if (!sessionData) return
-    
+
     const setQuestionIds = getRepeatableSetQuestionIds(questionIndex)
     const answersToSave: { question_id: number; answer_value: string }[] = []
-    
+
     for (const qId of setQuestionIds) {
       const current = getRepeatableAnswerArray(qId)
       if (current.length > 1) {
@@ -685,18 +685,18 @@ const DocumentSessions: React.FC = () => {
         answersToSave.push({ question_id: qId, answer_value: JSON.stringify(updated) })
       }
     }
-    
+
     // Save updated answers to database
     if (answersToSave.length > 0) {
       try {
         await sessionService.saveAnswers(sessionData.session_id, { answers: answersToSave })
-        
+
         // Check if any of the removed questions are conditional dependencies
         const questions = sessionData.questions.filter(q => setQuestionIds.includes(q.id))
-        const isConditionalDependency = questions.some(q => 
+        const isConditionalDependency = questions.some(q =>
           sessionData.conditional_identifiers?.includes(q.identifier)
         )
-        
+
         if (isConditionalDependency) {
           // Trigger conditional refresh
           setConditionalLoading(true)
@@ -834,7 +834,7 @@ const DocumentSessions: React.FC = () => {
               }
             }
           }
-          
+
           // For repeatable questions, also include earlier instances of THIS question
           if (question.repeatable && instanceIndex > 0) {
             const arr = getRepeatableAnswerArray(question.id)
@@ -855,7 +855,7 @@ const DocumentSessions: React.FC = () => {
         }
 
         // Check if current name matches an earlier person
-        const matchedPerson = earlierPeople.find(p => 
+        const matchedPerson = earlierPeople.find(p =>
           p.name.toLowerCase() === (personData.name || '').toLowerCase() && personData.name?.trim()
         )
 
@@ -1452,40 +1452,40 @@ const DocumentSessions: React.FC = () => {
                   const triggerIndex = conditionalLoading && conditionalLoadingQuestionId
                     ? sessionData.questions.findIndex(q => q.id === conditionalLoadingQuestionId)
                     : -1
-                  
+
                   // Track which repeatable sets we've already rendered
                   const renderedRepeatableSets = new Set<number>()
-                  
+
                   return sessionData.questions.map((question, qIndex) => {
                     // Hide questions after the triggering question while loading
                     if (conditionalLoading && triggerIndex >= 0 && qIndex > triggerIndex) {
                       return null
                     }
-                    
+
                     // For repeatable questions, we need special handling
                     if (question.repeatable) {
                       // Check if this is the start of a repeatable set
                       const setStartIndex = getRepeatableSetStartIndex(qIndex)
-                      
+
                       // Skip if we've already rendered this set
                       if (renderedRepeatableSets.has(setStartIndex)) {
                         return null
                       }
                       renderedRepeatableSets.add(setStartIndex)
-                      
+
                       // Get all questions in this repeatable set
                       const setQuestionIds = getRepeatableSetQuestionIds(qIndex)
-                      const setQuestions = setQuestionIds.map(id => 
+                      const setQuestions = setQuestionIds.map(id =>
                         sessionData.questions.find(q => q.id === id)!
                       ).filter(Boolean)
-                      
+
                       const instanceCount = getInstanceCount(qIndex)
                       const isLastInSet = isLastInRepeatableSet(qIndex + setQuestions.length - 1)
-                      
+
                       return (
                         <React.Fragment key={`repeatable-set-${setStartIndex}`}>
                           {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
-                            <div 
+                            <div
                               key={`instance-${instanceIdx}`}
                               className="repeatable-instance"
                               style={{
@@ -1557,7 +1557,7 @@ const DocumentSessions: React.FC = () => {
                         </React.Fragment>
                       )
                     }
-                    
+
                     return (
                       <React.Fragment key={question.id}>
                         <div className="question-item">
@@ -1571,34 +1571,34 @@ const DocumentSessions: React.FC = () => {
                           {renderQuestion(question)}
                         </div>
                         {conditionalLoading && conditionalLoadingQuestionId === question.id && (
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         padding: '1rem',
                         color: '#6b7280'
                       }}>
-                        <svg 
-                          style={{ 
-                            width: '1.5rem', 
-                            height: '1.5rem', 
+                        <svg
+                          style={{
+                            width: '1.5rem',
+                            height: '1.5rem',
                             marginRight: '0.5rem',
                             animation: 'spin 1s linear infinite'
-                          }} 
-                          fill="none" 
+                          }}
+                          fill="none"
                           viewBox="0 0 24 24"
                         >
-                          <circle 
-                            style={{ opacity: 0.25 }} 
-                            cx="12" 
-                            cy="12" 
-                            r="10" 
-                            stroke="currentColor" 
+                          <circle
+                            style={{ opacity: 0.25 }}
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
                             strokeWidth="4"
                           />
-                          <path 
-                            style={{ opacity: 0.75 }} 
-                            fill="currentColor" 
+                          <path
+                            style={{ opacity: 0.75 }}
+                            fill="currentColor"
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           />
                         </svg>
@@ -1685,4 +1685,4 @@ const DocumentSessions: React.FC = () => {
   )
 }
 
-export default DocumentSessions
+export default InputForms
