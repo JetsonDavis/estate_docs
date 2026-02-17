@@ -9,13 +9,56 @@ test.describe.configure({ mode: 'serial' });
 
 const TEST_CONFIG = {
   baseUrl: 'http://localhost:3005',
+  backendUrl: 'http://localhost:8005',
   adminEmail: 'admin',
   adminPassword: 'password',
 };
 
+// Track created group IDs for cleanup
+let createdGroupIds: number[] = [];
+let authToken: string | null = null;
+
 function uniqueGroupName(prefix: string): string {
   const randomSuffix = Math.random().toString(36).substring(2, 10);
   return `${prefix}_${Date.now()}_${randomSuffix}`;
+}
+
+// Helper to get auth token for API calls
+async function getAuthToken(page: Page): Promise<string> {
+  if (authToken) return authToken;
+  
+  // Get token from cookies or localStorage
+  const cookies = await page.context().cookies();
+  const accessCookie = cookies.find(c => c.name === 'access_token');
+  if (accessCookie) {
+    authToken = accessCookie.value;
+    return authToken;
+  }
+  
+  // Fallback: login via API
+  const response = await page.request.post(`${TEST_CONFIG.backendUrl}/api/v1/auth/login`, {
+    form: {
+      username: TEST_CONFIG.adminEmail,
+      password: TEST_CONFIG.adminPassword,
+    },
+  });
+  const data = await response.json();
+  authToken = data.access_token;
+  return authToken!;
+}
+
+// Helper to delete a question group via API
+async function deleteGroupById(page: Page, groupId: number): Promise<void> {
+  try {
+    const token = await getAuthToken(page);
+    await page.request.delete(`${TEST_CONFIG.backendUrl}/api/v1/question-groups/${groupId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+  } catch (e) {
+    console.log(`Failed to delete group ${groupId}:`, e);
+  }
 }
 
 // Helper to create a group and wait for it to be ready
@@ -31,6 +74,13 @@ async function createGroup(page: Page, groupName: string) {
   await page.waitForSelector('text=Questions', { timeout: 30000 });
   await page.waitForTimeout(2000);
   await page.waitForSelector('button:has-text("Add Question"):not([disabled])', { timeout: 30000 });
+  
+  // Extract group ID from URL for cleanup
+  const url = page.url();
+  const match = url.match(/\/question-groups\/(\d+)/);
+  if (match) {
+    createdGroupIds.push(parseInt(match[1], 10));
+  }
 }
 
 // Helper to add a question
@@ -69,12 +119,24 @@ async function getIdentifiers(page: Page): Promise<string[]> {
 test.describe('Question Group Deletion Tests', () => {
 
   test.beforeEach(async ({ page }) => {
+    // Reset tracking for this test
+    createdGroupIds = [];
+    authToken = null;
+    
     await page.goto('/login');
     await page.fill('input[id="username"]', TEST_CONFIG.adminEmail);
     await page.fill('input[id="password"]', TEST_CONFIG.adminPassword);
     await page.click('button[type="submit"]');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
+  });
+
+  test.afterEach(async ({ page }) => {
+    // Clean up all created groups after each test
+    for (const groupId of createdGroupIds) {
+      await deleteGroupById(page, groupId);
+    }
+    createdGroupIds = [];
   });
 
   test('Test 1: Create 3 questions, delete 2nd, verify 2 remain', async ({ page }) => {
