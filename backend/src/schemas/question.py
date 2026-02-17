@@ -11,8 +11,8 @@ class QuestionOption(BaseModel):
 
 class QuestionBase(BaseModel):
     """Base question schema."""
-    question_text: str = Field(..., min_length=1, max_length=1000)
-    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
+    question_text: str = Field(default="", max_length=1000)
+    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|date|checkbox_group|dropdown)$")
     identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_.\\-]+$")
     repeatable: bool = Field(default=False)
     repeatable_group_id: Optional[str] = Field(None, max_length=100)

@@ -397,7 +397,36 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const identifierCheckTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
   const questionLogicSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const groupInfoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingRequestsRef = useRef<number>(0)
+  const [hasPendingRequests, setHasPendingRequests] = useState(false)
   const isEditMode = !!groupId
+
+  // Track pending requests
+  const incrementPendingRequests = () => {
+    pendingRequestsRef.current++
+    setHasPendingRequests(true)
+  }
+  
+  const decrementPendingRequests = () => {
+    pendingRequestsRef.current = Math.max(0, pendingRequestsRef.current - 1)
+    if (pendingRequestsRef.current === 0) {
+      setHasPendingRequests(false)
+    }
+  }
+
+  // Warn user before leaving if there are pending requests
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingRequestsRef.current > 0) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+        return e.returnValue
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -428,7 +457,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           // Load questions if they exist
           const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
             ? groupData.questions.map(q => {
-                console.log('Loading question from DB:', { id: q.id, identifier: q.identifier, repeatable: q.repeatable, repeatable_group_id: q.repeatable_group_id })
                 return {
                   id: q.id.toString(),
                   dbId: q.id,
@@ -460,7 +488,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 localIdToDbId.set(q.id, q.dbId)
               }
             }
-            console.log('localIdToDbId map for fixing undefined questionIds:', Array.from(localIdToDbId.entries()))
 
             // First pass: Fix question items that have localQuestionId but undefined questionId
             // This must happen BEFORE cleanOrphanedItems or the slots will be removed
@@ -470,7 +497,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   const localId = (item as any).localQuestionId
                   if (localId && localIdToDbId.has(localId)) {
                     const dbId = localIdToDbId.get(localId)!
-                    console.log(`Fixing: Assigning dbId ${dbId} to question slot with localQuestionId ${localId}`)
                     return { ...item, questionId: dbId }
                   }
                 }
@@ -489,7 +515,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             
             // Fix undefined questionIds first
             let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
-            console.log('Logic after fixing undefined questionIds:', JSON.stringify(fixedLogic, null, 2))
 
             // Recursively clean orphaned question items from logic
             // Now we only remove items that have invalid questionIds (not in DB)
@@ -505,7 +530,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   // that might correspond to a question that hasn't been saved yet
                   const localId = (item as any).localQuestionId
                   if (!item.questionId && localId) {
-                    console.log(`Keeping question slot with localQuestionId ${localId} even though questionId is undefined`)
                     return true
                   }
                   return false
@@ -526,9 +550,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             }
 
             let cleanedLogic = cleanOrphanedItems(fixedLogic)
-            
-            console.log('Loaded questions from DB:', loadedQuestions.map(q => ({ id: q.id, dbId: q.dbId, identifier: q.identifier })))
-            console.log('Cleaned question_logic:', JSON.stringify(cleanedLogic, null, 2))
             
             // Find questions that exist in DB but are missing from question_logic (orphaned questions)
             // Also count how many question slots exist in the logic (including those with undefined questionId)
@@ -568,20 +589,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             
             const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
             const totalSlots = countQuestionSlotsInLogic(cleanedLogic)
-            console.log('Question IDs found in logic:', Array.from(questionIdsInLogic))
-            console.log('Total question slots in logic:', totalSlots)
             
             const orphanedQuestions = loadedQuestions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
-            console.log('Orphaned questions (in DB but not in logic):', orphanedQuestions.map(q => ({ dbId: q.dbId, identifier: q.identifier })))
             
             // Only add orphaned questions if they are truly missing from the logic
             // AND there are no empty slots that could be filled
             if (orphanedQuestions.length > 0) {
               // Check if there are unfilled slots in the logic that could hold these questions
               const unfilledSlots = totalSlots - questionIdsInLogic.size
-              if (unfilledSlots >= orphanedQuestions.length) {
-                console.log('There are unfilled slots in the logic that could hold orphaned questions - not adding to root')
-              } else {
+              if (unfilledSlots < orphanedQuestions.length) {
                 console.warn('WARNING: Found orphaned questions in DB but not in logic:', orphanedQuestions.map(q => q.identifier))
                 console.warn('These questions exist in the database but are not in the question_logic. They will be added at the root level for display only.')
                 for (const orphan of orphanedQuestions) {
@@ -592,7 +608,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     depth: 0
                   })
                 }
-                console.log('Repaired question_logic (for display only):', JSON.stringify(cleanedLogic, null, 2))
               }
             }
             
@@ -601,17 +616,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             // If we fixed undefined questionIds, save the corrected logic to the server
             // This ensures nested questions maintain their correct position after refresh
             if (wasFixed) {
-              console.log('Saving corrected question_logic with fixed questionIds')
               try {
                 await questionGroupService.updateQuestionGroup(groupId, {
                   question_logic: cleanedLogic
                 })
-                console.log('Corrected question_logic saved successfully')
               } catch (err) {
                 console.error('Failed to save corrected question_logic:', err)
               }
-            } else {
-              console.log('question_logic loaded (no fixes needed)')
             }
           }
         } catch (error) {
@@ -641,10 +652,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     nameCheckTimeoutRef.current = setTimeout(async () => {
       try {
         const response = await questionGroupService.listQuestionGroups(1, 100)
-        console.log('Checking name:', name)
-        console.log('Existing groups:', response.question_groups.map(g => g.name))
         const duplicate = response.question_groups.some(g => g.name.toLowerCase() === name.toLowerCase())
-        console.log('Is duplicate:', duplicate)
         setIsDuplicateName(duplicate)
         setIsCheckingName(false)
       } catch (error: any) {
@@ -675,6 +683,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     groupInfoSaveTimeoutRef.current = setTimeout(async () => {
+      incrementPendingRequests()
       try {
         await questionGroupService.updateQuestionGroup(savedGroupId, {
           name,
@@ -682,6 +691,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         })
       } catch (error) {
         console.error('Failed to auto-save group info:', error)
+      } finally {
+        decrementPendingRequests()
       }
     }, 500)
 
@@ -710,11 +721,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const updateQuestion = (id: string, field: keyof QuestionFormData, value: any) => {
-    console.log('updateQuestion called:', { id, field, value })
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
         const updated = { ...q, [field]: value }
-        console.log('Question updated:', { id, field, oldValue: q[field], newValue: value })
         // Trigger identifier uniqueness check if identifier field changed
         if (field === 'identifier') {
           checkIdentifierUniqueness(updated)
@@ -823,33 +832,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const autoSaveQuestion = async (question: QuestionFormData) => {
-    console.log('autoSaveQuestion called:', { questionId: question.id, savedGroupId, identifier: question.identifier, question_text: question.question_text, repeatable: question.repeatable, repeatable_group_id: question.repeatable_group_id })
-    
     // Capture savedGroupId at the start to avoid stale closure issues
     const currentGroupId = savedGroupId
     
-    if (!currentGroupId) {
-      console.log('autoSaveQuestion: No savedGroupId, skipping')
-      return
-    }
+    if (!currentGroupId) return
 
-    // Don't save if missing required fields
-    if (!question.identifier.trim() || !question.question_text.trim()) {
-      console.log('autoSaveQuestion: Missing required fields, skipping')
-      return
-    }
+    // Don't save if missing identifier (question_text can be empty initially)
+    if (!question.identifier.trim()) return
 
     // Don't save if identifier is duplicate
-    if (question.isDuplicateIdentifier) {
-      console.log('autoSaveQuestion: Duplicate identifier, skipping')
-      return
-    }
+    if (question.isDuplicateIdentifier) return
 
     // Mark as saving
     setQuestions(prev => prev.map(q =>
       q.id === question.id ? { ...q, isSaving: true } : q
     ))
 
+    incrementPendingRequests()
     try {
       // Calculate display_order based on position in questionLogic, not questions array
       let displayOrder = 1
@@ -925,13 +924,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         ))
 
         // Also update the questionId in questionLogic
-        console.log(`Updating questionLogic for question ${question.id} with dbId ${created.id}`)
         setQuestionLogic(prev => {
-          console.log('Current questionLogic before update:', JSON.stringify(prev, null, 2))
           const updateLogicItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
             return items.map(item => {
               if (item.type === 'question' && (item as any).localQuestionId === question.id) {
-                console.log(`Found matching logic item, updating questionId from ${item.questionId} to ${created.id}`)
                 return { ...item, questionId: created.id }
               }
               if (item.type === 'conditional' && item.conditional?.nestedItems) {
@@ -947,7 +943,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             })
           }
           const updated = updateLogicItems(prev)
-          console.log('Updated questionLogic:', JSON.stringify(updated, null, 2))
           saveQuestionLogic(updated, currentGroupId)
           return updated
         })
@@ -962,6 +957,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       setQuestions(prev => prev.map(q =>
         q.id === question.id ? { ...q, isSaving: false } : q
       ))
+    } finally {
+      decrementPendingRequests()
     }
   }
 
@@ -970,10 +967,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // If the question has a dbId, delete it from the database
     if (questionToRemove?.dbId) {
+      incrementPendingRequests()
       try {
         await questionGroupService.deleteQuestion(questionToRemove.dbId)
       } catch (err) {
         console.error('Failed to delete question from database:', err)
+      } finally {
+        decrementPendingRequests()
       }
     }
 
@@ -1062,12 +1062,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   // Question Logic Functions
   const saveQuestionLogic = async (newLogic: QuestionLogicItem[], groupIdOverride?: number) => {
     const targetGroupId = groupIdOverride || savedGroupId
-    console.log('saveQuestionLogic called with:', { targetGroupId, savedGroupId, newLogic: JSON.stringify(newLogic, null, 2) })
-    
-    if (!targetGroupId) {
-      console.log('saveQuestionLogic: No targetGroupId, skipping save')
-      return
-    }
+    if (!targetGroupId) return
 
     // Clear existing timeout
     if (questionLogicSaveTimeoutRef.current) {
@@ -1075,14 +1070,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     // Save immediately without debounce to avoid race conditions
+    incrementPendingRequests()
     try {
-      console.log('Actually saving question_logic to server:', JSON.stringify(newLogic, null, 2))
       await questionGroupService.updateQuestionGroup(targetGroupId, {
         question_logic: newLogic
       })
-      console.log('question_logic saved successfully')
     } catch (err) {
       console.error('Failed to save question logic:', err)
+    } finally {
+      decrementPendingRequests()
     }
   }
 
@@ -1127,7 +1123,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
-    console.log('addQuestionToLogic called with:', { afterIndex, parentPath, afterIndexType: typeof afterIndex })
     const newQuestion = addQuestion()
     if (!newQuestion) return
 
@@ -1141,8 +1136,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Store the local question ID temporarily for matching
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
-    console.log('addQuestionToLogic: Adding new question to logic', { newLogicItem, afterIndex, parentPath, willAppendToEnd: afterIndex === undefined })
-
     // Capture savedGroupId before entering any callbacks to avoid stale closure
     const currentGroupId = savedGroupId
     
@@ -1152,24 +1145,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       // e.g., [2] means the conditional is at index 2 of the root questionLogic
       // afterIndex is the index within nestedItems to insert after (if provided)
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
-        console.log('updateNestedItems called:', { depth, pathLength: path.length, pathAtDepth: path[depth], itemsLength: items.length, afterIndex })
-        
         if (depth >= path.length) {
-          // We've reached the target level - add the new item here
-          // If afterIndex is provided, insert after that index; otherwise append to end
           if (afterIndex !== undefined && afterIndex >= 0) {
-            console.log('Inserting newLogicItem after index', afterIndex)
             return [...items.slice(0, afterIndex + 1), newLogicItem, ...items.slice(afterIndex + 1)]
           }
-          console.log('Appending newLogicItem to end of items')
           return [...items, newLogicItem]
         }
         
         return items.map((item, idx) => {
-          console.log('Checking item at idx:', idx, 'path[depth]:', path[depth], 'item.type:', item.type, 'has conditional:', !!item.conditional)
           if (idx === path[depth]) {
             if (item.type === 'conditional' && item.conditional) {
-              console.log('Found conditional at path, updating nestedItems')
               return {
                 ...item,
                 conditional: {
@@ -1177,8 +1162,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
                 }
               }
-            } else {
-              console.log('Item at path is not a conditional, type:', item.type)
             }
           }
           return item
@@ -1188,10 +1171,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       // Store the new logic so we can save it after the state update
       let newLogicToSave: QuestionLogicItem[] | null = null
       setQuestionLogic(prevLogic => {
-        console.log('addQuestionToLogic: parentPath =', parentPath, 'prevLogic length =', prevLogic.length)
-        console.log('addQuestionToLogic: prevLogic =', JSON.stringify(prevLogic, null, 2))
         const newLogic = updateNestedItems(prevLogic, parentPath, 0)
-        console.log('addQuestionToLogic: New logic (nested):', JSON.stringify(newLogic, null, 2))
         newLogicToSave = newLogic
         return newLogic
       })
@@ -1205,8 +1185,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         const newLogic = afterIndex !== undefined
           ? [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
           : [...prevLogic, newLogicItem]
-        console.log('addQuestionToLogic: New logic (root), afterIndex:', afterIndex, 'prevLogic.length:', prevLogic.length, 'newLogic.length:', newLogic.length)
-        console.log('addQuestionToLogic: currentGroupId =', currentGroupId)
         // Save inside the callback to ensure we have the correct newLogic
         if (currentGroupId) {
           saveQuestionLogic(newLogic, currentGroupId)
@@ -1424,7 +1402,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
-    console.log('addConditionalToLogic called:', { afterIndex, parentPath, targetQuestion, questionLogicLength: questionLogic.length })
 
     // Get the previous question to use as the "if" condition
     // If targetQuestion is passed, get the latest version from questions state
@@ -1468,6 +1445,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // Create a new nested question to go inside the conditional
     const nestedQuestion = addQuestion()
+    const nestedQuestionId = nestedQuestion.id
+    
     const nestedQuestionLogicItem: QuestionLogicItem = {
       id: Date.now().toString() + '_nested_q',
       type: 'question',
@@ -1475,7 +1454,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       depth: (parentPath ? parentPath.length : 0) + 1
     }
     // Store the local question ID for reference
-    ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestion.id
+    ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestionId
 
     const newConditional: QuestionLogicItem = {
       id: Date.now().toString() + '_cond',
@@ -1487,8 +1466,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       },
       depth: parentPath ? parentPath.length : 0
     }
-
-    console.log('Creating conditional:', { newConditional, previousQuestion, nestedQuestion })
 
     // Capture savedGroupId before entering any callbacks to avoid stale closure
     const currentGroupId = savedGroupId
@@ -1560,7 +1537,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const removeLogicItem = (itemId: string) => {
-    console.log('removeLogicItem called with itemId:', itemId)
     
     // Helper to collect all question IDs from logic items (for deletion)
     const collectQuestionIds = (items: QuestionLogicItem[]): string[] => {
@@ -1581,11 +1557,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       
       for (const item of items) {
         if (item.id === itemId) {
-          console.log('Found item to remove:', item)
           // If this is a conditional being removed, delete all nested questions
           if (item.type === 'conditional' && item.conditional?.nestedItems) {
             const nestedQuestionIds = collectQuestionIds(item.conditional.nestedItems)
-            console.log('Deleting nested questions with IDs:', nestedQuestionIds)
             // Remove nested questions from the questions state
             setQuestions(prevQuestions => 
               prevQuestions.filter(q => !nestedQuestionIds.includes(q.id))
@@ -1614,9 +1588,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     
     // Use functional update to ensure we have the latest state
     setQuestionLogic(prevLogic => {
-      console.log('Current questionLogic:', JSON.stringify(prevLogic, null, 2))
       const newLogic = removeItem(prevLogic)
-      console.log('New logic after removal:', JSON.stringify(newLogic, null, 2))
       saveQuestionLogic(newLogic)
       return newLogic
     })
@@ -1896,14 +1868,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={async () => {
-                    console.log('Deleting nested question:', nestedQuestion.id, nestedQuestion.dbId)
-                    
                     // First remove from database if it has a dbId
                     if (nestedQuestion.dbId) {
+                      incrementPendingRequests()
                       try {
                         await questionGroupService.deleteQuestion(nestedQuestion.dbId)
                       } catch (err) {
                         console.error('Failed to delete nested question from database:', err)
+                      } finally {
+                        decrementPendingRequests()
                       }
                     }
                     
@@ -1937,7 +1910,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         })
                       }
                       const updated = removeFromNestedItems(prev)
-                      console.log('Updated logic after delete:', JSON.stringify(updated, null, 2))
                       if (currentGroupId) {
                         saveQuestionLogic(updated, currentGroupId)
                       }
@@ -2196,10 +2168,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 {isLastQuestionInGroup && (
                   <button
                     type="button"
-                    onClick={() => {
-                      console.log('Add Follow-on Question clicked:', { itemIndex, parentPath, nestedItemsLength: nestedItems.length })
-                      addQuestionToLogic(itemIndex, parentPath)
-                    }}
+                    onClick={() => addQuestionToLogic(itemIndex, parentPath)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -2839,8 +2808,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                       
                       const prevIsRepeatable = prevRepeatableQuestion !== null
-                      console.log('Repeatable check:', { qIndex, questionId: question.id, currentLogicIndex, prevRepeatableQuestionId: prevRepeatableQuestion?.id, prevIsRepeatable })
-                      
                       if (prevIsRepeatable && prevRepeatableQuestion) {
                         // Show radio buttons for repeatable options
                         return (
