@@ -451,13 +451,64 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           if (groupData.question_logic && groupData.question_logic.length > 0) {
             // Create a set of valid question IDs
             const validQuestionIds = new Set(loadedQuestions.map(q => q.dbId))
+            
+            // Build a map of localQuestionId -> dbId for questions that have been saved
+            // This is used to fix question slots that were saved with undefined questionId
+            const localIdToDbId = new Map<string, number>()
+            for (const q of loadedQuestions) {
+              if (q.dbId && q.id) {
+                localIdToDbId.set(q.id, q.dbId)
+              }
+            }
+            console.log('localIdToDbId map for fixing undefined questionIds:', Array.from(localIdToDbId.entries()))
+
+            // First pass: Fix question items that have localQuestionId but undefined questionId
+            // This must happen BEFORE cleanOrphanedItems or the slots will be removed
+            const fixUndefinedQuestionIds = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+              return items.map(item => {
+                if (item.type === 'question' && !item.questionId) {
+                  const localId = (item as any).localQuestionId
+                  if (localId && localIdToDbId.has(localId)) {
+                    const dbId = localIdToDbId.get(localId)!
+                    console.log(`Fixing: Assigning dbId ${dbId} to question slot with localQuestionId ${localId}`)
+                    return { ...item, questionId: dbId }
+                  }
+                }
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  return {
+                    ...item,
+                    conditional: {
+                      ...item.conditional,
+                      nestedItems: fixUndefinedQuestionIds(item.conditional.nestedItems)
+                    }
+                  }
+                }
+                return item
+              })
+            }
+            
+            // Fix undefined questionIds first
+            let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
+            console.log('Logic after fixing undefined questionIds:', JSON.stringify(fixedLogic, null, 2))
 
             // Recursively clean orphaned question items from logic
+            // Now we only remove items that have invalid questionIds (not in DB)
             const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
               return items.filter(item => {
                 if (item.type === 'question') {
-                  // Keep only if questionId exists in valid questions
-                  return item.questionId && validQuestionIds.has(item.questionId)
+                  // Keep if questionId exists in valid questions
+                  // Also keep if questionId is undefined but has localQuestionId (might be unsaved)
+                  if (item.questionId && validQuestionIds.has(item.questionId)) {
+                    return true
+                  }
+                  // If still undefined after fix attempt, check if it has a localQuestionId
+                  // that might correspond to a question that hasn't been saved yet
+                  const localId = (item as any).localQuestionId
+                  if (!item.questionId && localId) {
+                    console.log(`Keeping question slot with localQuestionId ${localId} even though questionId is undefined`)
+                    return true
+                  }
+                  return false
                 }
                 return true // Keep conditionals
               }).map(item => {
@@ -474,12 +525,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               })
             }
 
-            let cleanedLogic = cleanOrphanedItems(groupData.question_logic)
+            let cleanedLogic = cleanOrphanedItems(fixedLogic)
             
             console.log('Loaded questions from DB:', loadedQuestions.map(q => ({ id: q.id, dbId: q.dbId, identifier: q.identifier })))
             console.log('Cleaned question_logic:', JSON.stringify(cleanedLogic, null, 2))
             
             // Find questions that exist in DB but are missing from question_logic (orphaned questions)
+            // Also count how many question slots exist in the logic (including those with undefined questionId)
             const getQuestionIdsFromLogic = (items: QuestionLogicItem[]): Set<number> => {
               const ids = new Set<number>()
               for (const item of items) {
@@ -494,34 +546,73 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               return ids
             }
             
+            // Count total question slots in logic (including those with undefined questionId)
+            // This helps us understand if there are "placeholder" slots for unsaved questions
+            const countQuestionSlotsInLogic = (items: QuestionLogicItem[]): number => {
+              let count = 0
+              for (const item of items) {
+                if (item.type === 'question') {
+                  count++
+                }
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  count += countQuestionSlotsInLogic(item.conditional.nestedItems)
+                }
+              }
+              return count
+            }
+            
+            // Check if we fixed any undefined questionIds (compare fixedLogic to original)
+            const logicBeforeFix = JSON.stringify(groupData.question_logic)
+            const logicAfterFix = JSON.stringify(fixedLogic)
+            const wasFixed = logicBeforeFix !== logicAfterFix
+            
             const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
+            const totalSlots = countQuestionSlotsInLogic(cleanedLogic)
             console.log('Question IDs found in logic:', Array.from(questionIdsInLogic))
+            console.log('Total question slots in logic:', totalSlots)
             
             const orphanedQuestions = loadedQuestions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
             console.log('Orphaned questions (in DB but not in logic):', orphanedQuestions.map(q => ({ dbId: q.dbId, identifier: q.identifier })))
             
             // Only add orphaned questions if they are truly missing from the logic
-            // Don't auto-save the repaired logic - let the user decide
+            // AND there are no empty slots that could be filled
             if (orphanedQuestions.length > 0) {
-              console.warn('WARNING: Found orphaned questions in DB but not in logic:', orphanedQuestions.map(q => q.identifier))
-              console.warn('These questions exist in the database but are not in the question_logic. They will be added at the root level for display only.')
-              for (const orphan of orphanedQuestions) {
-                cleanedLogic.push({
-                  id: `restored_${orphan.dbId}_${Date.now()}`,
-                  type: 'question',
-                  questionId: orphan.dbId,
-                  depth: 0
-                })
+              // Check if there are unfilled slots in the logic that could hold these questions
+              const unfilledSlots = totalSlots - questionIdsInLogic.size
+              if (unfilledSlots >= orphanedQuestions.length) {
+                console.log('There are unfilled slots in the logic that could hold orphaned questions - not adding to root')
+              } else {
+                console.warn('WARNING: Found orphaned questions in DB but not in logic:', orphanedQuestions.map(q => q.identifier))
+                console.warn('These questions exist in the database but are not in the question_logic. They will be added at the root level for display only.')
+                for (const orphan of orphanedQuestions) {
+                  cleanedLogic.push({
+                    id: `restored_${orphan.dbId}_${Date.now()}`,
+                    type: 'question',
+                    questionId: orphan.dbId,
+                    depth: 0
+                  })
+                }
+                console.log('Repaired question_logic (for display only):', JSON.stringify(cleanedLogic, null, 2))
               }
-              console.log('Repaired question_logic (for display only):', JSON.stringify(cleanedLogic, null, 2))
             }
             
             setQuestionLogic(cleanedLogic)
 
-            // DON'T auto-save repaired logic - this was causing issues where
-            // nested questions were being moved to root level on page reload
-            // The user should manually fix any orphaned questions
-            console.log('question_logic loaded (not auto-saving repairs)')
+            // If we fixed undefined questionIds, save the corrected logic to the server
+            // This ensures nested questions maintain their correct position after refresh
+            if (wasFixed) {
+              console.log('Saving corrected question_logic with fixed questionIds')
+              try {
+                await questionGroupService.updateQuestionGroup(groupId, {
+                  question_logic: cleanedLogic
+                })
+                console.log('Corrected question_logic saved successfully')
+              } catch (err) {
+                console.error('Failed to save corrected question_logic:', err)
+              }
+            } else {
+              console.log('question_logic loaded (no fixes needed)')
+            }
           }
         } catch (error) {
           console.error('Failed to load group data:', error)

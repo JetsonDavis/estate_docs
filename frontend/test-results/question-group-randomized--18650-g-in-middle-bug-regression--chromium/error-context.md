@@ -1,0 +1,81 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - navigation [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "Estate Doc(tor)" [ref=e8] [cursor=pointer]:
+            - /url: /
+          - generic [ref=e9]:
+            - link "Question Groups" [ref=e10] [cursor=pointer]:
+              - /url: /admin/question-groups
+            - link "Flows" [ref=e11] [cursor=pointer]:
+              - /url: /admin/flows
+            - link "Templates" [ref=e12] [cursor=pointer]:
+              - /url: /admin/templates
+            - link "Input Form" [ref=e13] [cursor=pointer]:
+              - /url: /document
+            - link "Merge Documents" [ref=e14] [cursor=pointer]:
+              - /url: /merge-documents
+        - generic [ref=e15]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: admin
+            - generic [ref=e19]: Admin
+          - generic [ref=e20]:
+            - button "Settings" [ref=e22] [cursor=pointer]:
+              - img [ref=e23]
+            - button "Logout" [ref=e26] [cursor=pointer]:
+              - img [ref=e27]
+  - generic [ref=e30]:
+    - generic [ref=e31]:
+      - heading "Welcome, System Administrator!" [level=1] [ref=e32]
+      - paragraph [ref=e33]: Admin Dashboard
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img [ref=e37]
+          - generic [ref=e39]:
+            - heading "Question Groups" [level=3] [ref=e40]
+            - paragraph [ref=e41]: Create and manage question groups
+        - link "Manage Questions" [ref=e42] [cursor=pointer]:
+          - /url: /admin/question-groups
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - img [ref=e45]
+          - generic [ref=e47]:
+            - heading "Document Templates" [level=3] [ref=e48]
+            - paragraph [ref=e49]: Manage document templates
+        - link "Manage Templates" [ref=e50] [cursor=pointer]:
+          - /url: /admin/templates
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - img [ref=e53]
+          - generic [ref=e55]:
+            - heading "Document Flows" [level=3] [ref=e56]
+            - paragraph [ref=e57]: Manage document workflows
+        - link "Manage Flows" [ref=e58] [cursor=pointer]:
+          - /url: /admin/flows
+      - generic [ref=e59]:
+        - generic [ref=e60]:
+          - img [ref=e61]
+          - generic [ref=e63]:
+            - heading "Input Form" [level=3] [ref=e64]
+            - paragraph [ref=e65]: View and manage active sessions
+        - link "View Input Forms" [ref=e66] [cursor=pointer]:
+          - /url: /document
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - img [ref=e69]
+          - generic [ref=e71]:
+            - heading "Completed Documents" [level=3] [ref=e72]
+            - paragraph [ref=e73]: View generated documents
+        - link "View Documents" [ref=e74] [cursor=pointer]:
+          - /url: /documents
+    - generic [ref=e75]:
+      - img [ref=e76]
+      - generic [ref=e78]:
+        - heading "Welcome to Estate Doc(tor)" [level=3] [ref=e79]
+        - paragraph [ref=e80]: As an administrator, you can manage users, create question groups, design document templates, and configure document flows.
+```
