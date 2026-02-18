@@ -407,6 +407,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const groupInfoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const pendingRequestsRef = useRef<number>(0)
   const [hasPendingRequests, setHasPendingRequests] = useState(false)
+  const nestedQuestionIdsRef = useRef<Set<string>>(new Set())
   const isEditMode = !!groupId
 
   // Track pending requests
@@ -1157,8 +1158,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     const currentGroupId = savedGroupIdRef.current
     
     if (parentPath && parentPath.length > 0) {
-      // For nested questions, update BOTH states together to avoid race condition
-      // where mainLevelQuestions sees the question before questionLogic is updated
+      // Mark this question as nested IMMEDIATELY via ref (before any state updates)
+      // This ensures mainLevelQuestions filters it out even before questionLogic state is updated
+      nestedQuestionIdsRef.current.add(newQuestion.id)
       
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
         if (depth >= path.length) {
@@ -1186,18 +1188,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         })
       }
       
-      // Use flushSync to ensure questionLogic is updated BEFORE questions
-      // This ensures getNestedQuestionIds sees the nested question before mainLevelQuestions is computed
-      flushSync(() => {
-        setQuestionLogic(prevLogic => {
-          const newLogic = updateNestedItems(prevLogic, parentPath, 0)
-          if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
-          return newLogic
-        })
-      })
-      
-      // Now add to questions array - mainLevelQuestions will correctly filter this out
+      // Add to questions array first
       setQuestions(prev => [...prev, newQuestion])
+      
+      // Then update questionLogic
+      setQuestionLogic(prevLogic => {
+        const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+        if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+        return newLogic
+      })
     } else {
       // Add to root level - add question first, then update logic
       setQuestions(prev => [...prev, newQuestion])
@@ -1743,7 +1742,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   // AND sort them according to their order in questionLogic
   const mainLevelQuestions = (() => {
     const nestedIds = getNestedQuestionIds(questionLogic)
+    // Also check the ref for immediately-added nested questions (before state updates)
     const filtered = questions.filter(q => {
+      // Check both the computed nestedIds AND the ref for immediate filtering
+      if (nestedQuestionIdsRef.current.has(q.id)) return false
       return !nestedIds.has(q.id) && !nestedIds.has(q.dbId?.toString() || '')
     })
     
@@ -3391,30 +3393,68 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
                         {/* Nested items */}
                         <div style={{ marginTop: '0.5rem' }}>
-                          {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 ? (
+                          {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
                             renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
-                          ) : (
-                            <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db' }}>
+                          )}
+                          {/* Always show Add Question button inside conditional */}
+                          <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db', marginTop: logicItem.conditional?.nestedItems?.length ? '0.5rem' : '0' }}>
+                            {(!logicItem.conditional?.nestedItems || logicItem.conditional.nestedItems.length === 0) && (
                               <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', margin: '0 0 0.5rem 0' }}>
                                 Questions added here will <u>only</u> appear when the condition is true
                               </p>
-                              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => addQuestionToLogic(undefined, [logicIndex])}
-                                  className="add-question-button"
-                                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                                >
-                                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon" style={{ width: '0.875rem', height: '0.875rem' }}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                  </svg>
-                                  Add Question Inside Conditional
-                                </button>
-                              </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => addQuestionToLogic(undefined, [logicIndex])}
+                                className="add-question-button"
+                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                              >
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon" style={{ width: '0.875rem', height: '0.875rem' }}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                Add Question Inside Conditional
+                              </button>
                             </div>
-                          )}
+                          </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Insert buttons AFTER the conditional */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      marginTop: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => addQuestionToLogic(logicIndex)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.7rem',
+                          background: 'white',
+                          color: '#7c3aed',
+                          border: '1px dashed #7c3aed',
+                          borderRadius: '0.25rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Add a question after this conditional"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.7rem', height: '0.7rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Question After Conditional
+                      </button>
                     </div>
 
                     </React.Fragment>
