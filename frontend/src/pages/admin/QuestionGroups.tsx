@@ -51,12 +51,18 @@ const QuestionGroups: React.FC = () => {
       return
     }
 
+    // Optimistic update - remove from UI immediately
+    setGroups(prev => prev.filter(g => g.id !== groupId))
+    setTotal(prev => prev - 1)
+    setSuccess('Question group deleted successfully')
+
+    // Delete in background
     try {
       await questionGroupService.deleteQuestionGroup(groupId)
-      setSuccess('Question group deleted successfully')
-      loadGroups()
     } catch (err: any) {
+      // Revert on error - reload groups
       setError(err.response?.data?.detail || 'Failed to delete question group')
+      loadGroups()
     }
   }
 
