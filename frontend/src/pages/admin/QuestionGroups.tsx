@@ -902,20 +902,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           include_time: question.question_type === 'date' ? question.include_time : undefined
         })
       } else {
-        // Create new question
-        const created = await questionGroupService.createQuestion(currentGroupId, {
+        // Create new question - only include fields with values
+        const createPayload: any = {
           question_group_id: currentGroupId,
-          question_text: question.question_text,
+          question_text: question.question_text || '',
           question_type: question.question_type,
           identifier: question.identifier,
-          repeatable: question.repeatable,
-          repeatable_group_id: question.repeatable_group_id,
-          is_required: question.is_required,
+          repeatable: question.repeatable || false,
+          is_required: question.is_required || false,
           display_order: displayOrder,
-          options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
-          person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
-          include_time: question.question_type === 'date' ? question.include_time : undefined
-        })
+        }
+        if (question.repeatable_group_id) {
+          createPayload.repeatable_group_id = question.repeatable_group_id
+        }
+        if ((question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown') && question.options?.length) {
+          createPayload.options = question.options
+        }
+        if (question.question_type === 'person' && question.person_display_mode) {
+          createPayload.person_display_mode = question.person_display_mode
+        }
+        if (question.question_type === 'date' && question.include_time !== undefined) {
+          createPayload.include_time = question.include_time
+        }
+        const created = await questionGroupService.createQuestion(currentGroupId, createPayload)
 
         // Update with database ID
         setQuestions(prev => prev.map(q =>
@@ -1060,7 +1069,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   // Question Logic Functions
   const saveQuestionLogic = async (newLogic: QuestionLogicItem[], groupIdOverride?: number) => {
-    const targetGroupId = groupIdOverride || savedGroupId
+    const targetGroupId = groupIdOverride || savedGroupIdRef.current
     if (!targetGroupId) return
 
     // Clear existing timeout
@@ -1145,10 +1154,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       // afterIndex is the index within nestedItems to insert after (if provided)
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
         if (depth >= path.length) {
-          if (afterIndex !== undefined && afterIndex >= 0) {
-            return [...items.slice(0, afterIndex + 1), newLogicItem, ...items.slice(afterIndex + 1)]
+          // If items is empty or afterIndex is beyond the array, just append
+          if (items.length === 0 || afterIndex === undefined || afterIndex < 0) {
+            return [...items, newLogicItem]
           }
-          return [...items, newLogicItem]
+          // Insert after the specified index
+          return [...items.slice(0, afterIndex + 1), newLogicItem, ...items.slice(afterIndex + 1)]
         }
         
         return items.map((item, idx) => {
@@ -3380,7 +3391,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               <div style={{ display: 'flex', justifyContent: 'center' }}>
                                 <button
                                   type="button"
-                                  onClick={() => addQuestionToLogic(0, [logicIndex])}
+                                  onClick={() => addQuestionToLogic(undefined, [logicIndex])}
                                   className="add-question-button"
                                   style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                                 >
