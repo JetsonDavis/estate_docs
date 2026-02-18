@@ -420,19 +420,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  // Warn user before leaving if there are pending requests
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (pendingRequestsRef.current > 0) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
-        return e.returnValue
-      }
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
+  // No beforeunload warning - auto-save handles persistence
+  // Pending requests complete quickly in the background
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
