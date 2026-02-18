@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { questionGroupService } from '../../services/questionService'
 import { QuestionGroup, QuestionType, QuestionOption, QuestionLogicItem } from '../../types/question'
@@ -1131,11 +1132,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const addQuestionToLogic = (afterIndex?: number, parentPath?: number[]) => {
-    const newQuestion = addQuestion()
-    if (!newQuestion) return
+    // Create the new question data
+    const newQuestion: QuestionFormData = {
+      id: Date.now().toString(),
+      question_text: '',
+      question_type: 'free_text',
+      identifier: '',
+      repeatable: false,
+      is_required: false,
+      options: []
+    }
 
     const newLogicItem: QuestionLogicItem = {
-      id: Date.now().toString(),
+      id: Date.now().toString() + '_logic',
       type: 'question',
       questionId: undefined, // Will be set when question is saved
       depth: parentPath ? parentPath.length : 0
@@ -1145,13 +1154,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     ;(newLogicItem as any).localQuestionId = newQuestion.id
 
     // Capture savedGroupId before entering any callbacks to avoid stale closure
-    const currentGroupId = savedGroupId
+    const currentGroupId = savedGroupIdRef.current
     
     if (parentPath && parentPath.length > 0) {
-      // Add to nested items of a conditional
-      // parentPath is an array of indices pointing to the conditional
-      // e.g., [2] means the conditional is at index 2 of the root questionLogic
-      // afterIndex is the index within nestedItems to insert after (if provided)
+      // For nested questions, update BOTH states together to avoid race condition
+      // where mainLevelQuestions sees the question before questionLogic is updated
+      
       const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
         if (depth >= path.length) {
           // If items is empty or afterIndex is beyond the array, just append
@@ -1177,25 +1185,27 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return item
         })
       }
-      // Use functional update to avoid stale closure
-      // Store the new logic so we can save it after the state update
-      let newLogicToSave: QuestionLogicItem[] | null = null
-      setQuestionLogic(prevLogic => {
-        const newLogic = updateNestedItems(prevLogic, parentPath, 0)
-        newLogicToSave = newLogic
-        return newLogic
+      
+      // Use flushSync to ensure questionLogic is updated BEFORE questions
+      // This ensures getNestedQuestionIds sees the nested question before mainLevelQuestions is computed
+      flushSync(() => {
+        setQuestionLogic(prevLogic => {
+          const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+          if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+          return newLogic
+        })
       })
-      // Save after state update
-      if (currentGroupId && newLogicToSave) {
-        saveQuestionLogic(newLogicToSave, currentGroupId)
-      }
+      
+      // Now add to questions array - mainLevelQuestions will correctly filter this out
+      setQuestions(prev => [...prev, newQuestion])
     } else {
-      // Add to root level - use functional update to avoid stale closure
+      // Add to root level - add question first, then update logic
+      setQuestions(prev => [...prev, newQuestion])
+      
       setQuestionLogic(prevLogic => {
         const newLogic = afterIndex !== undefined
           ? [...prevLogic.slice(0, afterIndex + 1), newLogicItem, ...prevLogic.slice(afterIndex + 1)]
           : [...prevLogic, newLogicItem]
-        // Save inside the callback to ensure we have the correct newLogic
         if (currentGroupId) {
           saveQuestionLogic(newLogic, currentGroupId)
         }
