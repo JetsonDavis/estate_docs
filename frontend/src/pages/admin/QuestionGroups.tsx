@@ -396,6 +396,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const [isCheckingName, setIsCheckingName] = useState(false)
   const [groupInfoSaved, setGroupInfoSaved] = useState(false)
   const [savedGroupId, setSavedGroupId] = useState<number | null>(groupId || null)
+  const savedGroupIdRef = useRef<number | null>(groupId || null)
   const [loading, setLoading] = useState(!!groupId)
   const displayModeDropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   const nameCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -448,6 +449,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           setDescription(groupData.description || '')
           setGroupInfoSaved(true)
           setSavedGroupId(groupId)
+          savedGroupIdRef.current = groupId
 
           // Load questions if they exist
           const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
@@ -800,7 +802,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const triggerAutoSave = (question: QuestionFormData) => {
-    if (!savedGroupId) return
+    if (!savedGroupIdRef.current) {
+      return
+    }
 
     // Clear existing timeout for this question
     if (autoSaveTimeoutRefs.current[question.id]) {
@@ -827,8 +831,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const autoSaveQuestion = async (question: QuestionFormData) => {
-    // Capture savedGroupId at the start to avoid stale closure issues
-    const currentGroupId = savedGroupId
+    // Use ref to get current value, avoiding stale closure
+    const currentGroupId = savedGroupIdRef.current
     
     if (!currentGroupId) return
 
@@ -2538,6 +2542,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         identifier
       })
       setSavedGroupId(groupResponse.id)
+      savedGroupIdRef.current = groupResponse.id
       setGroupInfoSaved(true)
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to save question group')
