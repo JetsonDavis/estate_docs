@@ -386,6 +386,41 @@ const stripIdentifierNamespace = (identifier: string): string => {
   return dotIndex >= 0 ? identifier.substring(dotIndex + 1) : identifier
 }
 
+// Color scheme for different nesting depths
+// Level 0 (root): gray, Level 1: purple, Level 2: green, Level 3: amber, Level 4: red
+const getDepthBackgroundColor = (depth: number): string => {
+  const colors = [
+    '#f9fafb', // Level 0: gray-50
+    '#faf5ff', // Level 1: purple-50
+    '#f0fdf4', // Level 2: green-50
+    '#fffbeb', // Level 3: amber-50
+    '#fef2f2', // Level 4: red-50
+  ]
+  return colors[Math.min(depth, colors.length - 1)]
+}
+
+const getDepthBorderColor = (depth: number): string => {
+  const colors = [
+    '#e5e7eb', // Level 0: gray-200
+    '#e9d5ff', // Level 1: purple-200
+    '#bbf7d0', // Level 2: green-200
+    '#fde68a', // Level 3: amber-200
+    '#fecaca', // Level 4: red-200
+  ]
+  return colors[Math.min(depth, colors.length - 1)]
+}
+
+const getDepthTextColor = (depth: number): string => {
+  const colors = [
+    '#374151', // Level 0: gray-700
+    '#7c3aed', // Level 1: purple-600
+    '#16a34a', // Level 2: green-600
+    '#d97706', // Level 3: amber-600
+    '#dc2626', // Level 4: red-600
+  ]
+  return colors[Math.min(depth, colors.length - 1)]
+}
+
 const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ groupId }) => {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -1879,12 +1914,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             {/* Nested Question Block */}
             <div style={{
               padding: '1rem',
-              border: '1px solid #e5e7eb',
+              border: `1px solid ${getDepthBorderColor(depth)}`,
               borderRadius: '0.5rem',
-              backgroundColor: 'white'
+              backgroundColor: getDepthBackgroundColor(depth)
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getDepthTextColor(depth) }}>
                   Nested Question ({questionNumber})
                 </span>
                 <button
@@ -2340,12 +2375,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             marginBottom: '1rem',
             marginLeft: '2rem',
             padding: '1rem',
-            border: '1px solid #e5e7eb',
+            border: `1px solid ${getDepthBorderColor(depth)}`,
             borderRadius: '0.5rem',
-            backgroundColor: depth === 1 ? '#faf5ff' : depth === 2 ? '#f0fdf4' : depth === 3 ? '#fef3c7' : '#fee2e2'
+            backgroundColor: getDepthBackgroundColor(depth)
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(depth) }}>
                 Conditional ({conditionalNumber})
               </div>
               <button
@@ -3226,12 +3261,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <div style={{
                       marginTop: '0.25rem',
                       padding: '1rem',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${getDepthBorderColor(1)}`,
                       borderRadius: '0.5rem',
-                      backgroundColor: '#faf5ff'
+                      backgroundColor: getDepthBackgroundColor(1)
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#7c3aed' }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(1) }}>
                           Conditional ({logicIndex + 1})
                         </div>
               
