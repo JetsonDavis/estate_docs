@@ -2542,7 +2542,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Nested items */}
               <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
-                  renderNestedItems(item.conditional.nestedItems, currentPath, conditionalDepth + 1, prevNestedQuestion, questionNumberPrefix)
+                  renderNestedItems(item.conditional.nestedItems, currentPath, conditionalDepth, prevNestedQuestion, questionNumberPrefix)
                 ) : (
                   <button
                     type="button"
