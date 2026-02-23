@@ -2370,17 +2370,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? prevQuestionNumber
           : (questionNumberPrefix ? `${questionNumberPrefix}` : `${currentConditionalIndex + 1}`)
 
+        // Conditionals are rendered at depth + 1 since they represent a new nesting level
+        const conditionalDepth = depth + 1
+        
         return (
           <div key={item.id} style={{
             marginBottom: '1rem',
             marginLeft: '2rem',
             padding: '1rem',
-            border: `1px solid ${getDepthBorderColor(depth)}`,
+            border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
             borderRadius: '0.5rem',
-            backgroundColor: getDepthBackgroundColor(depth)
+            backgroundColor: getDepthBackgroundColor(conditionalDepth)
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(depth) }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
                 Conditional ({conditionalNumber})
               </div>
               <button
@@ -2539,7 +2542,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Nested items */}
               <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
-                  renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, questionNumberPrefix)
+                  renderNestedItems(item.conditional.nestedItems, currentPath, conditionalDepth + 1, prevNestedQuestion, questionNumberPrefix)
                 ) : (
                   <button
                     type="button"
