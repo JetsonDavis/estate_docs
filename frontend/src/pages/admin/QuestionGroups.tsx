@@ -2214,6 +2214,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       />
                       <span>Date</span>
                     </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
+                        value="yes_no"
+                        checked={false}
+                        onChange={(e) => {
+                          // Yes/No is just a shortcut for multiple_choice with Yes/No options
+                          updateQuestion(nestedQuestion.id, 'question_type', 'multiple_choice')
+                          updateQuestion(nestedQuestion.id, 'options', [
+                            { value: 'yes', label: 'Yes' },
+                            { value: 'no', label: 'No' }
+                          ])
+                        }}
+                      />
+                      <span>Yes/No</span>
+                    </label>
                   </div>
                 </div>
 
@@ -3119,6 +3136,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           onChange={(e) => updateQuestion(question.id, 'question_type', e.target.value)}
                         />
                         <span>Date</span>
+                      </label>
+                      <label className="radio-option">
+                        <input
+                          type="radio"
+                          name={`type-${question.id}`}
+                          value="yes_no"
+                          checked={false}
+                          onChange={(e) => {
+                            // Yes/No is just a shortcut for multiple_choice with Yes/No options
+                            updateQuestion(question.id, 'question_type', 'multiple_choice')
+                            updateQuestion(question.id, 'options', [
+                              { value: 'yes', label: 'Yes' },
+                              { value: 'no', label: 'No' }
+                            ])
+                          }}
+                        />
+                        <span>Yes/No</span>
                       </label>
                     </div>
                   </div>
