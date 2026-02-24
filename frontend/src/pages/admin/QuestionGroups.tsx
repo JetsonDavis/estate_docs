@@ -1940,8 +1940,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Insert conditional at parent level (one level up from current nested question)
-                    // Find the previous question at the PARENT level to use as ifIdentifier
+                    console.log('=== Insert Conditional Debug ===')
+                    console.log('itemIndex:', itemIndex)
+                    console.log('parentPath:', parentPath)
+                    console.log('nestedItems:', nestedItems)
+                    console.log('depth:', depth)
+                    
+                    // Find the previous question in the current nested items to use as ifIdentifier
                     let prevQuestionForCondition: QuestionFormData | undefined
                     
                     // Look backwards in the current nested items to find the last question
@@ -1955,9 +1960,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
+                    console.log('prevQuestionForCondition:', prevQuestionForCondition?.identifier)
+                    
                     // Insert at parent level: remove last element from parentPath to go one level up
                     const parentPathUp = parentPath.slice(0, -1)
                     const insertAfterIndex = parentPath[parentPath.length - 1]
+                    
+                    console.log('parentPathUp:', parentPathUp)
+                    console.log('insertAfterIndex:', insertAfterIndex)
+                    console.log('================================')
+                    
                     addConditionalToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined, prevQuestionForCondition)
                   }}
                   style={{
