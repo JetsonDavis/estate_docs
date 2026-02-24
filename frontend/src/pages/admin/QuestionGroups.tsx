@@ -1509,6 +1509,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   // Insert a conditional at the same level as nested items (as a sibling)
   const insertConditionalAsSibling = (afterIndex: number, parentPath: number[], targetQuestion?: QuestionFormData) => {
+    console.log('=== insertConditionalAsSibling Debug ===')
+    console.log('afterIndex:', afterIndex)
+    console.log('parentPath:', parentPath)
+    console.log('parentPath.length:', parentPath.length)
+    
     // Get the previous question to use as the "if" condition
     let previousQuestion: QuestionFormData | undefined = targetQuestion
       ? questions.find(q => q.id === targetQuestion.id) || targetQuestion
@@ -1518,11 +1523,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     const nestedQuestion = addQuestion()
     const nestedQuestionId = nestedQuestion.id
     
+    // The depth should be parentPath.length (the depth of items in the parent's nestedItems)
+    const conditionalDepth = parentPath.length
+    const nestedQuestionDepth = parentPath.length + 1
+    
+    console.log('conditionalDepth:', conditionalDepth)
+    console.log('nestedQuestionDepth:', nestedQuestionDepth)
+    
     const nestedQuestionLogicItem: QuestionLogicItem = {
       id: Date.now().toString() + '_nested_q',
       type: 'question',
       questionId: undefined,
-      depth: parentPath.length // Same depth as other items at this level
+      depth: nestedQuestionDepth
     }
     ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestionId
 
@@ -1534,8 +1546,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         value: '',
         nestedItems: [nestedQuestionLogicItem]
       },
-      depth: parentPath.length // Same depth as the question it's next to
+      depth: conditionalDepth
     }
+    
+    console.log('newConditional:', newConditional)
+    console.log('=======================================')
 
     const currentGroupId = savedGroupId
 
