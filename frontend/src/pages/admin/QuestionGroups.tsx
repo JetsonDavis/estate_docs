@@ -1941,12 +1941,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   type="button"
                   onClick={() => {
                     // Find the previous nested question to use as the conditional's ifIdentifier
+                    // This should be the question immediately before this insertion point
                     const prevItems = nestedItems.slice(0, itemIndex).filter(i => i.type === 'question')
                     const prevNestedItem = prevItems[prevItems.length - 1]
                     const prevNestedQ = prevNestedItem ? questions.find(q => 
                       q.id === (prevNestedItem as any).localQuestionId || q.dbId === prevNestedItem.questionId
                     ) : undefined
-                    addConditionalToLogic(itemIndex - 1, parentPath, prevNestedQ)
+                    
+                    // Find the index of the previous question in nestedItems to insert after it
+                    const prevQuestionIndex = nestedItems.findIndex(item => item === prevNestedItem)
+                    addConditionalToLogic(prevQuestionIndex, parentPath, prevNestedQ)
                   }}
                   style={{
                     display: 'flex',
@@ -2372,10 +2376,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     </svg>
                   </button>
                 )}
-                {depth > 0 && depth < 4 && (
+                {depth > 0 && depth < 4 && isLastQuestionInGroup && (
                   <button
                     type="button"
-                    onClick={() => addConditionalToLogic(itemIndex, parentPath, nestedQuestion)}
+                    onClick={() => {
+                      // Add conditional at same level as this question (after it)
+                      addConditionalToLogic(itemIndex, parentPath, nestedQuestion)
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -2392,7 +2399,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Add Nested Conditional
+                    Add Follow-on Conditional
                   </button>
                 )}
                 {/* Add conditional at parent level (one less indent) - purple arrow after Add Nested Conditional */}
