@@ -52,18 +52,25 @@ const QuestionGroups: React.FC = () => {
       return
     }
 
-    // Optimistic update - remove from UI immediately
-    setGroups(prev => prev.filter(g => g.id !== groupId))
-    setTotal(prev => prev - 1)
-    setSuccess('Question group deleted successfully')
-
-    // Delete in background
     try {
+      setLoading(true)
       await questionGroupService.deleteQuestionGroup(groupId)
+
+      // Calculate if current page will be empty after deletion
+      const itemsOnCurrentPage = groups.length
+      const willBeEmptyPage = itemsOnCurrentPage === 1 && page > 1
+
+      if (willBeEmptyPage) {
+        // If current page will be empty and we're not on page 1, go to previous page
+        setPage(page - 1)
+      } else {
+        // Reload current page to bring in next item from following page
+        setSuccess('Question group deleted successfully')
+        await loadGroups()
+      }
     } catch (err: any) {
-      // Revert on error - reload groups
       setError(err.response?.data?.detail || 'Failed to delete question group')
-      loadGroups()
+      setLoading(false)
     }
   }
 
