@@ -1940,17 +1940,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Find the previous nested question to use as the conditional's ifIdentifier
-                    // This should be the question immediately before this insertion point
-                    const prevItems = nestedItems.slice(0, itemIndex).filter(i => i.type === 'question')
-                    const prevNestedItem = prevItems[prevItems.length - 1]
-                    const prevNestedQ = prevNestedItem ? questions.find(q => 
-                      q.id === (prevNestedItem as any).localQuestionId || q.dbId === prevNestedItem.questionId
-                    ) : undefined
+                    // This button appears BEFORE itemIndex, so we want to insert at itemIndex - 1
+                    // Find the item immediately before this insertion point to use as the ifIdentifier
+                    let prevQuestionForCondition: QuestionFormData | undefined
                     
-                    // Find the index of the previous question in nestedItems to insert after it
-                    const prevQuestionIndex = nestedItems.findIndex(item => item === prevNestedItem)
-                    addConditionalToLogic(prevQuestionIndex, parentPath, prevNestedQ)
+                    // Look backwards from itemIndex to find the last question
+                    for (let i = itemIndex - 1; i >= 0; i--) {
+                      const item = nestedItems[i]
+                      if (item.type === 'question') {
+                        prevQuestionForCondition = questions.find(q => 
+                          q.id === (item as any).localQuestionId || q.dbId === item.questionId
+                        )
+                        break
+                      }
+                    }
+                    
+                    // Insert the conditional at position itemIndex - 1 (after the previous item, before current)
+                    addConditionalToLogic(itemIndex - 1, parentPath, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
