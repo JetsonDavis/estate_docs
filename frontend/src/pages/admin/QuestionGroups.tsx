@@ -52,25 +52,47 @@ const QuestionGroups: React.FC = () => {
       return
     }
 
-    try {
-      setLoading(true)
-      await questionGroupService.deleteQuestionGroup(groupId)
+    // Calculate pagination state before deletion
+    const itemsOnCurrentPage = groups.length
+    const totalPages = Math.ceil(total / pageSize)
+    const hasNextPage = page < totalPages
+    const willBeEmptyPage = itemsOnCurrentPage === 1 && page > 1
 
-      // Calculate if current page will be empty after deletion
-      const itemsOnCurrentPage = groups.length
-      const willBeEmptyPage = itemsOnCurrentPage === 1 && page > 1
+    // Store previous state for potential rollback
+    const previousGroups = groups
+    const previousTotal = total
 
-      if (willBeEmptyPage) {
-        // If current page will be empty and we're not on page 1, go to previous page
-        setPage(page - 1)
-      } else {
-        // Reload current page to bring in next item from following page
-        setSuccess('Question group deleted successfully')
-        await loadGroups()
+    // Optimistic update - remove from UI immediately
+    setGroups(prev => prev.filter(g => g.id !== groupId))
+    setTotal(prev => prev - 1)
+
+    // If there's a next page and we're not going to an empty page, fetch the first item from next page
+    if (hasNextPage && !willBeEmptyPage) {
+      try {
+        const nextPageResponse = await questionGroupService.listQuestionGroups(page + 1, 1, false)
+        if (nextPageResponse.question_groups.length > 0) {
+          // Append the first item from next page to current page
+          setGroups(prev => [...prev, nextPageResponse.question_groups[0]])
+        }
+      } catch (err: any) {
+        // If fetching next item fails, we'll continue with the deletion
+        console.error('Failed to fetch replacement item:', err)
       }
+    } else if (willBeEmptyPage) {
+      // If current page will be empty and we're not on page 1, go to previous page
+      setPage(page - 1)
+    }
+
+    setSuccess('Question group deleted successfully')
+
+    // Delete in background
+    try {
+      await questionGroupService.deleteQuestionGroup(groupId)
     } catch (err: any) {
+      // Revert on error - restore previous state
+      setGroups(previousGroups)
+      setTotal(previousTotal)
       setError(err.response?.data?.detail || 'Failed to delete question group')
-      setLoading(false)
     }
   }
 
