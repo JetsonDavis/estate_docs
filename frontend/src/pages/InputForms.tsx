@@ -83,7 +83,7 @@ const InputForms: React.FC = () => {
 
       data.questions.forEach(q => {
         if (data.existing_answers[q.id]) {
-          if (q.question_type === 'person') {
+          if (q.question_type === 'person' || q.question_type === 'person_backup') {
             // Person answers are now stored as JSON objects with all person fields
             // Put them in initialAnswers so the inline form can use them
             initialAnswers[q.id] = data.existing_answers[q.id]
@@ -107,7 +107,7 @@ const InputForms: React.FC = () => {
           } else {
             initialAnswers[q.id] = data.existing_answers[q.id]
           }
-        } else if (q.question_type === 'person') {
+        } else if (q.question_type === 'person' || q.question_type === 'person_backup') {
           initialPersonAnswers[q.id] = ['']
         }
       })
@@ -229,7 +229,7 @@ const InputForms: React.FC = () => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
         data.questions.forEach(q => {
-          if (q.question_type === 'person' && data.existing_answers[q.id]) {
+          if ((q.question_type === 'person' || q.question_type === 'person_backup') && data.existing_answers[q.id]) {
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
               if (Array.isArray(parsed)) {
@@ -312,7 +312,7 @@ const InputForms: React.FC = () => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
         data.questions.forEach(q => {
-          if (q.question_type === 'person') {
+          if (q.question_type === 'person' || q.question_type === 'person_backup') {
             if (!(q.id in newPersonAnswers) && data.existing_answers[q.id]) {
               try {
                 const parsed = JSON.parse(data.existing_answers[q.id])
@@ -339,7 +339,7 @@ const InputForms: React.FC = () => {
         const newConjunctions: Record<number, Array<'and' | 'then'>> = { ...currentConjunctions }
 
         data.questions.forEach(q => {
-          if (q.question_type === 'person' && data.existing_answers[q.id]) {
+          if ((q.question_type === 'person' || q.question_type === 'person_backup') && data.existing_answers[q.id]) {
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
               if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'conjunction' in parsed[0]) {
@@ -495,7 +495,7 @@ const InputForms: React.FC = () => {
     if (direction === 'forward') {
       const requiredQuestions = sessionData.questions.filter(q => q.is_required)
       const missingAnswers = requiredQuestions.filter(q => {
-        if (q.question_type === 'person') {
+        if (q.question_type === 'person' || q.question_type === 'person_backup') {
           const personVals = personAnswers[q.id] || ['']
           return !personVals.some(v => v.trim() !== '')
         }
@@ -813,7 +813,7 @@ const InputForms: React.FC = () => {
           const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
           for (let i = 0; i < currentQuestionIndex; i++) {
             const q = sessionData.questions[i]
-            if (q.question_type === 'person') {
+            if (q.question_type === 'person' || q.question_type === 'person_backup') {
               const answerValue = answers[q.id]
               if (answerValue) {
                 try {
@@ -1235,6 +1235,434 @@ const InputForms: React.FC = () => {
                     value={personData.trustor_reling_doc_received ?? 0}
                     onChange={(e) => updatePersonField('trustor_reling_doc_received', e.target.value)}
                     onBlur={savePersonOnBlur}
+                  >
+                    <option value={0}>No</option>
+                    <option value={1}>Yes</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+              </>
+            )}
+          </div>
+        )
+
+      case 'person_backup':
+        // Parse the current answer as JSON object with person fields + replaces field
+        let personBackupData: Record<string, any> = {}
+        try {
+          if (value) {
+            personBackupData = JSON.parse(value)
+          }
+        } catch {
+          personBackupData = {}
+        }
+
+        // Collect person data from questions that appear BEFORE this question in the list
+        const earlierPeopleBackup: Array<{ name: string; data: Record<string, any> }> = []
+        if (sessionData) {
+          const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
+          for (let i = 0; i < currentQuestionIndex; i++) {
+            const q = sessionData.questions[i]
+            if (q.question_type === 'person' || q.question_type === 'person_backup') {
+              const answerValue = answers[q.id]
+              if (answerValue) {
+                try {
+                  const parsed = JSON.parse(answerValue)
+                  if (Array.isArray(parsed)) {
+                    // Repeatable person - add all instances
+                    for (const personObj of parsed) {
+                      if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
+                        earlierPeopleBackup.push({ name: personObj.name, data: personObj })
+                      }
+                    }
+                  } else if (parsed.name && parsed.name.trim()) {
+                    earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+                  }
+                } catch {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+
+          // For repeatable questions, also include earlier instances of THIS question
+          if (question.repeatable && instanceIndex > 0) {
+            const arr = getRepeatableAnswerArray(question.id)
+            for (let i = 0; i < instanceIndex; i++) {
+              const instanceValue = arr[i]
+              if (instanceValue) {
+                try {
+                  const parsed = JSON.parse(instanceValue)
+                  if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+                    earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+                  }
+                } catch {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+        }
+
+        // Check if current name matches an earlier person
+        const matchedPersonBackup = earlierPeopleBackup.find(p =>
+          p.name.toLowerCase() === (personBackupData.name || '').toLowerCase() && personBackupData.name?.trim()
+        )
+
+        // Update person field in local state only (called on every keystroke)
+        const updatePersonBackupField = (field: string, fieldValue: string) => {
+          // If updating name and it matches an earlier person, copy all their data
+          if (field === 'name') {
+            const match = earlierPeopleBackup.find(p => p.name.toLowerCase() === fieldValue.toLowerCase())
+            if (match) {
+              handleValueChange(JSON.stringify({ ...match.data, replaces: personBackupData.replaces }))
+              return
+            }
+          }
+          const newData = { ...personBackupData, [field]: fieldValue }
+          handleValueChange(JSON.stringify(newData))
+        }
+
+        const updatePersonBackupAddressField = (addressType: 'mailing_address' | 'physical_address', field: string, fieldValue: string) => {
+          const currentAddress = personBackupData[addressType] || {}
+          const newAddress = { ...currentAddress, [field]: fieldValue }
+          const newData = { ...personBackupData, [addressType]: newAddress }
+          handleValueChange(JSON.stringify(newData))
+        }
+
+        // Save person data on blur (called when field loses focus)
+        const savePersonBackupOnBlur = () => {
+          handleAnswerBlur(question.id)
+        }
+
+        const US_STATES_BACKUP = [
+          { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
+          { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+          { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' }, { value: 'FL', label: 'Florida' },
+          { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' }, { value: 'ID', label: 'Idaho' },
+          { value: 'IL', label: 'Illinois' }, { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+          { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' }, { value: 'LA', label: 'Louisiana' },
+          { value: 'ME', label: 'Maine' }, { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+          { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' }, { value: 'MS', label: 'Mississippi' },
+          { value: 'MO', label: 'Missouri' }, { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+          { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' }, { value: 'NJ', label: 'New Jersey' },
+          { value: 'NM', label: 'New Mexico' }, { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+          { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' }, { value: 'OK', label: 'Oklahoma' },
+          { value: 'OR', label: 'Oregon' }, { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
+          { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+          { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
+          { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+          { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' }
+        ]
+
+        return (
+          <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Replaces field - appears first for Person (Backup) */}
+            <div style={{ borderBottom: '2px solid #3b82f6', paddingBottom: '1rem', marginBottom: '0.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Replaces (Person Being Replaced)</label>
+              <input
+                type="text"
+                className="question-input"
+                value={personBackupData.replaces || ''}
+                onChange={(e) => updatePersonBackupField('replaces', e.target.value)}
+                onBlur={savePersonBackupOnBlur}
+                placeholder="Name of person being replaced"
+                list={`person-replaces-typeahead-${question.id}-${instanceIndex}`}
+                autoComplete="off"
+              />
+              <datalist id={`person-replaces-typeahead-${question.id}-${instanceIndex}`}>
+                {earlierPeopleBackup.map((person, idx) => (
+                  <option key={idx} value={person.name} />
+                ))}
+              </datalist>
+            </div>
+
+            {/* Name with type-ahead from earlier form entries */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
+              <input
+                type="text"
+                className="question-input"
+                value={personBackupData.name || ''}
+                onChange={(e) => updatePersonBackupField('name', e.target.value)}
+                onBlur={savePersonBackupOnBlur}
+                placeholder="Full name"
+                list={`person-backup-typeahead-${question.id}-${instanceIndex}`}
+                autoComplete="off"
+              />
+              <datalist id={`person-backup-typeahead-${question.id}-${instanceIndex}`}>
+                {earlierPeopleBackup.map((person, idx) => (
+                  <option key={idx} value={person.name} />
+                ))}
+              </datalist>
+              {matchedPersonBackup && (
+                <p style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '0.25rem' }}>
+                  ✓ Matched with earlier entry
+                </p>
+              )}
+            </div>
+
+            {/* Rest of person fields - same as regular person */}
+            {(personBackupData.name || matchedPersonBackup) && (
+              <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
+                <input
+                  type="email"
+                  className="question-input"
+                  value={personBackupData.email || ''}
+                  onChange={(e) => updatePersonBackupField('email', e.target.value)}
+                  onBlur={savePersonBackupOnBlur}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Phone</label>
+                <input
+                  type="tel"
+                  className="question-input"
+                  value={personBackupData.phone || ''}
+                  onChange={(e) => updatePersonBackupField('phone', e.target.value)}
+                  onBlur={savePersonBackupOnBlur}
+                />
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Occupation</label>
+              <input
+                type="text"
+                className="question-input"
+                value={personBackupData.occupation || ''}
+                onChange={(e) => updatePersonBackupField('occupation', e.target.value)}
+                onBlur={savePersonBackupOnBlur}
+              />
+            </div>
+
+            {/* Mailing Address Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Mailing Address</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personBackupData.mailing_address?.line1 || ''}
+                    onChange={(e) => updatePersonBackupAddressField('mailing_address', 'line1', e.target.value)}
+                    onBlur={savePersonBackupOnBlur}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personBackupData.mailing_address?.line2 || ''}
+                    onChange={(e) => updatePersonBackupAddressField('mailing_address', 'line2', e.target.value)}
+                    onBlur={savePersonBackupOnBlur}
+                    placeholder="Apt, suite, etc. (optional)"
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personBackupData.mailing_address?.city || ''}
+                      onChange={(e) => updatePersonBackupAddressField('mailing_address', 'city', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.mailing_address?.state || ''}
+                      onChange={(e) => updatePersonBackupAddressField('mailing_address', 'state', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value="">Select State</option>
+                      {US_STATES_BACKUP.map(state => (
+                        <option key={state.value} value={state.value}>{state.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personBackupData.mailing_address?.zip || ''}
+                      onChange={(e) => updatePersonBackupAddressField('mailing_address', 'zip', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                      placeholder="12345"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Physical Address Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Physical Address</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personBackupData.physical_address?.line1 || ''}
+                    onChange={(e) => updatePersonBackupAddressField('physical_address', 'line1', e.target.value)}
+                    onBlur={savePersonBackupOnBlur}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
+                  <input
+                    type="text"
+                    className="question-input"
+                    value={personBackupData.physical_address?.line2 || ''}
+                    onChange={(e) => updatePersonBackupAddressField('physical_address', 'line2', e.target.value)}
+                    onBlur={savePersonBackupOnBlur}
+                    placeholder="Apt, suite, etc. (optional)"
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personBackupData.physical_address?.city || ''}
+                      onChange={(e) => updatePersonBackupAddressField('physical_address', 'city', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.physical_address?.state || ''}
+                      onChange={(e) => updatePersonBackupAddressField('physical_address', 'state', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value="">Select State</option>
+                      {US_STATES_BACKUP.map(state => (
+                        <option key={state.value} value={state.value}>{state.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
+                    <input
+                      type="text"
+                      className="question-input"
+                      value={personBackupData.physical_address?.zip || ''}
+                      onChange={(e) => updatePersonBackupAddressField('physical_address', 'zip', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                      placeholder="12345"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Trustor Information Section */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Trustor Information</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Trustor Is Living</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.trustor_is_living ?? 1}
+                      onChange={(e) => updatePersonBackupField('trustor_is_living', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value={1}>Yes</option>
+                      <option value={0}>No (Deceased)</option>
+                    </select>
+                  </div>
+                  {String(personBackupData.trustor_is_living) === '0' && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Death</label>
+                      <input
+                        type="date"
+                        className="question-input"
+                        value={personBackupData.date_of_death || ''}
+                        onChange={(e) => updatePersonBackupField('date_of_death', e.target.value)}
+                        onBlur={savePersonBackupOnBlur}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Death Certificate Received</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.trustor_death_certificate_received ?? 0}
+                      onChange={(e) => updatePersonBackupField('trustor_death_certificate_received', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value={0}>No</option>
+                      <option value={1}>Yes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Of Sound Mind</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.trustor_of_sound_mind ?? 1}
+                      onChange={(e) => updatePersonBackupField('trustor_of_sound_mind', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value={1}>Yes</option>
+                      <option value={0}>No</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Has Relinquished</label>
+                    <select
+                      className="question-select"
+                      value={personBackupData.trustor_has_relinquished ?? 0}
+                      onChange={(e) => updatePersonBackupField('trustor_has_relinquished', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    >
+                      <option value={0}>No</option>
+                      <option value={1}>Yes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquished Date</label>
+                    <input
+                      type="date"
+                      className="question-input"
+                      value={personBackupData.trustor_relinquished_date || ''}
+                      onChange={(e) => updatePersonBackupField('trustor_relinquished_date', e.target.value)}
+                      onBlur={savePersonBackupOnBlur}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquishment Doc Received</label>
+                  <select
+                    className="question-select"
+                    value={personBackupData.trustor_reling_doc_received ?? 0}
+                    onChange={(e) => updatePersonBackupField('trustor_reling_doc_received', e.target.value)}
+                    onBlur={savePersonBackupOnBlur}
                   >
                     <option value={0}>No</option>
                     <option value={1}>Yes</option>
