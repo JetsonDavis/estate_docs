@@ -43,6 +43,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     location.pathname === '/forgot-password' ||
     location.pathname === '/reset-password'
 
+  const refreshToken = async () => {
+    try {
+      await apiClient.post('/auth/refresh')
+      return true
+    } catch (error) {
+      console.error('Token refresh failed:', error)
+      return false
+    }
+  }
+
   const checkAuth = async () => {
     // Public auth pages don't need session probing.
     if (isPublicAuthRoute) {
@@ -62,8 +72,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const response = await apiClient.get('/auth/me')
       setUser(response.data)
-    } catch (error) {
-      setUser(null)
+    } catch (error: any) {
+      // If we get a 401, try to refresh the token
+      if (error.response?.status === 401) {
+        const refreshed = await refreshToken()
+        if (refreshed) {
+          // Retry getting user info after refresh
+          try {
+            const retryResponse = await apiClient.get('/auth/me')
+            setUser(retryResponse.data)
+            authCheckInFlight.current = false
+            return
+          } catch (retryError) {
+            // Refresh worked but still can't get user - log out
+            setUser(null)
+          }
+        } else {
+          // Refresh failed - log out
+          setUser(null)
+        }
+      } else {
+        setUser(null)
+      }
     } finally {
       authCheckInFlight.current = false
       if (!hasCheckedAuth.current) {
@@ -91,12 +121,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return
     }
 
-    const intervalId = setInterval(() => {
+    // Check auth every 30 seconds
+    const authCheckInterval = setInterval(() => {
       checkAuth()
     }, 30000)
 
-    // Cleanup interval on unmount
-    return () => clearInterval(intervalId)
+    // Proactively refresh token every 45 minutes (before 1 hour expiry)
+    const tokenRefreshInterval = setInterval(() => {
+      refreshToken()
+    }, 45 * 60 * 1000) // 45 minutes
+
+    // Cleanup intervals on unmount
+    return () => {
+      clearInterval(authCheckInterval)
+      clearInterval(tokenRefreshInterval)
+    }
   }, [location.pathname, user, isE2EMode])
 
   const login = async (username: string, password: string) => {

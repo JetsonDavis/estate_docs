@@ -72,6 +72,56 @@ async def login(
     return LoginResponse(user=user.to_dict())
 
 
+@router.post("/refresh", response_model=MessageResponse)
+async def refresh_token(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db)
+) -> MessageResponse:
+    """
+    Refresh access token using refresh token from cookie.
+    
+    Returns new access token and sets it as httpOnly cookie.
+    """
+    refresh_token = request.cookies.get("refresh_token")
+    
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not found"
+        )
+    
+    # Verify and decode refresh token
+    from ..utils.security import verify_token, create_access_token
+    payload = verify_token(refresh_token)
+    
+    if payload is None or payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
+    
+    # Create new access token with same user data
+    token_data = {
+        "sub": payload["sub"],
+        "username": payload["username"],
+        "role": payload["role"],
+    }
+    new_access_token = create_access_token(token_data)
+    
+    # Set new access token cookie
+    response.set_cookie(
+        key="access_token",
+        value=new_access_token,
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax",
+        max_age=3600,  # 1 hour
+    )
+    
+    return MessageResponse(message="Token refreshed successfully")
+
+
 @router.post("/logout", response_model=MessageResponse)
 async def logout(response: Response) -> MessageResponse:
     """
