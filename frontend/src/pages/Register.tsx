@@ -118,7 +118,7 @@ const Register: React.FC = () => {
             Create your account
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Document Merge System
+            Estate Doc(tor)
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>

@@ -1,6 +1,6 @@
-# Document Merge System - Backend
+# Estate Doc(tor) - Backend
 
-FastAPI backend for the Document Merge System.
+FastAPI backend for the Estate Doc(tor).
 
 ## Setup
 

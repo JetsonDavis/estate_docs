@@ -1,4 +1,5 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import apiClient from '../services/api'
 
 interface User {
@@ -27,17 +28,44 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const hasCheckedAuth = useRef(false)
+  const authCheckInFlight = useRef(false)
+  const isE2EMode =
+    import.meta.env.VITE_E2E === '1' ||
+    (typeof navigator !== 'undefined' && navigator.webdriver)
+
+  const isPublicAuthRoute =
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/forgot-password' ||
+    location.pathname === '/reset-password'
 
   const checkAuth = async () => {
+    // Public auth pages don't need session probing.
+    if (isPublicAuthRoute) {
+      setUser(null)
+      if (!hasCheckedAuth.current) {
+        setLoading(false)
+        hasCheckedAuth.current = true
+      }
+      return
+    }
+
+    if (authCheckInFlight.current) {
+      return
+    }
+
+    authCheckInFlight.current = true
     try {
       const response = await apiClient.get('/auth/me')
       setUser(response.data)
     } catch (error) {
       setUser(null)
     } finally {
+      authCheckInFlight.current = false
       if (!hasCheckedAuth.current) {
         setLoading(false)
         hasCheckedAuth.current = true
@@ -46,17 +74,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   useEffect(() => {
-    // Initial auth check on mount
+    // Initial auth check, and route-driven recheck in normal app mode.
+    if (isE2EMode && hasCheckedAuth.current) {
+      return
+    }
+
     checkAuth()
 
-    // Set up interval to check auth every 30 seconds
+    // In E2E we intentionally avoid repeated probes to keep logs clean.
+    if (isE2EMode) {
+      return
+    }
+
+    // Poll only on protected/application pages when a session is present.
+    if (isPublicAuthRoute || !user) {
+      return
+    }
+
     const intervalId = setInterval(() => {
       checkAuth()
     }, 30000)
 
     // Cleanup interval on unmount
     return () => clearInterval(intervalId)
-  }, [])
+  }, [location.pathname, user, isE2EMode])
 
   const login = async (username: string, password: string) => {
     const response = await apiClient.post('/auth/login', { username, password })

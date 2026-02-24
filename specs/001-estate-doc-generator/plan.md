@@ -1,4 +1,4 @@
-# Implementation Plan: Document Merge System
+# Implementation Plan: Estate Doc(tor)
 
 **Branch**: `001-estate-doc-generator` | **Date**: 2026-01-18 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-estate-doc-generator/spec.md`
@@ -7,7 +7,7 @@
 
 ## Summary
 
-The Document Merge System is a two-mode application (admin and client) that enables dynamic questionnaire creation with conditional flow logic and document generation through template merging. Administrators create question groups with multiple question types (multiple choice, free form, database-populated dropdowns), define conditional navigation rules, design multiple document flows, and create templates with parameter placeholders using `<<identifier>>` syntax. Templates can be created by uploading Word/PDF/images (OCR via AWS Textract) or direct text entry, stored as Markdown. Clients complete questionnaires following conditional flows, with answers stored per client and question identifier. The system merges client answers into templates to generate PDF documents using ReportLab. Authentication uses JWT tokens with httpOnly cookies, supporting user management with forgot password functionality. Files are stored on EC2 instance file system with regular backups.
+The Estate Doc(tor) is a two-mode application (admin and client) that enables dynamic questionnaire creation with conditional flow logic and document generation through template merging. Administrators create question groups with multiple question types (multiple choice, free form, database-populated dropdowns), define conditional navigation rules, design multiple document flows, and create templates with parameter placeholders using `<<identifier>>` syntax. Templates can be created by uploading Word/PDF/images (OCR via AWS Textract) or direct text entry, stored as Markdown. Clients complete questionnaires following conditional flows, with answers stored per client and question identifier. The system merges client answers into templates to generate PDF documents using ReportLab. Authentication uses JWT tokens with httpOnly cookies, supporting user management with forgot password functionality. Files are stored on EC2 instance file system with regular backups.
 
 ## Technical Context
 

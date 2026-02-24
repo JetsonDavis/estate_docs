@@ -36,7 +36,8 @@ class QuestionGroupService:
         if not include_inactive:
             query = query.filter(QuestionGroup.is_active == True)
 
-        query = query.order_by(QuestionGroup.display_order, QuestionGroup.name)
+        # Show newest groups first so recently created groups are immediately visible.
+        query = query.order_by(QuestionGroup.id.desc())
 
         total = query.count()
         groups = query.offset(skip).limit(limit).all()

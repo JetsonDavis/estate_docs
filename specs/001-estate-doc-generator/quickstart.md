@@ -1,12 +1,12 @@
-# Quickstart Guide: Document Merge System
+# Quickstart Guide: Estate Doc(tor)
 
-**Feature**: Document Merge System  
+**Feature**: Estate Doc(tor)  
 **Date**: 2026-01-18  
 **Audience**: Developers
 
 ## Overview
 
-This guide provides step-by-step instructions to set up the development environment, run the application locally, and execute tests for the Document Merge System.
+This guide provides step-by-step instructions to set up the development environment, run the application locally, and execute tests for the Estate Doc(tor).
 
 ## Prerequisites
 

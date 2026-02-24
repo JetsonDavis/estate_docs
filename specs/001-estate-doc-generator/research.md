@@ -1,12 +1,12 @@
-# Research: Document Merge System
+# Research: Estate Doc(tor)
 
-**Feature**: Document Merge System  
+**Feature**: Estate Doc(tor)  
 **Date**: 2026-01-18  
 **Status**: Complete
 
 ## Overview
 
-This document captures research findings for technology choices, architectural patterns, and best practices for the Document Merge System. All technical unknowns from the specification have been resolved.
+This document captures research findings for technology choices, architectural patterns, and best practices for the Estate Doc(tor). All technical unknowns from the specification have been resolved.
 
 ## Technology Decisions
 

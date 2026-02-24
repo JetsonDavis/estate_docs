@@ -1,6 +1,6 @@
-# Document Merge System - Setup Guide
+# Estate Doc(tor) - Setup Guide
 
-Complete setup guide for the Document Merge System.
+Complete setup guide for the Estate Doc(tor).
 
 ## Prerequisites
 

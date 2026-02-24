@@ -1,6 +1,6 @@
-# Implementation Tasks: Document Merge System
+# Implementation Tasks: Estate Doc(tor)
 
-**Feature**: Document Merge System  
+**Feature**: Estate Doc(tor)  
 **Branch**: `001-estate-doc-generator`  
 **Date**: 2026-01-18  
 **Total Tasks**: 147

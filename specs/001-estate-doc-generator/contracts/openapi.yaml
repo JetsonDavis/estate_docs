@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Document Merge System API
+  title: Estate Doc(tor) API
   description: |
-    RESTful API for the Document Merge System, supporting admin and client modes.
+    RESTful API for the Estate Doc(tor), supporting admin and client modes.
     Administrators manage users, question groups, document flows, and templates.
     Users complete questionnaires and generate merged PDF documents.
   version: 1.0.0

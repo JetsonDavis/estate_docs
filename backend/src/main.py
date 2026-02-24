@@ -4,7 +4,7 @@ from .config import settings
 from .routers import auth, users, question_groups, templates, sessions, documents, flows, people
 
 app = FastAPI(
-    title="Document Merge System API",
+    title="Estate Doc(tor) API",
     description="RESTful API for estate document generation with document workflows",
     version="1.0.0",
     docs_url="/docs",
@@ -44,7 +44,7 @@ async def health_check():
 async def root():
     """Root endpoint"""
     return {
-        "message": "Document Merge System API",
+        "message": "Estate Doc(tor) API",
         "docs": "/docs",
         "health": "/health"
     }

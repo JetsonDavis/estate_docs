@@ -1,13 +1,13 @@
-# Data Model: Document Merge System
+# Data Model: Estate Doc(tor)
 
-**Feature**: Document Merge System  
+**Feature**: Estate Doc(tor)  
 **Date**: 2026-01-18  
 **Database**: PostgreSQL 15  
 **ORM**: SQLAlchemy 2.0+
 
 ## Overview
 
-This document defines the normalized database schema for the Document Merge System. All tables are designed to 3NF with proper constraints, indexes, and relationships to ensure data integrity and query performance.
+This document defines the normalized database schema for the Estate Doc(tor). All tables are designed to 3NF with proper constraints, indexes, and relationships to ensure data integrity and query performance.
 
 ## Entity Relationship Diagram
 

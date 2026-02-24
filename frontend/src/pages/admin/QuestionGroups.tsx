@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import { useNavigate, useLocation, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { questionGroupService } from '../../services/questionService'
 import { QuestionGroup, QuestionType, QuestionOption, QuestionLogicItem } from '../../types/question'
 import PersonTypeahead from '../../components/common/PersonTypeahead'
@@ -422,6 +422,7 @@ const getDepthTextColor = (depth: number): string => {
 }
 
 const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ groupId }) => {
+  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [questions, setQuestions] = useState<QuestionFormData[]>([])
@@ -740,6 +741,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const isNameUnique = name.trim() !== '' && !isDuplicateName
   const canAddQuestion = isNameUnique
 
+  const isLogicItemForQuestion = (item: QuestionLogicItem, question: QuestionFormData): boolean => {
+    const localId = (item as any).localQuestionId as string | undefined
+    if (localId && localId === question.id) {
+      return true
+    }
+    return item.questionId != null && question.dbId != null && item.questionId === question.dbId
+  }
+
+  const findQuestionForLogicItem = (item: QuestionLogicItem): QuestionFormData | undefined => {
+    const localId = (item as any).localQuestionId as string | undefined
+    return questions.find(q =>
+      (localId != null && q.id === localId) ||
+      (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+    )
+  }
+
   const addQuestion = (): QuestionFormData => {
     const newQuestion: QuestionFormData = {
       id: Date.now().toString(),
@@ -894,7 +911,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           for (const item of items) {
             if (item.type === 'question') {
               currentPos++
-              if ((item as any).localQuestionId === localId || item.questionId === question.dbId) {
+              if ((item as any).localQuestionId === localId || (question.dbId != null && item.questionId != null && item.questionId === question.dbId)) {
                 return currentPos
               }
             }
@@ -1031,7 +1048,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         // Check if this is the question to remove
         if (item.type === 'question') {
           const localId = (item as any).localQuestionId
-          if (localId === id || item.questionId === questionToRemove?.dbId) {
+          if (localId === id || (questionToRemove?.dbId != null && item.questionId != null && item.questionId === questionToRemove.dbId)) {
             continue // Skip this item (remove it)
           }
         }
@@ -1324,7 +1341,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           const item = itemsAtPath[i]
           if (item.type === 'question') {
             const localId = (item as any).localQuestionId
-            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            previousQuestion = questions.find(q =>
+              (localId != null && q.id === localId) ||
+              (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+            )
             break
           }
         }
@@ -1334,7 +1354,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           const item = questionLogic[i]
           if (item.type === 'question') {
             const localId = (item as any).localQuestionId
-            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            previousQuestion = questions.find(q =>
+              (localId != null && q.id === localId) ||
+              (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+            )
             break
           }
         }
@@ -1480,7 +1503,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           const item = itemsAtPath[i]
           if (item.type === 'question') {
             const localId = (item as any).localQuestionId
-            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            previousQuestion = questions.find(q =>
+              (localId != null && q.id === localId) ||
+              (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+            )
             break
           }
         }
@@ -1490,7 +1516,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           const item = questionLogic[i]
           if (item.type === 'question') {
             const localId = (item as any).localQuestionId
-            previousQuestion = questions.find(q => q.id === localId || q.dbId === item.questionId)
+            previousQuestion = questions.find(q =>
+              (localId != null && q.id === localId) ||
+              (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+            )
             break
           }
         }
@@ -1725,7 +1754,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       parentItems.forEach(item => {
         if (item.type === 'question') {
           const localId = (item as any).localQuestionId
-          const q = questions.find(q => q.id === localId || q.dbId === item.questionId)
+          const q = questions.find(q =>
+            (localId != null && q.id === localId) ||
+            (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+          )
           if (q?.identifier) identifiers.push(q.identifier)
         }
       })
@@ -1735,7 +1767,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         const item = questionLogic[i]
         if (item.type === 'question') {
           const localId = (item as any).localQuestionId
-          const q = questions.find(q => q.id === localId || q.dbId === item.questionId)
+          const q = questions.find(q =>
+            (localId != null && q.id === localId) ||
+            (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
+          )
           if (q?.identifier) identifiers.push(q.identifier)
         }
       }
@@ -1746,8 +1781,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   // Helper to get question by local ID or db ID from logic item
   const getQuestionFromLogicItem = (item: QuestionLogicItem): QuestionFormData | undefined => {
-    const localId = (item as any).localQuestionId
-    return questions.find(q => q.id === localId || q.dbId === item.questionId)
+    return findQuestionForLogicItem(item)
   }
 
   // Helper to collect all nested question IDs from conditionals
@@ -1788,11 +1822,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return filtered.sort((a, b) => {
       const aIndex = questionLogic.findIndex(item => 
         item.type === 'question' && 
-        ((item as any).localQuestionId === a.id || item.questionId === a.dbId)
+        isLogicItemForQuestion(item, a)
       )
       const bIndex = questionLogic.findIndex(item => 
         item.type === 'question' && 
-        ((item as any).localQuestionId === b.id || item.questionId === b.dbId)
+        isLogicItemForQuestion(item, b)
       )
       // If not found in logic, put at end
       const aPos = aIndex === -1 ? Infinity : aIndex
@@ -2374,7 +2408,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         const conditionalDepth = depth + 1
         
         return (
-          <div key={item.id} style={{
+          <div key={item.id} className="conditional-block" style={{
             marginBottom: '1rem',
             marginLeft: '2rem',
             padding: '1rem',
@@ -2605,6 +2639,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       setSavedGroupId(groupResponse.id)
       savedGroupIdRef.current = groupResponse.id
       setGroupInfoSaved(true)
+
+      // Switch to a persisted route so refresh keeps the saved group context.
+      if (!groupId) {
+        const editPath = `/admin/question-groups/${groupResponse.id}/edit`
+        navigate(editPath, { replace: true })
+
+        // In rare cases router navigation can be deferred; force the persisted URL.
+        setTimeout(() => {
+          if (window.location.pathname !== editPath) {
+            window.location.replace(editPath)
+          }
+        }, 0)
+      }
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to save question group')
     } finally {
@@ -2639,6 +2686,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
+  if (!groupId && groupInfoSaved && savedGroupId) {
+    return <Navigate to={`/admin/question-groups/${savedGroupId}/edit`} replace />
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2662,7 +2713,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         <div>
           <h1 className="question-groups-title">{isEditMode ? 'Edit Question Group' : 'Create Question Group'}</h1>
           <p className="question-groups-subtitle">
-            {isEditMode ? 'Update the question group information and questions' : 'Create a new question group with questions'}
+            {isEditMode ? 'Update the question group information and questions' : 'Create a new question group'}
           </p>
         </div>
         {!groupInfoSaved && (
@@ -2740,7 +2791,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             // Find the logic index for this question to use for insertion
             const logicIndex = questionLogic.findIndex(item =>
               item.type === 'question' &&
-              ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+              isLogicItemForQuestion(item, question)
             )
 
             return (
@@ -2832,6 +2883,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   onClick={() => removeQuestion(question.id)}
                   className="remove-button"
                   title="Remove question"
+                  data-testid={`remove-question-${question.id}`}
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="trash-icon">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -2848,7 +2900,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       // This handles cases where there's a conditional between questions
                       const currentLogicIndex = questionLogic.findIndex(item =>
                         item.type === 'question' &&
-                        ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+                        isLogicItemForQuestion(item, question)
                       )
                       
                       // Walk backwards through questionLogic to find the previous question item
@@ -2857,7 +2909,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         const item = questionLogic[i]
                         if (item.type === 'question') {
                           const q = questions.find(q => 
-                            q.id === (item as any).localQuestionId || q.dbId === item.questionId
+                            ((item as any).localQuestionId != null && q.id === (item as any).localQuestionId) ||
+                            (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
                           )
                           if (q?.repeatable) {
                             prevRepeatableQuestion = q
@@ -3182,7 +3235,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 // Find the index of this question in questionLogic
                 const thisQuestionLogicIndex = questionLogic.findIndex(item =>
                   item.type === 'question' &&
-                  ((item as any).localQuestionId === question.id || item.questionId === question.dbId)
+                  isLogicItemForQuestion(item, question)
                 )
                 
                 // Find conditionals that come after this question but before the next question
@@ -3261,7 +3314,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         Insert Conditional
                       </button>
                     </div>
-                    <div style={{
+                    <div className="conditional-block" style={{
                       marginTop: '0.25rem',
                       padding: '1rem',
                       border: `1px solid ${getDepthBorderColor(1)}`,

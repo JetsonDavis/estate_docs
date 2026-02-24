@@ -1,6 +1,6 @@
-# Document Merge System - Frontend
+# Estate Doc(tor) - Frontend
 
-React TypeScript frontend for the Document Merge System.
+React TypeScript frontend for the Estate Doc(tor).
 
 ## Setup
 

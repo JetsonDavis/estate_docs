@@ -1,10 +1,10 @@
-# Document Merge System
+# Estate Doc(tor)
 
 A two-mode application for estate document generation with dynamic questionnaire workflows and conditional flow logic.
 
 ## Overview
 
-The Document Merge System enables:
+The Estate Doc(tor) enables:
 - **Admin Mode**: Create question groups with conditional flow logic, manage document templates, and design multiple document flows
 - **Client Mode**: Complete questionnaires with dynamic navigation, generate merged PDF documents
 
