@@ -2184,7 +2184,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         type="radio"
                         name={`nested-type-${nestedQuestion.id}`}
                         value="yes_no"
-                        checked={false}
+                        checked={
+                          nestedQuestion.question_type === 'multiple_choice' &&
+                          nestedQuestion.options?.length === 2 &&
+                          nestedQuestion.options[0]?.value === 'yes' &&
+                          nestedQuestion.options[1]?.value === 'no'
+                        }
                         onChange={(e) => {
                           // Yes/No is just a shortcut for multiple_choice with Yes/No options
                           updateQuestion(nestedQuestion.id, 'question_type', 'multiple_choice')
@@ -3096,7 +3101,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           type="radio"
                           name={`type-${question.id}`}
                           value="yes_no"
-                          checked={false}
+                          checked={
+                            question.question_type === 'multiple_choice' &&
+                            question.options?.length === 2 &&
+                            question.options[0]?.value === 'yes' &&
+                            question.options[1]?.value === 'no'
+                          }
                           onChange={(e) => {
                             // Yes/No is just a shortcut for multiple_choice with Yes/No options
                             updateQuestion(question.id, 'question_type', 'multiple_choice')
