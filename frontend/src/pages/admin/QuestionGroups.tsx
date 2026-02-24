@@ -3551,27 +3551,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
                             renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
                           )}
-                          {/* Always show Add Question button inside conditional */}
-                          <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '0.25rem', border: '1px dashed #d1d5db', marginTop: logicItem.conditional?.nestedItems?.length ? '0.5rem' : '0' }}>
-                            {(!logicItem.conditional?.nestedItems || logicItem.conditional.nestedItems.length === 0) && (
-                              <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', margin: '0 0 0.5rem 0' }}>
-                                Questions added here will <u>only</u> appear when the condition is true
-                              </p>
-                            )}
-                            <div style={{ display: 'flex', justifyContent: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => addQuestionToLogic(undefined, [logicIndex])}
-                                className="add-question-button"
-                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                              >
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon" style={{ width: '0.875rem', height: '0.875rem' }}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Add Question Inside Conditional
-                              </button>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     </div>
