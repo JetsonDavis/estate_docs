@@ -2225,6 +2225,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <input
                         type="radio"
                         name={`nested-type-${nestedQuestion.id}`}
+                        value="person_backup"
+                        checked={nestedQuestion.question_type === 'person_backup'}
+                        onChange={(e) => {
+                          updateQuestion(nestedQuestion.id, 'question_type', e.target.value)
+                          if (!nestedQuestion.person_display_mode) {
+                            updateQuestion(nestedQuestion.id, 'person_display_mode', 'autocomplete')
+                          }
+                        }}
+                      />
+                      <span>Person (Backup)</span>
+                    </label>
+                    <label className="radio-option">
+                      <input
+                        type="radio"
+                        name={`nested-type-${nestedQuestion.id}`}
                         value="date"
                         checked={nestedQuestion.question_type === 'date'}
                         onChange={(e) => updateQuestion(nestedQuestion.id, 'question_type', e.target.value)}
@@ -3143,6 +3158,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           }}
                         />
                         <span>Person</span>
+                      </label>
+                      <label className="radio-option">
+                        <input
+                          type="radio"
+                          name={`type-${question.id}`}
+                          value="person_backup"
+                          checked={question.question_type === 'person_backup'}
+                          onChange={(e) => {
+                            updateQuestion(question.id, 'question_type', e.target.value)
+                            if (!question.person_display_mode) {
+                              updateQuestion(question.id, 'person_display_mode', 'autocomplete')
+                            }
+                          }}
+                        />
+                        <span>Person (Backup)</span>
                       </label>
                       <label className="radio-option">
                         <input

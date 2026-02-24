@@ -10,6 +10,7 @@ class QuestionType(str, enum.Enum):
     FREE_TEXT = "free_text"
     DATABASE_DROPDOWN = "database_dropdown"
     PERSON = "person"
+    PERSON_BACKUP = "person_backup"
     DATE = "date"
 
 

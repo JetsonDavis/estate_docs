@@ -1,4 +1,4 @@
-export type QuestionType = 'multiple_choice' | 'free_text' | 'database_dropdown' | 'checkbox_group' | 'dropdown' | 'person' | 'date'
+export type QuestionType = 'multiple_choice' | 'free_text' | 'database_dropdown' | 'checkbox_group' | 'dropdown' | 'person' | 'person_backup' | 'date'
 
 export interface QuestionOption {
   value: string
