@@ -64,7 +64,7 @@ class Question(Base, TimestampMixin, SoftDeleteMixin):
     question_group_id = Column(Integer, ForeignKey("question_groups.id"), nullable=False, index=True)
     question_text = Column(Text, nullable=False)
     question_type = Column(String(50), nullable=False)  # Validated by Pydantic schema
-    identifier = Column(String(100), unique=True, nullable=False, index=True)
+    identifier = Column(String(100), nullable=False, index=True)
     repeatable = Column(Boolean, default=False, nullable=False)
     repeatable_group_id = Column(String(100), nullable=True)  # ID to group repeatable questions together
     display_order = Column(Integer, default=0, nullable=False)
