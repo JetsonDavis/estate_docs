@@ -1507,6 +1507,66 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     })
   }
 
+  // Insert a conditional at the same level as nested items (as a sibling)
+  const insertConditionalAsSibling = (afterIndex: number, parentPath: number[], targetQuestion?: QuestionFormData) => {
+    // Get the previous question to use as the "if" condition
+    let previousQuestion: QuestionFormData | undefined = targetQuestion
+      ? questions.find(q => q.id === targetQuestion.id) || targetQuestion
+      : undefined
+
+    // Create a new nested question to go inside the conditional
+    const nestedQuestion = addQuestion()
+    const nestedQuestionId = nestedQuestion.id
+    
+    const nestedQuestionLogicItem: QuestionLogicItem = {
+      id: Date.now().toString() + '_nested_q',
+      type: 'question',
+      questionId: undefined,
+      depth: parentPath.length // Same depth as other items at this level
+    }
+    ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestionId
+
+    const newConditional: QuestionLogicItem = {
+      id: Date.now().toString() + '_cond',
+      type: 'conditional',
+      conditional: {
+        ifIdentifier: previousQuestion?.identifier || '',
+        value: '',
+        nestedItems: [nestedQuestionLogicItem]
+      },
+      depth: parentPath.length // Same depth as the question it's next to
+    }
+
+    const currentGroupId = savedGroupId
+
+    // Insert into nested items at the parent path
+    const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+      if (depth >= path.length) {
+        // Insert after afterIndex position
+        const insertIndex = afterIndex >= 0 ? afterIndex + 1 : items.length
+        return [...items.slice(0, insertIndex), newConditional, ...items.slice(insertIndex)]
+      }
+      return items.map((item, idx) => {
+        if (idx === path[depth] && item.conditional) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+            }
+          }
+        }
+        return item
+      })
+    }
+    
+    setQuestionLogic(prevLogic => {
+      const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+      if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+      return newLogic
+    })
+  }
+
   const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
 
     // Get the previous question to use as the "if" condition
@@ -1941,12 +2001,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   type="button"
                   onClick={() => {
                     // Insert conditional at the SAME level as the nested question (as a sibling)
-                    // This button appears BEFORE itemIndex, so insert at itemIndex - 1
-                    
-                    // Find the previous question in the current nested items to use as ifIdentifier
+                    // Find the previous question to use as ifIdentifier
                     let prevQuestionForCondition: QuestionFormData | undefined
                     
-                    // Look backwards in the current nested items to find the last question
                     for (let i = itemIndex - 1; i >= 0; i--) {
                       const item = nestedItems[i]
                       if (item.type === 'question') {
@@ -1957,10 +2014,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    // Insert at the SAME level (inside the same parent conditional)
-                    // Use parentPath to stay at the current nesting level
-                    // Insert after the previous item (itemIndex - 1)
-                    addConditionalToLogic(itemIndex - 1, parentPath, prevQuestionForCondition)
+                    // Use insertConditionalAsSibling to insert at the same level
+                    // This will create a conditional as a sibling to the nested question
+                    insertConditionalAsSibling(itemIndex - 1, parentPath, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
