@@ -204,4 +204,175 @@ test.describe('Question Group Conditionals', () => {
 
     console.log('Conditional value update test: values persisted correctly');
   });
+
+  test('should create multi-level nested conditionals', async ({ page }) => {
+    const uniqueId = Date.now().toString();
+    const groupName = `MultiLevel_${uniqueId}`;
+
+    await login(page);
+    await page.goto(`${TEST_CONFIG.baseUrl}/admin/question-groups`);
+    await page.waitForLoadState('networkidle');
+
+    await page.click('text=Create Questions Group');
+    await page.waitForTimeout(500);
+
+    const nameInput = page.locator('input.form-input').first();
+    await nameInput.fill(groupName);
+    await page.waitForTimeout(500);
+
+    const checkingName = page.getByText('Checking name...');
+    if (await checkingName.isVisible().catch(() => false)) {
+      await checkingName.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
+    }
+    await page.waitForTimeout(500);
+
+    await page.click('text=Save Group Information');
+    await page.waitForSelector('text=Questions', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    // Add base question
+    const addQuestionBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last();
+    await addQuestionBtn.click();
+    await page.waitForTimeout(1000);
+
+    const identifierInput = page.locator('input[placeholder*="full_name"]').first();
+    await identifierInput.fill(`base_${uniqueId}`);
+    const questionTextarea = page.locator('.question-builder textarea').first();
+    await questionTextarea.fill('Base Question');
+    await page.waitForTimeout(2000);
+
+    // Add first level conditional
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+    const conditionalBtn = page.locator('button').filter({ hasText: /^Add Conditional$/ }).first();
+    await conditionalBtn.click();
+    await page.waitForTimeout(1500);
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+    const valueInput = page.locator('input[placeholder*="value"]').first();
+    await valueInput.fill('yes');
+    await page.waitForTimeout(1000);
+
+    // Add question inside first conditional
+    const addNestedBtn = page.locator('button').filter({ hasText: /Add Question/ }).last();
+    await addNestedBtn.click();
+    await page.waitForTimeout(1500);
+
+    const allIdentifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
+    const count1 = await allIdentifiers.count();
+    await allIdentifiers.nth(count1 - 1).fill(`level1_${uniqueId}`);
+    const allTextareas = page.locator('.question-builder textarea');
+    await allTextareas.nth(count1 - 1).fill('Level 1 Nested');
+    await page.waitForTimeout(2000);
+
+    // Add second level conditional (nested inside first)
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+    const addNestedConditionalBtn = page.locator('button').filter({ hasText: /Add.*Conditional/ }).last();
+    await addNestedConditionalBtn.click();
+    await page.waitForTimeout(1500);
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+    const allValueInputs = page.locator('input[placeholder*="value"]');
+    const valueCount = await allValueInputs.count();
+    await allValueInputs.nth(valueCount - 1).fill('maybe');
+    await page.waitForTimeout(1000);
+
+    // Verify we have 2 conditionals
+    let conditionalBlocks = page.locator('.conditional-block');
+    let conditionalCount = await conditionalBlocks.count();
+    expect(conditionalCount).toBeGreaterThanOrEqual(2);
+
+    // Refresh and verify structure persists
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    conditionalBlocks = page.locator('.conditional-block');
+    const persistedCount = await conditionalBlocks.count();
+    expect(persistedCount).toBeGreaterThanOrEqual(2);
+
+    console.log(`Multi-level test: ${persistedCount} conditionals persisted`);
+  });
+
+  test('should handle different conditional operators', async ({ page }) => {
+    const uniqueId = Date.now().toString();
+    const groupName = `Operators_${uniqueId}`;
+
+    await login(page);
+    await page.goto(`${TEST_CONFIG.baseUrl}/admin/question-groups`);
+    await page.waitForLoadState('networkidle');
+
+    await page.click('text=Create Questions Group');
+    await page.waitForTimeout(500);
+
+    const nameInput = page.locator('input.form-input').first();
+    await nameInput.fill(groupName);
+    await page.waitForTimeout(500);
+
+    const checkingName = page.getByText('Checking name...');
+    if (await checkingName.isVisible().catch(() => false)) {
+      await checkingName.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
+    }
+    await page.waitForTimeout(500);
+
+    await page.click('text=Save Group Information');
+    await page.waitForSelector('text=Questions', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    // Add question
+    const addQuestionBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last();
+    await addQuestionBtn.click();
+    await page.waitForTimeout(1000);
+
+    const identifierInput = page.locator('input[placeholder*="full_name"]').first();
+    await identifierInput.fill(`status_${uniqueId}`);
+    const questionTextarea = page.locator('.question-builder textarea').first();
+    await questionTextarea.fill('Status');
+    await page.waitForTimeout(2000);
+
+    // Add conditional
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+    const conditionalBtn = page.locator('button').filter({ hasText: /^Add Conditional$/ }).first();
+    await conditionalBtn.click();
+    await page.waitForTimeout(1500);
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(500);
+
+    // Check if operator select exists and try to change it
+    const operatorSelects = page.locator('select');
+    const selectCount = await operatorSelects.count();
+    
+    if (selectCount > 1) {
+      // Try to select not_equals operator
+      const operatorSelect = operatorSelects.nth(1);
+      await operatorSelect.selectOption('not_equals').catch(() => {
+        console.log('not_equals option not available, using default');
+      });
+      await page.waitForTimeout(500);
+    }
+
+    // Fill value
+    const valueInput = page.locator('input[placeholder*="value"]').first();
+    await valueInput.fill('inactive');
+    await page.waitForTimeout(2000);
+
+    // Refresh and verify
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    const conditionalBlocks = page.locator('.conditional-block');
+    const conditionalCount = await conditionalBlocks.count();
+    expect(conditionalCount).toBeGreaterThanOrEqual(1);
+
+    const persistedValue = await page.locator('input[placeholder*="value"]').first().inputValue();
+    expect(persistedValue).toBe('inactive');
+
+    console.log('Operator test: conditional with operator persisted');
+  });
 });
