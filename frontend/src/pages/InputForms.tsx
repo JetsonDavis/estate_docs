@@ -1276,7 +1276,28 @@ const InputForms: React.FC = () => {
           personBackupData = {}
         }
 
+        // Helper function to calculate group number based on 'then' conjunctions
+        const calculateGroupNumber = (instances: string[]): number[] => {
+          const groups: number[] = [0] // First instance is always group 0
+          let currentGroup = 0
+          
+          for (let i = 1; i < instances.length; i++) {
+            try {
+              const parsed = JSON.parse(instances[i])
+              if (parsed && typeof parsed === 'object' && parsed.conjunction === 'then') {
+                currentGroup++
+              }
+            } catch {
+              // If parsing fails, stay in current group
+            }
+            groups.push(currentGroup)
+          }
+          
+          return groups
+        }
+
         // Collect person data from questions that appear BEFORE this question in the list
+        // For Person (Backup) Replaces field: only include people from PREVIOUS GROUPS (not current group)
         const earlierPeopleBackup: Array<{ name: string; data: Record<string, any> }> = []
         if (sessionData) {
           const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
@@ -1304,19 +1325,25 @@ const InputForms: React.FC = () => {
             }
           }
 
-          // For repeatable questions, also include earlier instances of THIS question
+          // For repeatable questions, include earlier instances from PREVIOUS GROUPS only
           if (question.repeatable && instanceIndex > 0) {
             const arr = getRepeatableAnswerArray(question.id)
+            const groups = calculateGroupNumber(arr)
+            const currentGroup = groups[instanceIndex]
+            
+            // Only include instances from previous groups (group number < currentGroup)
             for (let i = 0; i < instanceIndex; i++) {
-              const instanceValue = arr[i]
-              if (instanceValue) {
-                try {
-                  const parsed = JSON.parse(instanceValue)
-                  if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
-                    earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+              if (groups[i] < currentGroup) {
+                const instanceValue = arr[i]
+                if (instanceValue) {
+                  try {
+                    const parsed = JSON.parse(instanceValue)
+                    if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+                      earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+                    }
+                  } catch {
+                    // Skip invalid JSON
                   }
-                } catch {
-                  // Skip invalid JSON
                 }
               }
             }
