@@ -16,6 +16,7 @@ import seedrandom from 'seedrandom';
 // Test configuration
 const TEST_CONFIG = {
   baseUrl: 'http://localhost:3005',
+  backendUrl: 'http://localhost:8005',
   adminEmail: 'admin',
   adminPassword: 'password',
   minActions: 10,
@@ -77,11 +78,29 @@ class QuestionGroupPage {
   constructor(private page: Page) {}
 
   async login() {
-    await this.page.goto('/login');
-    await this.page.fill('input[id="username"]', TEST_CONFIG.adminEmail);
-    await this.page.fill('input[id="password"]', TEST_CONFIG.adminPassword);
-    await this.page.click('button[type="submit"]');
-    await this.page.waitForURL(/\/(dashboard|admin)/);
+    // Login via API (bypasses UI login)
+    const response = await this.page.request.post(`${TEST_CONFIG.backendUrl}/api/v1/auth/login`, {
+      data: {
+        username: TEST_CONFIG.adminEmail,
+        password: TEST_CONFIG.adminPassword,
+      },
+    });
+    
+    // Set cookies for the frontend domain
+    const cookies = response.headers()['set-cookie'];
+    if (cookies) {
+      const cookieStrings = Array.isArray(cookies) ? cookies : [cookies];
+      for (const cookieStr of cookieStrings) {
+        const [nameValue] = cookieStr.split(';');
+        const [name, value] = nameValue.split('=');
+        await this.page.context().addCookies([{
+          name: name.trim(),
+          value: value.trim(),
+          domain: 'localhost',
+          path: '/',
+        }]);
+      }
+    }
   }
 
   async navigateToQuestionGroups() {
@@ -90,16 +109,29 @@ class QuestionGroupPage {
   }
 
   async createNewGroup(name: string) {
-    // Click "New Question Group" button
-    await this.page.click('text=New Question Group');
+    // Open create form if we are still on the list page.
+    const createBtn = this.page.getByRole('button', { name: /Create Question(s)? Group/i }).first();
+    if (await createBtn.isVisible().catch(() => false)) {
+      await createBtn.click();
+      await this.page.waitForLoadState('networkidle');
+    }
+
+    // Fill in and save group info before interacting with questions.
+    const nameInput = this.page.locator('label:has-text("Name") + input, label:has-text("Name") ~ input, input.form-input').first();
+    await nameInput.fill(name);
+
+    const checkingName = this.page.getByText('Checking name...');
+    if (await checkingName.isVisible().catch(() => false)) {
+      await checkingName.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
+    }
+
+    const saveGroupInfoBtn = this.page.getByRole('button', { name: /Save Group Information/i }).first();
+    await expect(saveGroupInfoBtn).toBeVisible({ timeout: 10000 });
+    await saveGroupInfoBtn.click();
+
+    await this.page.waitForSelector('text=Questions', { timeout: 30000 });
+    await expect(this.page.getByRole('button', { name: /^Add Question$/ }).last()).toBeVisible({ timeout: 30000 });
     await this.page.waitForTimeout(500);
-    
-    // Fill in the name
-    await this.page.fill('input[placeholder*="name" i], input[name="name"]', name);
-    
-    // Fill in identifier
-    const identifier = name.toLowerCase().replace(/\s+/g, '_');
-    await this.page.fill('input[placeholder*="identifier" i], input[name="identifier"]', identifier);
   }
 
   async selectExistingGroup() {
@@ -123,8 +155,8 @@ class QuestionGroupPage {
 
   async clickAddQuestion() {
     // Find and click the "Add Question" button at the bottom
-    const addBtn = this.page.locator('button').filter({ hasText: /^Add Question$/ }).last();
-    if (await addBtn.isVisible()) {
+    const addBtn = this.page.getByRole('button', { name: /^Add Question$/ }).last();
+    if (await addBtn.isVisible().catch(() => false)) {
       await addBtn.click();
       await this.page.waitForTimeout(300);
       return true;
@@ -134,7 +166,7 @@ class QuestionGroupPage {
 
   async clickInsertQuestion(index: number) {
     // Find insert buttons between questions
-    const insertBtns = this.page.locator('button').filter({ hasText: /Insert Question/ });
+    const insertBtns = this.page.getByRole('button', { name: /Insert Question/i });
     const count = await insertBtns.count();
     if (count > 0 && index < count) {
       await insertBtns.nth(index).click();
@@ -180,11 +212,12 @@ class QuestionGroupPage {
   }
 
   async fillQuestionIdentifier(identifier: string) {
-    // Find identifier input
-    const idInputs = this.page.locator('input[placeholder*="identifier" i]');
+    // Find identifier input - use the actual placeholder from the UI
+    const idInputs = this.page.locator('input[placeholder="e.g., full_name"]');
     const lastInput = idInputs.last();
     if (await lastInput.isVisible()) {
       await lastInput.fill(identifier);
+      await this.page.waitForTimeout(500); // Wait for auto-save
       return true;
     }
     return false;
@@ -208,8 +241,8 @@ class QuestionGroupPage {
   }
 
   async verifyQuestionOrder(): Promise<string[]> {
-    // Get all question identifiers in order
-    const identifiers = this.page.locator('input[placeholder*="identifier" i]');
+    // Get all question identifiers in order - use the actual placeholder from the UI
+    const identifiers = this.page.locator('input[placeholder="e.g., full_name"]');
     const count = await identifiers.count();
     const order: string[] = [];
     for (let i = 0; i < count; i++) {
@@ -357,9 +390,9 @@ test.describe('Question Group UI - Randomized Interactions', () => {
     
     // Add 3 questions at the end
     for (let i = 1; i <= 3; i++) {
-      await qgPage.clickAddQuestion();
-      await qgPage.fillQuestionText(`Question ${i}`);
-      await qgPage.fillQuestionIdentifier(`q${i}`);
+      expect(await qgPage.clickAddQuestion()).toBe(true);
+      expect(await qgPage.fillQuestionText(`Question ${i}`)).toBe(true);
+      expect(await qgPage.fillQuestionIdentifier(`q${i}`)).toBe(true);
       await page.waitForTimeout(300);
     }
     
@@ -368,18 +401,18 @@ test.describe('Question Group UI - Randomized Interactions', () => {
     console.log('Initial order:', initialOrder);
     
     // Insert a question in the middle (after first question)
-    await qgPage.clickInsertQuestion(0);
-    await qgPage.fillQuestionText('Inserted Middle');
-    await qgPage.fillQuestionIdentifier('q_middle');
+    expect(await qgPage.clickInsertQuestion(0)).toBe(true);
+    expect(await qgPage.fillQuestionText('Inserted Middle')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('q_middle')).toBe(true);
     await page.waitForTimeout(300);
     
     const afterInsertOrder = await qgPage.verifyQuestionOrder();
     console.log('After insert order:', afterInsertOrder);
     
     // Now add a question at the END using the bottom Add Question button
-    await qgPage.clickAddQuestion();
-    await qgPage.fillQuestionText('Question at End');
-    await qgPage.fillQuestionIdentifier('q_end');
+    expect(await qgPage.clickAddQuestion()).toBe(true);
+    expect(await qgPage.fillQuestionText('Question at End')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('q_end')).toBe(true);
     await page.waitForTimeout(300);
     
     const finalOrder = await qgPage.verifyQuestionOrder();
@@ -436,32 +469,32 @@ test.describe('Question Group UI - Randomized Interactions', () => {
     await qgPage.createNewGroup(groupName);
     
     // Add initial questions
-    await qgPage.clickAddQuestion();
-    await qgPage.fillQuestionText('First');
-    await qgPage.fillQuestionIdentifier('first');
+    expect(await qgPage.clickAddQuestion()).toBe(true);
+    expect(await qgPage.fillQuestionText('First')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('first')).toBe(true);
     
-    await qgPage.clickAddQuestion();
-    await qgPage.fillQuestionText('Second');
-    await qgPage.fillQuestionIdentifier('second');
+    expect(await qgPage.clickAddQuestion()).toBe(true);
+    expect(await qgPage.fillQuestionText('Second')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('second')).toBe(true);
     
-    await qgPage.clickAddQuestion();
-    await qgPage.fillQuestionText('Third');
-    await qgPage.fillQuestionIdentifier('third');
+    expect(await qgPage.clickAddQuestion()).toBe(true);
+    expect(await qgPage.fillQuestionText('Third')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('third')).toBe(true);
     
     // Insert at position 0
-    await qgPage.clickInsertQuestion(0);
-    await qgPage.fillQuestionText('After First');
-    await qgPage.fillQuestionIdentifier('after_first');
+    expect(await qgPage.clickInsertQuestion(0)).toBe(true);
+    expect(await qgPage.fillQuestionText('After First')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('after_first')).toBe(true);
     
     // Insert at position 2
-    await qgPage.clickInsertQuestion(2);
-    await qgPage.fillQuestionText('After Second');
-    await qgPage.fillQuestionIdentifier('after_second');
+    expect(await qgPage.clickInsertQuestion(2)).toBe(true);
+    expect(await qgPage.fillQuestionText('After Second')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('after_second')).toBe(true);
     
     // Add at end
-    await qgPage.clickAddQuestion();
-    await qgPage.fillQuestionText('Last');
-    await qgPage.fillQuestionIdentifier('last');
+    expect(await qgPage.clickAddQuestion()).toBe(true);
+    expect(await qgPage.fillQuestionText('Last')).toBe(true);
+    expect(await qgPage.fillQuestionIdentifier('last')).toBe(true);
     
     const order = await qgPage.verifyQuestionOrder();
     console.log('Final order:', order);
@@ -489,9 +522,9 @@ test.describe('Question Group UI - Stress Tests', () => {
     // Add many questions
     const numQuestions = 15;
     for (let i = 0; i < numQuestions; i++) {
-      await qgPage.clickAddQuestion();
-      await qgPage.fillQuestionText(`Stress Q${i + 1}`);
-      await qgPage.fillQuestionIdentifier(`stress_q${i + 1}`);
+      expect(await qgPage.clickAddQuestion()).toBe(true);
+      expect(await qgPage.fillQuestionText(`Stress Q${i + 1}`)).toBe(true);
+      expect(await qgPage.fillQuestionIdentifier(`stress_q${i + 1}`)).toBe(true);
       
       if (i % 5 === 0) {
         console.log(`Added ${i + 1}/${numQuestions} questions`);

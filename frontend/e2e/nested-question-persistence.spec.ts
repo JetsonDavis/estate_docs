@@ -14,6 +14,8 @@ const TEST_CONFIG = {
   adminPassword: 'password',
 };
 
+const IDENTIFIER_INPUT_SELECTOR = 'input[placeholder="e.g., full_name"], input[placeholder="e.g., nested_field"]';
+
 async function login(page: Page) {
   await page.goto(`${TEST_CONFIG.baseUrl}/login`);
   await page.fill('input[id="username"]', TEST_CONFIG.adminEmail);
@@ -49,6 +51,22 @@ test.describe('Nested Question Persistence', () => {
     // Wait for the "Questions" section to appear (indicates group was saved)
     await page.waitForSelector('text=Questions', { timeout: 10000 });
     await page.waitForTimeout(1000);
+
+    // Some builds keep the URL on the create page; in that case open the saved group explicitly.
+    if (!/\/admin\/question-groups\/\d+/.test(page.url())) {
+      await page.goto(`${TEST_CONFIG.baseUrl}/admin/question-groups`);
+      await page.waitForLoadState('networkidle');
+
+      const groupLink = page
+        .locator('a[href*="/admin/question-groups/"]')
+        .filter({ hasText: groupName })
+        .first();
+
+      await expect(groupLink).toBeVisible({ timeout: 10000 });
+      await groupLink.click();
+      await page.waitForLoadState('networkidle');
+      await page.waitForSelector('text=Questions', { timeout: 10000 });
+    }
     
     console.log('Group saved, Questions section visible');
 
@@ -82,17 +100,26 @@ test.describe('Nested Question Persistence', () => {
     // Step 6: The conditional was created with a nested question inside
     // But we need to click "Add Follow-on Question" to add a question inside the conditional
     // First check if there's already a nested question
-    let allIdentifierInputs = page.locator('input[placeholder*="full_name"]');
+    let allIdentifierInputs = page.locator(IDENTIFIER_INPUT_SELECTOR);
     let inputCount = await allIdentifierInputs.count();
     console.log('Identifier input count after adding conditional:', inputCount);
     
-    // If only 1 input, click "Add Follow-on Question" to add a nested question
+    // If only 1 input, click "Add Question Inside Conditional" to add a nested question
     if (inputCount < 2) {
-      const followOnBtn = page.locator('button').filter({ hasText: /Add Follow-on Question/ }).first();
-      if (await followOnBtn.isVisible()) {
-        await followOnBtn.click();
+      // Try "Add Question Inside Conditional" first (for root-level conditionals)
+      let addNestedBtn = page.locator('button').filter({ hasText: /Add Question Inside Conditional/ }).first();
+      if (await addNestedBtn.isVisible()) {
+        await addNestedBtn.click();
         await page.waitForTimeout(1000);
-        console.log('Clicked Add Follow-on Question');
+        console.log('Clicked Add Question Inside Conditional');
+      } else {
+        // Fallback to "Add Follow-on Question" (for nested conditionals)
+        addNestedBtn = page.locator('button').filter({ hasText: /Add Follow-on Question/ }).first();
+        if (await addNestedBtn.isVisible()) {
+          await addNestedBtn.click();
+          await page.waitForTimeout(1000);
+          console.log('Clicked Add Follow-on Question');
+        }
       }
     }
     
@@ -100,16 +127,25 @@ test.describe('Nested Question Persistence', () => {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(500);
     
-    allIdentifierInputs = page.locator('input[placeholder*="full_name"]');
+    allIdentifierInputs = page.locator(IDENTIFIER_INPUT_SELECTOR);
     inputCount = await allIdentifierInputs.count();
     console.log('Identifier input count after adding follow-on:', inputCount);
     
     expect(inputCount).toBeGreaterThanOrEqual(2);
     
-    // Fill the nested question (the second/last one)
-    await allIdentifierInputs.nth(1).fill(nestedQuestionIdentifier);
+    // Fill an actual nested question identifier (prefer the first empty one)
+    let nestedInputIndex = inputCount - 1;
+    for (let i = 0; i < inputCount; i++) {
+      const value = await allIdentifierInputs.nth(i).inputValue();
+      if (!value) {
+        nestedInputIndex = i;
+        break;
+      }
+    }
+
+    await allIdentifierInputs.nth(nestedInputIndex).fill(nestedQuestionIdentifier);
     const allTextareas = page.locator('.question-builder textarea');
-    await allTextareas.nth(1).fill('Nested question text');
+    await allTextareas.nth(nestedInputIndex).fill('Nested question text');
     await page.waitForTimeout(3000); // Wait for auto-save
 
     // Verify structure before refresh - count questions at different depths
@@ -123,7 +159,7 @@ test.describe('Nested Question Persistence', () => {
     await page.waitForTimeout(2000);
 
     // Step 8: Verify the nested question is still present and nested
-    const identifierInputsAfter = page.locator('input[placeholder*="full_name"]');
+    const identifierInputsAfter = page.locator(IDENTIFIER_INPUT_SELECTOR);
     const inputCountAfter = await identifierInputsAfter.count();
     console.log('Identifier input count after refresh:', inputCountAfter);
 

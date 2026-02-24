@@ -16,46 +16,31 @@ const TEST_CONFIG = {
 
 // Track created group IDs for cleanup
 let createdGroupIds: number[] = [];
-let authToken: string | null = null;
 
 function uniqueGroupName(prefix: string): string {
   const randomSuffix = Math.random().toString(36).substring(2, 10);
   return `${prefix}_${Date.now()}_${randomSuffix}`;
 }
 
-// Helper to get auth token for API calls
-async function getAuthToken(page: Page): Promise<string> {
-  if (authToken) return authToken;
-  
-  // Get token from cookies or localStorage
-  const cookies = await page.context().cookies();
-  const accessCookie = cookies.find(c => c.name === 'access_token');
-  if (accessCookie) {
-    authToken = accessCookie.value;
-    return authToken;
-  }
-  
-  // Fallback: login via API
-  const response = await page.request.post(`${TEST_CONFIG.backendUrl}/api/v1/auth/login`, {
-    form: {
-      username: TEST_CONFIG.adminEmail,
-      password: TEST_CONFIG.adminPassword,
-    },
-  });
-  const data = await response.json();
-  authToken = data.access_token;
-  return authToken!;
+function uniqueQuestionId(prefix: string): string {
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  return `${prefix}_${Date.now()}_${randomSuffix}`;
 }
 
-// Helper to delete a question group via API
+// Helper to login via UI
+async function login(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.fill('input[id="username"]', TEST_CONFIG.adminEmail);
+  await page.fill('input[id="password"]', TEST_CONFIG.adminPassword);
+  await page.click('button[type="submit"]');
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+}
+
+// Helper to delete a question group via API (uses session cookie from loginViaAPI)
 async function deleteGroupById(page: Page, groupId: number): Promise<void> {
   try {
-    const token = await getAuthToken(page);
-    await page.request.delete(`${TEST_CONFIG.backendUrl}/api/v1/question-groups/${groupId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
+    await page.request.delete(`${TEST_CONFIG.backendUrl}/api/v1/question-groups/${groupId}`);
   } catch (e) {
     console.log(`Failed to delete group ${groupId}:`, e);
   }
@@ -87,7 +72,7 @@ async function createGroup(page: Page, groupName: string) {
 async function addQuestion(page: Page, identifier: string) {
   await page.click('button:has-text("Add Question")');
   await page.waitForTimeout(500);
-  const inputs = page.locator('input[placeholder*="full_name"]');
+  const inputs = page.locator('input[placeholder="e.g., full_name"]');
   const count = await inputs.count();
   await inputs.nth(count - 1).fill(identifier);
   await page.waitForTimeout(2000); // Wait for auto-save
@@ -95,19 +80,31 @@ async function addQuestion(page: Page, identifier: string) {
 
 // Helper to delete question by index
 async function deleteQuestion(page: Page, index: number) {
-  const deleteButtons = page.locator('button.remove-button, button[title="Remove question"]');
-  await deleteButtons.nth(index).click();
+  // Wait for the page to be fully loaded and stable
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(500);
+  
+  // Get the question builder and its remove button
+  const questionBuilders = page.locator('.question-builder');
+  const targetQuestion = questionBuilders.nth(index);
+  const removeButton = targetQuestion.locator('button.remove-button');
+  
+  // Wait for the button to be visible and clickable
+  await removeButton.waitFor({ state: 'visible' });
+  await removeButton.click();
+  
+  // Wait for the deletion to process
   await page.waitForTimeout(2000);
 }
 
 // Helper to get question count
 async function getQuestionCount(page: Page): Promise<number> {
-  return await page.locator('input[placeholder*="full_name"]').count();
+  return await page.locator('input[placeholder="e.g., full_name"]').count();
 }
 
 // Helper to get question identifiers
 async function getIdentifiers(page: Page): Promise<string[]> {
-  const inputs = page.locator('input[placeholder*="full_name"]');
+  const inputs = page.locator('input[placeholder="e.g., full_name"]');
   const count = await inputs.count();
   const identifiers: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -121,14 +118,9 @@ test.describe('Question Group Deletion Tests', () => {
   test.beforeEach(async ({ page }) => {
     // Reset tracking for this test
     createdGroupIds = [];
-    authToken = null;
     
-    await page.goto('/login');
-    await page.fill('input[id="username"]', TEST_CONFIG.adminEmail);
-    await page.fill('input[id="password"]', TEST_CONFIG.adminPassword);
-    await page.click('button[type="submit"]');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    // Login via UI
+    await login(page);
   });
 
   test.afterEach(async ({ page }) => {
@@ -142,9 +134,13 @@ test.describe('Question Group Deletion Tests', () => {
   test('Test 1: Create 3 questions, delete 2nd, verify 2 remain', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest1'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
-    await addQuestion(page, 'q3');
+    const q1 = uniqueQuestionId('q1');
+    const q2 = uniqueQuestionId('q2');
+    const q3 = uniqueQuestionId('q3');
+
+    await addQuestion(page, q1);
+    await addQuestion(page, q2);
+    await addQuestion(page, q3);
 
     expect(await getQuestionCount(page)).toBe(3);
 
@@ -153,49 +149,57 @@ test.describe('Question Group Deletion Tests', () => {
     expect(await getQuestionCount(page)).toBe(2);
 
     const identifiers = await getIdentifiers(page);
-    expect(identifiers).toContain('q1');
-    expect(identifiers).toContain('q3');
-    expect(identifiers).not.toContain('q2');
+    expect(identifiers).toContain(q1);
+    expect(identifiers).toContain(q3);
+    expect(identifiers).not.toContain(q2);
   });
 
   test('Test 2: Delete first question', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest2'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
-    await addQuestion(page, 'q3');
+    const q1 = uniqueQuestionId('q1');
+    const q2 = uniqueQuestionId('q2');
+    const q3 = uniqueQuestionId('q3');
+
+    await addQuestion(page, q1);
+    await addQuestion(page, q2);
+    await addQuestion(page, q3);
 
     await deleteQuestion(page, 0);
 
     expect(await getQuestionCount(page)).toBe(2);
 
     const identifiers = await getIdentifiers(page);
-    expect(identifiers[0]).toBe('q2');
-    expect(identifiers[1]).toBe('q3');
+    expect(identifiers[0]).toBe(q2);
+    expect(identifiers[1]).toBe(q3);
   });
 
   test('Test 3: Delete last question', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest3'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
-    await addQuestion(page, 'q3');
+    const q1 = uniqueQuestionId('q1');
+    const q2 = uniqueQuestionId('q2');
+    const q3 = uniqueQuestionId('q3');
+
+    await addQuestion(page, q1);
+    await addQuestion(page, q2);
+    await addQuestion(page, q3);
 
     await deleteQuestion(page, 2);
 
     expect(await getQuestionCount(page)).toBe(2);
 
     const identifiers = await getIdentifiers(page);
-    expect(identifiers[0]).toBe('q1');
-    expect(identifiers[1]).toBe('q2');
+    expect(identifiers[0]).toBe(q1);
+    expect(identifiers[1]).toBe(q2);
   });
 
   test('Test 4: Delete all questions one by one', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest4'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
-    await addQuestion(page, 'q3');
+    await addQuestion(page, uniqueQuestionId('q1'));
+    await addQuestion(page, uniqueQuestionId('q2'));
+    await addQuestion(page, uniqueQuestionId('q3'));
 
     for (let remaining = 3; remaining > 0; remaining--) {
       await deleteQuestion(page, 0);
@@ -206,26 +210,34 @@ test.describe('Question Group Deletion Tests', () => {
   test('Test 5: Delete multiple questions preserves order', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest5'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
-    await addQuestion(page, 'q3');
-    await addQuestion(page, 'q4');
-    await addQuestion(page, 'q5');
+    const q1 = uniqueQuestionId('q1');
+    const q2 = uniqueQuestionId('q2');
+    const q3 = uniqueQuestionId('q3');
+    const q4 = uniqueQuestionId('q4');
+    const q5 = uniqueQuestionId('q5');
+
+    await addQuestion(page, q1);
+    await addQuestion(page, q2);
+    await addQuestion(page, q3);
+    await addQuestion(page, q4);
+    await addQuestion(page, q5);
 
     await deleteQuestion(page, 1); // Delete q2
     await deleteQuestion(page, 2); // Delete q4 (now at index 2)
 
     const identifiers = await getIdentifiers(page);
     expect(identifiers.length).toBe(3);
-    expect(identifiers[0]).toBe('q1');
-    expect(identifiers[1]).toBe('q3');
-    expect(identifiers[2]).toBe('q5');
+    expect(identifiers[0]).toBe(q1);
+    expect(identifiers[1]).toBe(q3);
+    expect(identifiers[2]).toBe(q5);
   });
 
   test('Test 6: Create single question and delete it', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest6'));
 
-    await addQuestion(page, 'single_q');
+    const singleQ = uniqueQuestionId('single_q');
+
+    await addQuestion(page, singleQ);
     expect(await getQuestionCount(page)).toBe(1);
 
     await deleteQuestion(page, 0);
@@ -235,7 +247,9 @@ test.describe('Question Group Deletion Tests', () => {
   test('Test 7: Add and delete conditional', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest7'));
 
-    await addQuestion(page, 'root_q');
+    const rootQ = uniqueQuestionId('root_q');
+
+    await addQuestion(page, rootQ);
 
     // Add a conditional
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -256,20 +270,23 @@ test.describe('Question Group Deletion Tests', () => {
     expect(await page.locator('button[title="Remove conditional"]').count()).toBe(0);
     
     // Root question should still exist
-    expect((await getIdentifiers(page))).toContain('root_q');
+    expect((await getIdentifiers(page))).toContain(rootQ);
   });
 
   test('Test 8: Delete second of two questions', async ({ page }) => {
     await createGroup(page, uniqueGroupName('DelTest8'));
 
-    await addQuestion(page, 'q1');
-    await addQuestion(page, 'q2');
+    const q1 = uniqueQuestionId('q1');
+    const q2 = uniqueQuestionId('q2');
+
+    await addQuestion(page, q1);
+    await addQuestion(page, q2);
 
     expect(await getQuestionCount(page)).toBe(2);
 
     await deleteQuestion(page, 1);
 
     expect(await getQuestionCount(page)).toBe(1);
-    expect((await getIdentifiers(page))[0]).toBe('q1');
+    expect((await getIdentifiers(page))[0]).toBe(q1);
   });
 });
