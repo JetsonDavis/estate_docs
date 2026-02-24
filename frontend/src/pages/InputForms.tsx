@@ -907,6 +907,24 @@ const InputForms: React.FC = () => {
 
         return (
           <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
+            {question.repeatable && instanceIndex > 0 && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#7c3aed' }}>Relationship to Previous Entry</label>
+                <select
+                  className="question-select"
+                  value={personData.conjunction || 'and'}
+                  onChange={(e) => updatePersonField('conjunction', e.target.value)}
+                  onBlur={savePersonOnBlur}
+                  style={{ fontSize: '0.875rem' }}
+                >
+                  <option value="and">And</option>
+                  <option value="or">Or</option>
+                  <option value="then">Then</option>
+                </select>
+              </div>
+            )}
+
             {/* Name with type-ahead from earlier form entries */}
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
@@ -1358,6 +1376,24 @@ const InputForms: React.FC = () => {
 
         return (
           <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
+            {question.repeatable && instanceIndex > 0 && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#7c3aed' }}>Relationship to Previous Entry</label>
+                <select
+                  className="question-select"
+                  value={personBackupData.conjunction || 'and'}
+                  onChange={(e) => updatePersonBackupField('conjunction', e.target.value)}
+                  onBlur={savePersonBackupOnBlur}
+                  style={{ fontSize: '0.875rem' }}
+                >
+                  <option value="and">And</option>
+                  <option value="or">Or</option>
+                  <option value="then">Then</option>
+                </select>
+              </div>
+            )}
+
             {/* Replaces field - appears first for Person (Backup) */}
             <div style={{ borderBottom: '2px solid #3b82f6', paddingBottom: '1rem', marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Replaces (Person Being Replaced)</label>
