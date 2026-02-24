@@ -1940,11 +1940,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    console.log('=== Insert Conditional Debug ===')
-                    console.log('itemIndex:', itemIndex)
-                    console.log('parentPath:', parentPath)
-                    console.log('nestedItems:', nestedItems)
-                    console.log('depth:', depth)
+                    // Insert conditional at the SAME level as the nested question (as a sibling)
+                    // This button appears BEFORE itemIndex, so insert at itemIndex - 1
                     
                     // Find the previous question in the current nested items to use as ifIdentifier
                     let prevQuestionForCondition: QuestionFormData | undefined
@@ -1960,17 +1957,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    console.log('prevQuestionForCondition:', prevQuestionForCondition?.identifier)
-                    
-                    // Insert at parent level: remove last element from parentPath to go one level up
-                    const parentPathUp = parentPath.slice(0, -1)
-                    const insertAfterIndex = parentPath[parentPath.length - 1]
-                    
-                    console.log('parentPathUp:', parentPathUp)
-                    console.log('insertAfterIndex:', insertAfterIndex)
-                    console.log('================================')
-                    
-                    addConditionalToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined, prevQuestionForCondition)
+                    // Insert at the SAME level (inside the same parent conditional)
+                    // Use parentPath to stay at the current nesting level
+                    // Insert after the previous item (itemIndex - 1)
+                    addConditionalToLogic(itemIndex - 1, parentPath, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
