@@ -2636,37 +2636,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               {/* Nested items */}
               <div style={{ marginTop: '0.5rem' }}>
-                {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
+                {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 && (
                   renderNestedItems(item.conditional.nestedItems, currentPath, conditionalDepth, prevNestedQuestion, conditionalNumber)
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Add a question inside this conditional
-                      addQuestionToLogic(-1, currentPath)
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      backgroundColor: 'white',
-                      borderRadius: '0.25rem',
-                      border: '1px dashed #d1d5db',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6'
-                      e.currentTarget.style.borderColor = '#9ca3af'
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.backgroundColor = 'white'
-                      e.currentTarget.style.borderColor = '#d1d5db'
-                    }}
-                  >
-                    <p style={{ fontSize: '0.7rem', color: '#6b7280', textAlign: 'center', margin: 0 }}>
-                      Add questions that appear when condition is true
-                    </p>
-                  </button>
                 )}
               </div>
             </div>
