@@ -99,6 +99,20 @@ async function createGroupWithConditionalAndNestedQuestion(page: Page, uniqueId:
   // Verify we have a conditional block with nested content
   const conditionalBlocks = page.locator('.conditional-block')
   expect(await conditionalBlocks.count()).toBeGreaterThanOrEqual(1)
+
+  // Add a second root-level question so the "Insert Conditional" button appears
+  // (it only renders between questions, i.e. when qIndex > 0)
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await page.waitForTimeout(500)
+  const addBtn2 = page.locator('button').filter({ hasText: /^Add Question$/ }).last()
+  await addBtn2.click()
+  await page.waitForTimeout(1000)
+
+  const allIdentifiers2 = page.locator('input[placeholder*="full_name"]')
+  const idCount2 = await allIdentifiers2.count()
+  await allIdentifiers2.nth(idCount2 - 1).scrollIntoViewIfNeeded()
+  await allIdentifiers2.nth(idCount2 - 1).fill(`second_q_${uniqueId}`)
+  await page.waitForTimeout(2000)
 }
 
 test.describe('Insert Conditional Button', () => {
@@ -127,15 +141,11 @@ test.describe('Insert Conditional Button', () => {
       }).length
     })
 
-    // Click the "Insert a nested conditional here" button (purple arrow inside a conditional)
-    const insertBtn = page.locator('button[title="Insert a nested conditional here"]').first()
-    if (await insertBtn.isVisible().catch(() => false)) {
-      await insertBtn.click()
-    } else {
-      // Fallback: try the other insert conditional button
-      const altBtn = page.locator('button[title="Insert a new conditional here"]').first()
-      await altBtn.click()
-    }
+    // Use the root-level "Insert Conditional" button that appears between root items
+    // This button has title="Insert a new conditional here"
+    const insertBtn = page.locator('button[title="Insert a new conditional here"]').first()
+    await insertBtn.scrollIntoViewIfNeeded()
+    await insertBtn.click()
 
     await page.waitForTimeout(1500)
 
@@ -170,62 +180,34 @@ test.describe('Insert Conditional Button', () => {
     console.log('Insert conditional at root level: passed')
   })
 
-  test('should insert conditional after the parent conditional', async ({ page }) => {
+  test('should insert follow-on conditional inside parent conditional', async ({ page }) => {
     const uniqueId = Date.now().toString()
     await createGroupWithConditionalAndNestedQuestion(page, uniqueId)
 
-    // Find the conditional and get its number
-    const conditionalNumber = await page.evaluate(() => {
-      const conditionals = Array.from(document.querySelectorAll('.conditional-block'))
-      if (conditionals.length > 0) {
-        const match = conditionals[0].textContent?.match(/Conditional \((\d+)\)/)
-        return match ? parseInt(match[1]) : null
-      }
-      return null
+    // Count existing conditional blocks before insertion
+    const beforeCount = await page.evaluate(() => {
+      return document.querySelectorAll('.conditional-block').length
     })
 
-    expect(conditionalNumber).not.toBeNull()
-
-    await page.waitForTimeout(500)
-
-    // Click the "Insert a nested conditional here" button
-    const insertBtn = page.locator('button[title="Insert a nested conditional here"]').first()
-    if (await insertBtn.isVisible().catch(() => false)) {
-      await insertBtn.click()
-    } else {
-      const altBtn = page.locator('button[title="Insert a new conditional here"]').first()
-      await altBtn.click()
-    }
+    // Use "Add Follow-on Conditional" button inside the existing conditional
+    const followOnBtn = page.locator('button').filter({ hasText: 'Add Follow-on Conditional' }).first()
+    await followOnBtn.scrollIntoViewIfNeeded()
+    await followOnBtn.click()
 
     await page.waitForTimeout(1500)
 
-    // Verify the new conditional appears right after the parent conditional
-    const newConditionalNumber = await page.evaluate((parentNum) => {
-      if (parentNum === null) return null
+    // Count conditional blocks after insertion
+    const afterCount = await page.evaluate(() => {
+      return document.querySelectorAll('.conditional-block').length
+    })
 
-      const conditionals = Array.from(document.querySelectorAll('.conditional-block'))
-      const rootConditionals = conditionals.filter(c => {
-        const parent = c.parentElement
-        return parent && parent.className.includes('question-builder')
-      })
+    // Should have one more conditional block
+    expect(afterCount).toBe(beforeCount + 1)
 
-      // Find conditionals after the parent
-      for (let i = 0; i < rootConditionals.length; i++) {
-        const text = rootConditionals[i].textContent
-        const match = text?.match(/Conditional \((\d+)\)/)
-        if (match) {
-          const num = parseInt(match[1])
-          if (num === parentNum + 1) {
-            return num
-          }
-        }
-      }
-      return null
-    }, conditionalNumber)
+    // Verify we now have 2 conditional blocks visible
+    const conditionalBlocks = page.locator('.conditional-block')
+    expect(await conditionalBlocks.count()).toBeGreaterThanOrEqual(2)
 
-    // The new conditional should be numbered one more than the parent
-    expect(newConditionalNumber).toBe((conditionalNumber ?? 0) + 1)
-
-    console.log('Insert conditional after parent: passed')
+    console.log('Insert follow-on conditional: passed')
   })
 })

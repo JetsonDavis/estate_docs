@@ -62,13 +62,17 @@ test.describe('Question Group Reordering & Insertion', () => {
     const q3 = `q3_${uniqueId}`;
 
     for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(500);
       const addBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last();
       await addBtn.click();
       await page.waitForTimeout(1000);
 
       const identifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
+      await identifiers.nth(i).scrollIntoViewIfNeeded();
       await identifiers.nth(i).fill([q1, q2, q3][i]);
       const textareas = page.locator('.question-builder textarea');
+      await textareas.nth(i).scrollIntoViewIfNeeded();
       await textareas.nth(i).fill(`Question ${i + 1}`);
       await page.waitForTimeout(1000);
     }
@@ -204,13 +208,17 @@ test.describe('Question Group Reordering & Insertion', () => {
     const q3 = `q3_${uniqueId}`;
 
     for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(500);
       const addBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last();
       await addBtn.click();
       await page.waitForTimeout(1000);
 
       const identifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
+      await identifiers.nth(i).scrollIntoViewIfNeeded();
       await identifiers.nth(i).fill([q1, q2, q3][i]);
       const textareas = page.locator('.question-builder textarea');
+      await textareas.nth(i).scrollIntoViewIfNeeded();
       await textareas.nth(i).fill(`Question ${i + 1}`);
       await page.waitForTimeout(1000);
     }

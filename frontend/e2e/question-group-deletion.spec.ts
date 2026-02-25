@@ -49,11 +49,21 @@ async function deleteGroupById(page: Page, groupId: number): Promise<void> {
 // Helper to create a group and wait for it to be ready
 async function createGroup(page: Page, groupName: string) {
   await page.goto('/admin/question-groups');
+  await page.waitForLoadState('networkidle');
   await page.click('text=Create Questions Group');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   
-  await page.fill('input.form-input', groupName);
-  await page.waitForTimeout(3000); // Wait for name check
+  const nameInput = page.locator('input.form-input').first();
+  await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+  await nameInput.fill(groupName);
+  await page.waitForTimeout(500);
+
+  // Wait for name availability check to complete
+  const checkingName = page.getByText('Checking name...');
+  if (await checkingName.isVisible().catch(() => false)) {
+    await checkingName.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
+  }
+  await page.waitForTimeout(1000);
   
   await page.click('text=Save Group Information');
   await page.waitForSelector('text=Questions', { timeout: 30000 });
