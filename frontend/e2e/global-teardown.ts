@@ -84,6 +84,9 @@ async function globalTeardown(config: FullConfig) {
       /^MixedInsert_/,
       /^StressTest_/,
       /^NestedPersist_/,
+      /^Metadata_/,
+      /^Complex_/,
+      /^Test Group /,
     ];
 
     const testGroups = allGroups.filter(g =>
