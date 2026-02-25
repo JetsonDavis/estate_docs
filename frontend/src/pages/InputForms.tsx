@@ -806,45 +806,34 @@ const InputForms: React.FC = () => {
           personData = {}
         }
 
-        // Collect person data from questions that appear BEFORE this question in the list
-        // AND from earlier instances of the same repeatable question
+        // Collect ALL person/person_backup names from the entire document
+        // excluding the current instance
         const earlierPeople: Array<{ name: string; data: Record<string, any> }> = []
         if (sessionData) {
-          const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
-          for (let i = 0; i < currentQuestionIndex; i++) {
-            const q = sessionData.questions[i]
+          for (const q of sessionData.questions) {
             if (q.question_type === 'person' || q.question_type === 'person_backup') {
               const answerValue = answers[q.id]
               if (answerValue) {
                 try {
                   const parsed = JSON.parse(answerValue)
                   if (Array.isArray(parsed)) {
-                    // Repeatable person - add all instances
-                    for (const personObj of parsed) {
+                    for (let pIdx = 0; pIdx < parsed.length; pIdx++) {
+                      const personObj = typeof parsed[pIdx] === 'string' ? (parsed[pIdx] ? JSON.parse(parsed[pIdx]) : null) : parsed[pIdx]
+                      // Skip the current instance of this question
+                      if (q.id === question.id && pIdx === instanceIndex) continue
                       if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
-                        earlierPeople.push({ name: personObj.name, data: personObj })
+                        // Avoid duplicates
+                        if (!earlierPeople.some(p => p.name.toLowerCase() === personObj.name.toLowerCase())) {
+                          earlierPeople.push({ name: personObj.name, data: personObj })
+                        }
                       }
                     }
-                  } else if (parsed.name && parsed.name.trim()) {
-                    earlierPeople.push({ name: parsed.name, data: parsed })
-                  }
-                } catch {
-                  // Skip invalid JSON
-                }
-              }
-            }
-          }
-
-          // For repeatable questions, also include earlier instances of THIS question
-          if (question.repeatable && instanceIndex > 0) {
-            const arr = getRepeatableAnswerArray(question.id)
-            for (let i = 0; i < instanceIndex; i++) {
-              const instanceValue = arr[i]
-              if (instanceValue) {
-                try {
-                  const parsed = JSON.parse(instanceValue)
-                  if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
-                    earlierPeople.push({ name: parsed.name, data: parsed })
+                  } else if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+                    // Skip if this is the current question instance 0
+                    if (q.id === question.id && instanceIndex === 0) continue
+                    if (!earlierPeople.some(p => p.name.toLowerCase() === parsed.name.toLowerCase())) {
+                      earlierPeople.push({ name: parsed.name, data: parsed })
+                    }
                   }
                 } catch {
                   // Skip invalid JSON
@@ -1298,54 +1287,35 @@ const InputForms: React.FC = () => {
           return groups
         }
 
-        // Collect person data from questions that appear BEFORE this question in the list
-        // For Person (Backup) Replaces field: only include people from PREVIOUS GROUPS (not current group)
+        // Collect ALL person/person_backup names from the entire document
+        // excluding the current instance
         const earlierPeopleBackup: Array<{ name: string; data: Record<string, any> }> = []
         if (sessionData) {
-          const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
-          for (let i = 0; i < currentQuestionIndex; i++) {
-            const q = sessionData.questions[i]
+          for (const q of sessionData.questions) {
             if (q.question_type === 'person' || q.question_type === 'person_backup') {
               const answerValue = answers[q.id]
               if (answerValue) {
                 try {
                   const parsed = JSON.parse(answerValue)
                   if (Array.isArray(parsed)) {
-                    // Repeatable person - add all instances
-                    for (const personObj of parsed) {
+                    for (let pIdx = 0; pIdx < parsed.length; pIdx++) {
+                      const personObj = typeof parsed[pIdx] === 'string' ? (parsed[pIdx] ? JSON.parse(parsed[pIdx]) : null) : parsed[pIdx]
+                      // Skip the current instance of this question
+                      if (q.id === question.id && pIdx === instanceIndex) continue
                       if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
-                        earlierPeopleBackup.push({ name: personObj.name, data: personObj })
+                        if (!earlierPeopleBackup.some(p => p.name.toLowerCase() === personObj.name.toLowerCase())) {
+                          earlierPeopleBackup.push({ name: personObj.name, data: personObj })
+                        }
                       }
                     }
-                  } else if (parsed.name && parsed.name.trim()) {
-                    earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+                  } else if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+                    if (q.id === question.id && instanceIndex === 0) continue
+                    if (!earlierPeopleBackup.some(p => p.name.toLowerCase() === parsed.name.toLowerCase())) {
+                      earlierPeopleBackup.push({ name: parsed.name, data: parsed })
+                    }
                   }
                 } catch {
                   // Skip invalid JSON
-                }
-              }
-            }
-          }
-
-          // For repeatable questions, include earlier instances from PREVIOUS GROUPS only
-          if (question.repeatable && instanceIndex > 0) {
-            const arr = getRepeatableAnswerArray(question.id)
-            const groups = calculateGroupNumber(arr)
-            const currentGroup = groups[instanceIndex]
-            
-            // Only include instances from previous groups (group number < currentGroup)
-            for (let i = 0; i < instanceIndex; i++) {
-              if (groups[i] < currentGroup) {
-                const instanceValue = arr[i]
-                if (instanceValue) {
-                  try {
-                    const parsed = JSON.parse(instanceValue)
-                    if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
-                      earlierPeopleBackup.push({ name: parsed.name, data: parsed })
-                    }
-                  } catch {
-                    // Skip invalid JSON
-                  }
                 }
               }
             }
