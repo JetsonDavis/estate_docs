@@ -1965,19 +1965,27 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? `${questionNumberPrefix}-${currentDisplayIndex + 1}`
           : `${currentDisplayIndex + 1}`
 
+        // Check if previous item is a conditional with nested items
+        const prevItem = itemIndex > 0 ? nestedItems[itemIndex - 1] : null
+        const prevIsConditionalWithItems = prevItem?.type === 'conditional' && 
+          prevItem.conditional?.nestedItems && 
+          prevItem.conditional.nestedItems.length > 0
+        
         return (
           <div key={item.id} style={{ marginBottom: '1rem' }}>
             {/* Insert Question and Insert Conditional buttons before each nested question */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              marginBottom: '0.5rem',
-              marginTop: itemIndex === 0 ? '0' : '0.25rem'
-            }}>
-              <button
-                type="button"
-                onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath, depth)}
+            {/* Hide if previous item is a conditional with nested items (it has its own Insert button) */}
+            {!prevIsConditionalWithItems && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.5rem',
+                marginTop: itemIndex === 0 ? '0' : '0.25rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath, depth)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2047,6 +2055,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </button>
               )}
             </div>
+            )}
 
             {/* Nested Question Block */}
             <div style={{
