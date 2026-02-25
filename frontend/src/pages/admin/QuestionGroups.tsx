@@ -2423,9 +2423,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <button
                     type="button"
                     onClick={() => {
-                      // Insert conditional at ROOT level after the parent conditional
-                      const rootInsertIndex = parentPath[0]
-                      addConditionalToLogicAtIndex(rootInsertIndex, undefined, nestedQuestion)
+                      // Insert conditional at SAME level after this question
+                      addConditionalToLogicAtIndex(itemIndex, parentPath, nestedQuestion)
                     }}
                     style={{
                       display: 'flex',
