@@ -2550,9 +2550,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? prevQuestionNumber
           : (questionNumberPrefix ? `${questionNumberPrefix}` : `${currentConditionalIndex + 1}`)
 
-        // Always use the depth parameter passed from parent, not the stored depth
-        // This ensures correct rendering even if old data has wrong depth values
-        const conditionalDepth = depth
+        // Conditionals with nested items should be rendered one level deeper
+        // to visually distinguish them from questions at the same level
+        const conditionalDepth = item.conditional?.nestedItems && item.conditional.nestedItems.length > 0 
+          ? depth + 1 
+          : depth
         
         return (
           <div key={item.id} className="conditional-block" style={{
