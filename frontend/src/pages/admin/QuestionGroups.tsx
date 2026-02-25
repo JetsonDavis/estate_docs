@@ -3403,67 +3403,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 return conditionalsAfterQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
                   return (
                     <React.Fragment key={logicItem.id}>
-                    {/* Insert Question and Insert Conditional buttons before each conditional */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      marginTop: '0.5rem',
-                      marginBottom: '0.25rem'
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => insertQuestionBeforeIndex(logicIndex, qIndex + 1)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.75rem',
-                          background: 'white',
-                          color: '#7c3aed',
-                          border: '1px dashed #7c3aed',
-                          borderRadius: '0.375rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a new question here"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Insert Question
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => addConditionalToLogic(logicIndex - 1, undefined, question)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.75rem',
-                          background: 'white',
-                          color: '#7c3aed',
-                          border: '1px dashed #7c3aed',
-                          borderRadius: '0.375rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a new conditional here"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Insert Conditional
-                      </button>
-                    </div>
                     <div className="conditional-block" style={{
                       marginTop: '0.25rem',
                       padding: '1rem',
