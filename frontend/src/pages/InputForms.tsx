@@ -10,7 +10,7 @@ import './InputForms.css'
 const QUESTIONS_PER_PAGE = 10
 
 const InputForms: React.FC = () => {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
   const navigate = useNavigate()
 
@@ -48,7 +48,9 @@ const InputForms: React.FC = () => {
 
   useEffect(() => {
     if (sessionId) {
-      loadSessionQuestions(parseInt(sessionId), 1)
+      const pageParam = searchParams.get('page')
+      const initialPage = pageParam ? parseInt(pageParam, 10) : 1
+      loadSessionQuestions(parseInt(sessionId), initialPage > 0 ? initialPage : 1)
     } else {
       loadSessions()
     }
@@ -538,11 +540,15 @@ const InputForms: React.FC = () => {
       if (direction === 'forward' && currentPage < sessionData.total_pages) {
         // Save and go to next page within same group
         await saveCurrentAnswers()
-        await loadSessionQuestions(sessionData.session_id, currentPage + 1)
+        const nextPage = currentPage + 1
+        await loadSessionQuestions(sessionData.session_id, nextPage)
+        setSearchParams({ session: String(sessionData.session_id), page: String(nextPage) }, { replace: true })
       } else if (direction === 'backward' && currentPage > 1) {
         // Save and go to previous page within same group
         await saveCurrentAnswers()
-        await loadSessionQuestions(sessionData.session_id, currentPage - 1)
+        const prevPage = currentPage - 1
+        await loadSessionQuestions(sessionData.session_id, prevPage)
+        setSearchParams({ session: String(sessionData.session_id), page: String(prevPage) }, { replace: true })
       } else {
         // Check if this is an Exit (no changes) on the last group/page
         const isLastGroupAndPage = sessionData.is_last_group && currentPage >= sessionData.total_pages
@@ -1311,7 +1317,7 @@ const InputForms: React.FC = () => {
         const calculateGroupNumber = (instances: string[]): number[] => {
           const groups: number[] = [0] // First instance is always group 0
           let currentGroup = 0
-          
+
           for (let i = 1; i < instances.length; i++) {
             try {
               const parsed = JSON.parse(instances[i])
@@ -1323,7 +1329,7 @@ const InputForms: React.FC = () => {
             }
             groups.push(currentGroup)
           }
-          
+
           return groups
         }
 
@@ -1573,7 +1579,7 @@ const InputForms: React.FC = () => {
 
             {/* Relationship Changes To dropdown */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Changes To</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Becomes</label>
               <select
                 className="question-select"
                 value={personBackupData.relationship_changes_to || 'and'}
