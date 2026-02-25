@@ -2724,9 +2724,44 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               {/* Nested items */}
               <div style={{ marginTop: '0.5rem' }}>
-                {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 && (
-                  renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)
-                )}
+                {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
+                  <>
+                    {renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)}
+                    {/* Insert Question button at the end of nested items */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginTop: '0.5rem'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => insertNestedQuestionBeforeIndex(item.conditional?.nestedItems?.length || 0, currentPath, depth + 1)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.65rem',
+                          background: 'white',
+                          color: '#7c3aed',
+                          border: '1px dashed #7c3aed',
+                          borderRadius: '0.25rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Insert a nested question at the end"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Insert Question
+                      </button>
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
 
