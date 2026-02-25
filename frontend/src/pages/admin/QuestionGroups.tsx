@@ -2138,6 +2138,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={nestedQuestion.repeatable}
+                      onChange={(e) => {
+                        updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
+                        if (e.target.checked) {
+                          updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                        } else {
+                          updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                        }
+                      }}
+                    />
+                    Repeatable
+                  </label>
                 </div>
                 <input
                   type="text"
