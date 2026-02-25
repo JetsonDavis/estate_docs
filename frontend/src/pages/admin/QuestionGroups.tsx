@@ -1399,7 +1399,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       id: Date.now().toString() + '_nested_q',
       type: 'question',
       questionId: undefined,
-      depth: (parentPath ? parentPath.length : 0) + 1
+      depth: 1  // Nested question inside root-level conditional is depth 1
     }
     ;(nestedQuestionLogicItem as any).localQuestionId = nestedQuestion.id
 
@@ -1411,7 +1411,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         value: '',
         nestedItems: [nestedQuestionLogicItem]
       },
-      depth: parentPath ? parentPath.length : 0
+      depth: 0  // Always create at root level (depth 0) when called from Insert Conditional
     }
 
     const currentGroupId = savedGroupId
