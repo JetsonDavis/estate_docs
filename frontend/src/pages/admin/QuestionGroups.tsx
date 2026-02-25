@@ -2017,20 +2017,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    // Insert at root level after the current nested question
-                    // Find the root-level index by looking at questionLogic
-                    let rootInsertIndex = -1
+                    // Insert at root level after the parent conditional
+                    // parentPath[0] gives us the index of the root conditional that contains this nested item
+                    const rootConditionalIndex = parentPath[0]
                     
-                    // Traverse to find the root conditional that contains this nested item
-                    const findRootConditionalIndex = (logic: QuestionLogicItem[], path: number[]): number => {
-                      if (path.length === 0) return -1
-                      return path[0]
-                    }
+                    console.log('Insert Conditional clicked:', {
+                      parentPath,
+                      rootConditionalIndex,
+                      questionLogicLength: questionLogic.length,
+                      prevQuestion: prevQuestionForCondition?.identifier
+                    })
                     
-                    rootInsertIndex = findRootConditionalIndex(questionLogic, parentPath)
-                    
-                    if (rootInsertIndex >= 0) {
-                      addConditionalToLogicAtIndex(rootInsertIndex, undefined, prevQuestionForCondition)
+                    if (rootConditionalIndex >= 0) {
+                      addConditionalToLogicAtIndex(rootConditionalIndex, undefined, prevQuestionForCondition)
                     }
                   }}
                   style={{
