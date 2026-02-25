@@ -252,14 +252,14 @@ const InputForms: React.FC = () => {
   }
 
   // Handle blur (input exit) - saves answer and triggers conditional refresh if needed
-  const handleAnswerBlur = async (questionId: number) => {
+  const handleAnswerBlur = async (questionId: number, valueOverride?: string) => {
     if (!sessionData) return
 
     const question = sessionData.questions.find(q => q.id === questionId)
     if (!question) return
 
-    // Save the current answer value
-    const currentValue = answers[questionId] || ''
+    // Save the current answer value (use override if provided to avoid stale state)
+    const currentValue = valueOverride !== undefined ? valueOverride : (answers[questionId] || '')
     try {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: questionId, answer_value: currentValue }]
@@ -871,7 +871,10 @@ const InputForms: React.FC = () => {
 
         // Save person data on blur (called when field loses focus)
         const savePersonOnBlur = () => {
-          handleAnswerBlur(question.id)
+          // Get current value from repeatable array to avoid stale state
+          const currentArray = getRepeatableAnswerArray(question.id)
+          const currentValue = JSON.stringify(currentArray)
+          handleAnswerBlur(question.id, currentValue)
         }
 
         const US_STATES = [
@@ -1327,6 +1330,72 @@ const InputForms: React.FC = () => {
           }
         }
 
+        // Build "Replaces" dropdown options:
+        // 1. All trustors (person type questions)
+        // 2. Person backups from earlier questions (e.g., initial trustees replaceable by successor trustees)
+        // 3. Person backups from earlier "then" groups within the same repeatable question
+        const replaceablePersons: string[] = []
+        if (sessionData) {
+          const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
+
+          for (const q of sessionData.questions) {
+            const qIndex = sessionData.questions.indexOf(q)
+            const answerValue = answers[q.id]
+            if (!answerValue) continue
+
+            try {
+              const parsed = JSON.parse(answerValue)
+
+              if (q.question_type === 'person') {
+                // All person (trustor) names go into the replaces dropdown
+                if (Array.isArray(parsed)) {
+                  for (const personObj of parsed) {
+                    const obj = typeof personObj === 'string' ? (personObj ? JSON.parse(personObj) : null) : personObj
+                    if (obj?.name?.trim() && !replaceablePersons.includes(obj.name)) {
+                      replaceablePersons.push(obj.name)
+                    }
+                  }
+                } else if (parsed?.name?.trim() && !replaceablePersons.includes(parsed.name)) {
+                  replaceablePersons.push(parsed.name)
+                }
+              } else if (q.question_type === 'person_backup' && qIndex < currentQuestionIndex) {
+                // Person backups from earlier questions (e.g., initial trustees)
+                if (Array.isArray(parsed)) {
+                  for (const personObj of parsed) {
+                    const obj = typeof personObj === 'string' ? (personObj ? JSON.parse(personObj) : null) : personObj
+                    if (obj?.name?.trim() && !replaceablePersons.includes(obj.name)) {
+                      replaceablePersons.push(obj.name)
+                    }
+                  }
+                } else if (parsed?.name?.trim() && !replaceablePersons.includes(parsed.name)) {
+                  replaceablePersons.push(parsed.name)
+                }
+              } else if (q.question_type === 'person_backup' && q.id === question.id && q.repeatable) {
+                // Same question — include names from earlier "then" groups
+                if (Array.isArray(parsed)) {
+                  // Determine which "then" group the current instance belongs to
+                  let currentGroupNum = 0
+                  for (let i = 1; i <= instanceIndex; i++) {
+                    const inst = typeof parsed[i] === 'string' ? (parsed[i] ? JSON.parse(parsed[i]) : null) : parsed[i]
+                    if (inst?.conjunction === 'then') currentGroupNum++
+                  }
+                  // Collect names from earlier "then" groups (groupNum < currentGroupNum)
+                  let groupNum = 0
+                  for (let i = 0; i < parsed.length; i++) {
+                    const inst = typeof parsed[i] === 'string' ? (parsed[i] ? JSON.parse(parsed[i]) : null) : parsed[i]
+                    if (i > 0 && inst?.conjunction === 'then') groupNum++
+                    if (groupNum < currentGroupNum && inst?.name?.trim() && !replaceablePersons.includes(inst.name)) {
+                      replaceablePersons.push(inst.name)
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+
         // Check if current name matches an earlier person
         const matchedPersonBackup = earlierPeopleBackup.find(p =>
           p.name.toLowerCase() === (personBackupData.name || '').toLowerCase() && personBackupData.name?.trim()
@@ -1355,7 +1424,10 @@ const InputForms: React.FC = () => {
 
         // Save person data on blur (called when field loses focus)
         const savePersonBackupOnBlur = () => {
-          handleAnswerBlur(question.id)
+          // Get current value from repeatable array to avoid stale state
+          const currentArray = getRepeatableAnswerArray(question.id)
+          const currentValue = JSON.stringify(currentArray)
+          handleAnswerBlur(question.id, currentValue)
         }
 
         const US_STATES_BACKUP = [
@@ -1401,21 +1473,17 @@ const InputForms: React.FC = () => {
             {/* Replaces field - appears first for Person (Backup) */}
             <div style={{ borderBottom: '2px solid #3b82f6', paddingBottom: '1rem', marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Replaces (Person Being Replaced)</label>
-              <input
-                type="text"
-                className="question-input"
+              <select
+                className="question-select"
                 value={personBackupData.replaces || ''}
                 onChange={(e) => updatePersonBackupField('replaces', e.target.value)}
                 onBlur={savePersonBackupOnBlur}
-                placeholder="Name of person being replaced"
-                list={`person-replaces-typeahead-${question.id}-${instanceIndex}`}
-                autoComplete="off"
-              />
-              <datalist id={`person-replaces-typeahead-${question.id}-${instanceIndex}`}>
-                {earlierPeopleBackup.map((person, idx) => (
-                  <option key={idx} value={person.name} />
+              >
+                <option value="">Select person being replaced...</option>
+                {replaceablePersons.map((name, idx) => (
+                  <option key={idx} value={name}>{name}</option>
                 ))}
-              </datalist>
+              </select>
             </div>
 
             {/* Name with type-ahead from earlier form entries */}
