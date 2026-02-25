@@ -2557,8 +2557,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? prevQuestionNumber
           : (questionNumberPrefix ? `${questionNumberPrefix}` : `${currentConditionalIndex + 1}`)
 
-        // Conditionals are rendered at depth + 1 since they represent a new nesting level
-        const conditionalDepth = depth + 1
+        // Use the depth stored in the item if available, otherwise calculate as depth + 1
+        const conditionalDepth = item.depth !== undefined ? item.depth : depth + 1
         
         return (
           <div key={item.id} className="conditional-block" style={{
