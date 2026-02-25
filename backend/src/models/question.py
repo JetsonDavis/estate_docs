@@ -12,6 +12,8 @@ class QuestionType(str, enum.Enum):
     PERSON = "person"
     PERSON_BACKUP = "person_backup"
     DATE = "date"
+    CHECKBOX_GROUP = "checkbox_group"
+    DROPDOWN = "dropdown"
 
 
 class QuestionGroup(Base, TimestampMixin, SoftDeleteMixin):

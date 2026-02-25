@@ -12,7 +12,7 @@ class QuestionOption(BaseModel):
 class QuestionBase(BaseModel):
     """Base question schema."""
     question_text: str = Field(default="", max_length=1000)
-    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|date|checkbox_group|dropdown)$")
+    question_type: str = Field(..., pattern="^(multiple_choice|free_text|database_dropdown|person|person_backup|date|checkbox_group|dropdown)$")
     identifier: str = Field(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_.\\-]+$")
     repeatable: bool = Field(default=False)
     repeatable_group_id: Optional[str] = Field(None, max_length=100)
@@ -66,7 +66,7 @@ class QuestionCreate(QuestionBase):
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
     question_text: Optional[str] = Field(None, min_length=1, max_length=1000)
-    question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown|person|date)$")
+    question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown|person|person_backup|date|checkbox_group|dropdown)$")
     identifier: Optional[str] = Field(None, min_length=1, max_length=100)
     repeatable: Optional[bool] = None
     repeatable_group_id: Optional[str] = Field(None, max_length=100)
