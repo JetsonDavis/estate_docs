@@ -1196,12 +1196,14 @@ const InputForms: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Death Certificate Received</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: String(personData.trustor_is_living) !== '0' ? '#9ca3af' : undefined }}>Death Certificate Received</label>
                     <select
                       className="question-select"
                       value={personData.trustor_death_certificate_received ?? 0}
                       onChange={(e) => updatePersonField('trustor_death_certificate_received', e.target.value)}
                       onBlur={savePersonOnBlur}
+                      disabled={String(personData.trustor_is_living) !== '0'}
+                      style={{ opacity: String(personData.trustor_is_living) !== '0' ? 0.5 : 1, cursor: String(personData.trustor_is_living) !== '0' ? 'not-allowed' : undefined }}
                     >
                       <option value={0}>No</option>
                       <option value={1}>Yes</option>
@@ -1669,12 +1671,14 @@ const InputForms: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Death Certificate Received</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: String(personBackupData.trustor_is_living) !== '0' ? '#9ca3af' : undefined }}>Death Certificate Received</label>
                     <select
                       className="question-select"
                       value={personBackupData.trustor_death_certificate_received ?? 0}
                       onChange={(e) => updatePersonBackupField('trustor_death_certificate_received', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
+                      disabled={String(personBackupData.trustor_is_living) !== '0'}
+                      style={{ opacity: String(personBackupData.trustor_is_living) !== '0' ? 0.5 : 1, cursor: String(personBackupData.trustor_is_living) !== '0' ? 'not-allowed' : undefined }}
                     >
                       <option value={0}>No</option>
                       <option value={1}>Yes</option>
