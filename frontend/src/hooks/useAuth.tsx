@@ -69,6 +69,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     authCheckInFlight.current = true
+
+    // Set loading to true only for the initial check
+    const isInitialCheck = !hasCheckedAuth.current
+    if (isInitialCheck) {
+      setLoading(true)
+    }
+
     try {
       const response = await apiClient.get('/auth/me')
       setUser(response.data)
@@ -81,8 +88,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           try {
             const retryResponse = await apiClient.get('/auth/me')
             setUser(retryResponse.data)
-            authCheckInFlight.current = false
-            return
           } catch (retryError) {
             // Refresh worked but still can't get user - log out
             setUser(null)
@@ -96,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } finally {
       authCheckInFlight.current = false
-      if (!hasCheckedAuth.current) {
+      if (isInitialCheck) {
         setLoading(false)
         hasCheckedAuth.current = true
       }
@@ -104,20 +109,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   useEffect(() => {
-    // Initial auth check, and route-driven recheck in normal app mode.
+    // Initial auth check on mount and when route changes
     if (isE2EMode && hasCheckedAuth.current) {
       return
     }
 
     checkAuth()
+  }, [location.pathname, isE2EMode])
+
+  useEffect(() => {
+    // Set up polling intervals only after initial auth check and only for authenticated users
+    // This effect runs separately to avoid race conditions with the async checkAuth
 
     // In E2E we intentionally avoid repeated probes to keep logs clean.
     if (isE2EMode) {
       return
     }
 
-    // Poll only on protected/application pages when a session is present.
-    if (isPublicAuthRoute || !user) {
+    // Don't set up intervals on public auth routes
+    if (isPublicAuthRoute) {
+      return
+    }
+
+    // Don't set up intervals until the initial auth check is complete
+    if (!hasCheckedAuth.current) {
+      return
+    }
+
+    // Only set up intervals if user is authenticated
+    if (!user) {
       return
     }
 
@@ -131,12 +151,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       refreshToken()
     }, 45 * 60 * 1000) // 45 minutes
 
-    // Cleanup intervals on unmount
+    // Cleanup intervals on unmount or when user logs out
     return () => {
       clearInterval(authCheckInterval)
       clearInterval(tokenRefreshInterval)
     }
-  }, [location.pathname, user, isE2EMode])
+  }, [user, isPublicAuthRoute, isE2EMode])
 
   const login = async (username: string, password: string) => {
     const response = await apiClient.post('/auth/login', { username, password })
