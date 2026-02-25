@@ -941,7 +941,11 @@ const InputForms: React.FC = () => {
 
             {/* Only show other fields if no match found */}
             {!matchedPerson && (
-              <>
+              <details style={{ marginTop: '0.5rem' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500, color: '#4b5563', userSelect: 'none', padding: '0.25rem 0' }}>
+                  Details
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                 {/* Email and Phone in a row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
@@ -1251,7 +1255,8 @@ const InputForms: React.FC = () => {
                 </div>
               </div>
             </div>
-              </>
+                </div>
+              </details>
             )}
           </div>
         )
@@ -1440,7 +1445,11 @@ const InputForms: React.FC = () => {
 
             {/* Rest of person fields - same as regular person */}
             {(personBackupData.name || matchedPersonBackup) && (
-              <>
+              <details style={{ marginTop: '0.5rem' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500, color: '#4b5563', userSelect: 'none', padding: '0.25rem 0' }}>
+                  Details
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
@@ -1707,7 +1716,8 @@ const InputForms: React.FC = () => {
                 </div>
               </div>
             </div>
-              </>
+                </div>
+              </details>
             )}
           </div>
         )
