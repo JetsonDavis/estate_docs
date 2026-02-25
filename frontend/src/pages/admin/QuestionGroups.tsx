@@ -2004,7 +2004,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Insert conditional at the SAME level as the nested question (purple/depth 1)
+                    // Insert conditional at ROOT level (depth 0)
                     // Find the previous question to use as ifIdentifier
                     let prevQuestionForCondition: QuestionFormData | undefined
                     
@@ -2018,8 +2018,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    // Insert as a sibling at the same level (inside the same parent conditional)
-                    insertConditionalAsSibling(itemIndex - 1, parentPath, prevQuestionForCondition)
+                    // Insert at root level: use the parent conditional's index
+                    const insertAfterIndex = parentPath[parentPath.length - 1]
+                    addConditionalToLogicAtIndex(insertAfterIndex, undefined, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
@@ -2418,38 +2419,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     Add Follow-on Question
                   </button>
                 )}
-                {/* Add question at parent level (one less indent) - blue arrow after Add Follow-on Question */}
-                {/* Only show on depth > 1 (not on first nested level) */}
-                {parentPath.length > 1 && isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      // Add question to parent level (one level up), after the current conditional
-                      const parentPathUp = parentPath.slice(0, -1)
-                      const insertAfterIndex = parentPath[parentPath.length - 1]
-                      addQuestionToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                    title="Add question at parent level"
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                )}
                 {depth > 0 && depth < 4 && isLastQuestionInGroup && (
                   <button
                     type="button"
@@ -2476,18 +2445,53 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     Add Follow-on Conditional
                   </button>
                 )}
-                {/* Add conditional at parent level (one less indent) - purple arrow after Add Nested Conditional */}
-                {/* Only show on depth > 1 (not on first nested level) */}
-                {parentPath.length > 1 && isLastQuestionInGroup && (
+                {/* Move item one level up - orange arrow */}
+                {parentPath.length > 0 && isLastQuestionInGroup && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation()
                       e.preventDefault()
-                      // Add conditional to parent level (one level up), after the current conditional
+                      
+                      // Move this question one level up by:
+                      // 1. Creating a copy of the question data
+                      const questionData = { ...nestedQuestion }
+                      
+                      // 2. Add to parent level
                       const parentPathUp = parentPath.slice(0, -1)
                       const insertAfterIndex = parentPath[parentPath.length - 1]
-                      addConditionalToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined, nestedQuestion)
+                      
+                      // 3. Find the logic item for this nested question and remove it
+                      const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
+                        if (depth >= path.length) {
+                          // Remove the item at itemIndex
+                          return items.filter((_, idx) => idx !== itemIndex)
+                        }
+                        return items.map((item, idx) => {
+                          if (idx === path[depth] && item.conditional) {
+                            return {
+                              ...item,
+                              conditional: {
+                                ...item.conditional,
+                                nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
+                              }
+                            }
+                          }
+                          return item
+                        })
+                      }
+                      
+                      // First add the question at parent level
+                      addQuestionToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined)
+                      
+                      // Then remove from current location
+                      setTimeout(() => {
+                        setQuestionLogic(prevLogic => {
+                          const newLogic = updateNestedItems(prevLogic, parentPath, 0)
+                          if (savedGroupId) saveQuestionLogic(newLogic, savedGroupId)
+                          return newLogic
+                        })
+                      }, 100)
                     }}
                     style={{
                       display: 'flex',
@@ -2495,13 +2499,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       gap: '0.25rem',
                       padding: '0.25rem 0.5rem',
                       fontSize: '0.7rem',
-                      background: '#7c3aed',
+                      background: '#f97316',
                       color: 'white',
                       border: 'none',
                       borderRadius: '0.25rem',
                       cursor: 'pointer'
                     }}
-                    title="Add conditional at parent level"
+                    title="Move question one level up"
                   >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
