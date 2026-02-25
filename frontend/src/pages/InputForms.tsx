@@ -1504,6 +1504,19 @@ const InputForms: React.FC = () => {
           handleAnswerBlur(question.id, currentValue)
         }
 
+        // Update a field AND immediately save (for <select> elements where onBlur is unreliable)
+        const updateAndSavePersonBackupField = (field: string, fieldValue: string) => {
+          const newData = { ...personBackupData, [field]: fieldValue }
+          const newJson = JSON.stringify(newData)
+          // Update local state
+          handleValueChange(newJson)
+          // Build the full array with the updated value and save immediately
+          const currentArray = getRepeatableAnswerArray(question.id)
+          const updatedArray = [...currentArray]
+          updatedArray[instanceIndex] = newJson
+          handleAnswerBlur(question.id, JSON.stringify(updatedArray))
+        }
+
         const US_STATES_BACKUP = [
           { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
           { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
@@ -1533,8 +1546,7 @@ const InputForms: React.FC = () => {
                 <select
                   className="question-select"
                   value={personBackupData.conjunction || 'and'}
-                  onChange={(e) => updatePersonBackupField('conjunction', e.target.value)}
-                  onBlur={savePersonBackupOnBlur}
+                  onChange={(e) => updateAndSavePersonBackupField('conjunction', e.target.value)}
                   style={{ fontSize: '0.875rem' }}
                 >
                   <option value="and">And</option>
@@ -1550,13 +1562,26 @@ const InputForms: React.FC = () => {
               <select
                 className="question-select"
                 value={personBackupData.replaces || ''}
-                onChange={(e) => updatePersonBackupField('replaces', e.target.value)}
-                onBlur={savePersonBackupOnBlur}
+                onChange={(e) => updateAndSavePersonBackupField('replaces', e.target.value)}
               >
                 <option value="">Select person being replaced...</option>
                 {replaceablePersons.map((name, idx) => (
                   <option key={idx} value={name}>{name}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* Relationship Changes To dropdown */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Changes To</label>
+              <select
+                className="question-select"
+                value={personBackupData.relationship_changes_to || 'and'}
+                onChange={(e) => updateAndSavePersonBackupField('relationship_changes_to', e.target.value)}
+                style={{ fontSize: '0.875rem' }}
+              >
+                <option value="and">And</option>
+                <option value="or">Or</option>
               </select>
             </div>
 
