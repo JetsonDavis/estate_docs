@@ -2553,6 +2553,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         // Use the depth stored in the item if available, otherwise calculate as depth + 1
         const conditionalDepth = item.depth !== undefined ? item.depth : depth + 1
         
+        // Debug logging
+        if (item.id === "1768938473514_cond") {
+          console.log("Rendering Conditional 3-2:", {
+            itemDepth: item.depth,
+            paramDepth: depth,
+            calculatedDepth: conditionalDepth,
+            item: item
+          })
+        }
+        
         return (
           <div key={item.id} className="conditional-block" style={{
             marginBottom: '1rem',
