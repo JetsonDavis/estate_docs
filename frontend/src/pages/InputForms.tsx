@@ -582,7 +582,38 @@ const InputForms: React.FC = () => {
     try {
       const parsed = JSON.parse(value)
       if (Array.isArray(parsed)) {
-        return parsed.length > 0 ? parsed : ['']
+        if (parsed.length === 0) return ['']
+        // Ensure all elements are strings. If an element is an object
+        // (legacy format from old savePersonAnswer: [{name: "...", conjunction: "..."}]),
+        // convert it to the JSON string format the inline person form expects.
+        return parsed.map((item: any) => {
+          if (typeof item === 'string') return item
+          if (typeof item === 'object' && item !== null) {
+            // Legacy format: {name: "{\"name\":\"John\",...}", conjunction: "and"}
+            // The 'name' field may itself be a JSON string of person data
+            if ('name' in item && typeof item.name === 'string') {
+              try {
+                const innerParsed = JSON.parse(item.name)
+                if (typeof innerParsed === 'object' && innerParsed !== null) {
+                  // Merge conjunction from outer object into inner person data
+                  if (item.conjunction) {
+                    innerParsed.conjunction = item.conjunction
+                  }
+                  return JSON.stringify(innerParsed)
+                }
+              } catch {
+                // name is a plain string, build person object from legacy fields
+              }
+              // Plain name string — build a person object
+              const personObj: Record<string, any> = { name: item.name }
+              if (item.conjunction) personObj.conjunction = item.conjunction
+              return JSON.stringify(personObj)
+            }
+            // Generic object — stringify it
+            return JSON.stringify(item)
+          }
+          return String(item)
+        })
       }
     } catch {
       // Not JSON, treat as single value
