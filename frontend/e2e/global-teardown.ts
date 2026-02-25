@@ -55,24 +55,60 @@ async function globalTeardown(config: FullConfig) {
       }
     }
     
-    console.log(`Found ${allGroups.length} question groups to delete`);
+    // Only delete groups created by tests (matching known test naming patterns)
+    // NEVER delete pre-existing / user-created groups
+    const testNamePatterns = [
+      /^ConditionalDelete_/,
+      /^ConditionalValue_/,
+      /^MultiLevel_/,
+      /^Operators_/,
+      /^DelTest\d+_/,
+      /^InsertBeginning_/,
+      /^InsertMiddle_/,
+      /^MultiOps_/,
+      /^DeletePreserveOrder_/,
+      /^AddAfterConditional_/,
+      /^Repeatable_/,
+      /^ToggleRepeatable_/,
+      /^MultiCheckbox_/,
+      /^RepeatableConditional_/,
+      /^InsertCond_/,
+      /^TestGroup_/,
+      /^E2E_/,
+      /^Comprehensive_/,
+      /^RapidCreate_/,
+      /^PersistMeta_/,
+      /^RandomOps_/,
+      /^BugRegression_/,
+      /^RapidCycle_/,
+      /^MixedInsert_/,
+      /^StressTest_/,
+      /^NestedPersist_/,
+    ];
 
-    // Delete all question groups
+    const testGroups = allGroups.filter(g =>
+      testNamePatterns.some(pattern => pattern.test(g.name))
+    );
+    const skippedCount = allGroups.length - testGroups.length;
+
+    console.log(`Found ${allGroups.length} total groups, ${testGroups.length} are test-created, skipping ${skippedCount} pre-existing`);
+
+    // Delete only test-created groups
     let deletedCount = 0;
-    for (const group of allGroups) {
+    for (const group of testGroups) {
       try {
         const deleteResponse = await context.request.delete(`${backendURL}/api/v1/question-groups/${group.id}`);
         if (deleteResponse.ok()) {
           deletedCount++;
         } else {
-          console.log(`Failed to delete group ${group.id}, status: ${deleteResponse.status()}`);
+          console.log(`Failed to delete group ${group.id} (${group.name}), status: ${deleteResponse.status()}`);
         }
       } catch (e) {
         console.log(`Failed to delete group ${group.id}:`, e);
       }
     }
 
-    console.log(`✅ Database cleaned: deleted ${deletedCount} of ${allGroups.length} question groups`);
+    console.log(`✅ Cleanup done: deleted ${deletedCount} test groups, preserved ${skippedCount} pre-existing groups`);
   } catch (error) {
     console.error('❌ Error during database cleanup:', error);
     // Don't fail the tests if cleanup fails
