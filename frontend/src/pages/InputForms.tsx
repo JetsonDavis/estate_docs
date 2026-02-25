@@ -81,13 +81,16 @@ const InputForms: React.FC = () => {
       const initialPersonAnswers: Record<number, string[]> = {}
       const initialPersonConjunctions: Record<number, Array<'and' | 'then'>> = {}
 
+      // First, load ALL existing_answers (including cross-page) into initialAnswers
+      // so that the "Replaces" dropdown can find person names from other pages
+      for (const [qIdStr, answerValue] of Object.entries(data.existing_answers)) {
+        const qId = parseInt(qIdStr, 10)
+        initialAnswers[qId] = answerValue as string
+      }
+
       data.questions.forEach(q => {
         if (data.existing_answers[q.id]) {
           if (q.question_type === 'person' || q.question_type === 'person_backup') {
-            // Person answers are now stored as JSON objects with all person fields
-            // Put them in initialAnswers so the inline form can use them
-            initialAnswers[q.id] = data.existing_answers[q.id]
-
             // Also handle legacy format for backwards compatibility
             try {
               const parsed = JSON.parse(data.existing_answers[q.id])
@@ -104,8 +107,6 @@ const InputForms: React.FC = () => {
             } catch {
               // Not an array, it's the new JSON object format - already in initialAnswers
             }
-          } else {
-            initialAnswers[q.id] = data.existing_answers[q.id]
           }
         } else if (q.question_type === 'person' || q.question_type === 'person_backup') {
           initialPersonAnswers[q.id] = ['']
@@ -1362,13 +1363,63 @@ const InputForms: React.FC = () => {
         }
 
         // Build "Replaces" dropdown options:
-        // 1. All trustors (person type questions)
-        // 2. Person backups from earlier questions (e.g., initial trustees replaceable by successor trustees)
+        // 1. All person names from ALL pages (trustors from person-type questions)
+        // 2. Person backups from earlier questions on this page
         // 3. Person backups from earlier "then" groups within the same repeatable question
         const replaceablePersons: string[] = []
+
+        // Helper to extract plain person names from an answer value
+        // Handles: new format ["{"name":"John",...}"], legacy format [{"name":"{"name":"John"}"}], single objects
+        const extractNamesFromAnswer = (answerValue: string): string[] => {
+          const names: string[] = []
+          try {
+            const parsed = JSON.parse(answerValue)
+            if (Array.isArray(parsed)) {
+              for (const personObj of parsed) {
+                let obj = typeof personObj === 'string' ? (personObj ? JSON.parse(personObj) : null) : personObj
+                if (obj && typeof obj === 'object' && obj.name) {
+                  let nameVal = obj.name
+                  // Unwrap if name is itself a JSON string (legacy double-encoding)
+                  if (typeof nameVal === 'string' && nameVal.startsWith('{')) {
+                    try {
+                      const inner = JSON.parse(nameVal)
+                      if (inner?.name) nameVal = inner.name
+                    } catch { /* use as-is */ }
+                  }
+                  if (typeof nameVal === 'string' && nameVal.trim()) names.push(nameVal)
+                }
+              }
+            } else if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+              names.push(parsed.name)
+            }
+          } catch { /* skip */ }
+          return names
+        }
+
         if (sessionData) {
           const currentQuestionIndex = sessionData.questions.findIndex(q => q.id === question.id)
 
+          // First: scan ALL answers (including cross-page) for person/person_backup names
+          // The answers state now includes existing_answers from all pages
+          // We need to check all answers, but we only know question_type for current-page questions
+          // For cross-page answers, extract names from any answer that looks like person data
+          const currentPageQIds = new Set(sessionData.questions.map(q => q.id))
+
+          // Extract names from cross-page answers (not on current page)
+          for (const [qIdStr, answerValue] of Object.entries(answers)) {
+            const qId = parseInt(qIdStr, 10)
+            if (currentPageQIds.has(qId)) continue // handled below with type info
+            if (!answerValue) continue
+            // For cross-page answers, try to extract person names
+            const names = extractNamesFromAnswer(answerValue)
+            for (const name of names) {
+              if (!replaceablePersons.includes(name)) {
+                replaceablePersons.push(name)
+              }
+            }
+          }
+
+          // Then: scan current-page questions with full type info
           for (const q of sessionData.questions) {
             const qIndex = sessionData.questions.indexOf(q)
             const answerValue = answers[q.id]
@@ -1379,27 +1430,19 @@ const InputForms: React.FC = () => {
 
               if (q.question_type === 'person') {
                 // All person (trustor) names go into the replaces dropdown
-                if (Array.isArray(parsed)) {
-                  for (const personObj of parsed) {
-                    const obj = typeof personObj === 'string' ? (personObj ? JSON.parse(personObj) : null) : personObj
-                    if (obj?.name?.trim() && !replaceablePersons.includes(obj.name)) {
-                      replaceablePersons.push(obj.name)
-                    }
+                const names = extractNamesFromAnswer(answerValue)
+                for (const name of names) {
+                  if (!replaceablePersons.includes(name)) {
+                    replaceablePersons.push(name)
                   }
-                } else if (parsed?.name?.trim() && !replaceablePersons.includes(parsed.name)) {
-                  replaceablePersons.push(parsed.name)
                 }
               } else if (q.question_type === 'person_backup' && qIndex < currentQuestionIndex) {
                 // Person backups from earlier questions (e.g., initial trustees)
-                if (Array.isArray(parsed)) {
-                  for (const personObj of parsed) {
-                    const obj = typeof personObj === 'string' ? (personObj ? JSON.parse(personObj) : null) : personObj
-                    if (obj?.name?.trim() && !replaceablePersons.includes(obj.name)) {
-                      replaceablePersons.push(obj.name)
-                    }
+                const names = extractNamesFromAnswer(answerValue)
+                for (const name of names) {
+                  if (!replaceablePersons.includes(name)) {
+                    replaceablePersons.push(name)
                   }
-                } else if (parsed?.name?.trim() && !replaceablePersons.includes(parsed.name)) {
-                  replaceablePersons.push(parsed.name)
                 }
               } else if (q.question_type === 'person_backup' && q.id === question.id && q.repeatable) {
                 // Same question — include names from earlier "then" groups
