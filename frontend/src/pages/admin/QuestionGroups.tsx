@@ -2550,18 +2550,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? prevQuestionNumber
           : (questionNumberPrefix ? `${questionNumberPrefix}` : `${currentConditionalIndex + 1}`)
 
-        // Use the depth stored in the item if available, otherwise calculate as depth + 1
-        const conditionalDepth = item.depth !== undefined ? item.depth : depth + 1
-        
-        // Debug logging
-        if (item.id === "1768938473514_cond") {
-          console.log("Rendering Conditional 3-2:", {
-            itemDepth: item.depth,
-            paramDepth: depth,
-            calculatedDepth: conditionalDepth,
-            item: item
-          })
-        }
+        // Always use the depth parameter passed from parent, not the stored depth
+        // This ensures correct rendering even if old data has wrong depth values
+        const conditionalDepth = depth
         
         return (
           <div key={item.id} className="conditional-block" style={{
