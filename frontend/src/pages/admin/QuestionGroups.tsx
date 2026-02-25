@@ -1453,7 +1453,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   // Insert a nested question BEFORE a specific index within a conditional's nestedItems
-  const insertNestedQuestionBeforeIndex = (beforeIndex: number, parentPath: number[]) => {
+  const insertNestedQuestionBeforeIndex = (beforeIndex: number, parentPath: number[], parentDepth: number) => {
     // Create the new question data
     const newQuestion: QuestionFormData = {
       id: Date.now().toString(),
@@ -1472,7 +1472,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       id: (Date.now() + 1).toString(),
       type: 'question',
       questionId: undefined,
-      depth: parentPath.length
+      depth: parentDepth
     }
 
     ;(newLogicItem as any).localQuestionId = newQuestion.id
@@ -1977,7 +1977,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             }}>
               <button
                 type="button"
-                onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath)}
+                onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath, depth)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
