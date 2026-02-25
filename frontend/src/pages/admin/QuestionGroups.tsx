@@ -3416,17 +3416,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 }
                 
                 return conditionalsAfterQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
+                  // Use stored depth if available, otherwise default to 0 for root-level conditionals
+                  const conditionalDepth = logicItem.depth !== undefined ? logicItem.depth : 0
+                  
                   return (
                     <React.Fragment key={logicItem.id}>
                     <div className="conditional-block" style={{
                       marginTop: '0.25rem',
                       padding: '1rem',
-                      border: `1px solid ${getDepthBorderColor(1)}`,
+                      border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
                       borderRadius: '0.5rem',
-                      backgroundColor: getDepthBackgroundColor(1)
+                      backgroundColor: getDepthBackgroundColor(conditionalDepth)
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(1) }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
                           Conditional ({logicIndex + 1})
                         </div>
               
