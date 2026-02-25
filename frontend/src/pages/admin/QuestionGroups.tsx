@@ -3634,41 +3634,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       </div>
                     </div>
 
-                    {/* Insert buttons AFTER the conditional */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      marginTop: '0.5rem',
-                      marginBottom: '0.5rem'
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => addQuestionToLogic(-1, [logicIndex])}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          color: '#7c3aed',
-                          border: '1px dashed #7c3aed',
-                          borderRadius: '0.25rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Add a question inside this conditional"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.7rem', height: '0.7rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Insert Question
-                      </button>
-                    </div>
+                    
 
                     </React.Fragment>
                   )
