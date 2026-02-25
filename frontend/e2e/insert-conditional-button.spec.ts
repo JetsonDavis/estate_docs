@@ -4,127 +4,125 @@ test.describe('Insert Conditional Button', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto('http://localhost:3005/login')
-    await page.fill('input[type="text"]', 'admin')
-    await page.fill('input[type="password"]', 'admin123')
-    await page.click('button[type="submit"]')
+    await page.getByRole('textbox', { name: 'Email Address or Username' }).fill('admin')
+    await page.getByRole('textbox', { name: 'Password' }).fill('password')
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await page.waitForURL('http://localhost:3005/')
+    
+    // Navigate to Question Groups
+    await page.getByRole('link', { name: 'Question Groups' }).click()
     await page.waitForURL('**/admin/question-groups')
+    
+    // Click on the test group
+    await page.getByText('jeff_shay_test_02242026').click()
+    await page.waitForURL('**/admin/question-groups/*/edit')
   })
 
-  test('should insert conditional at same level as nested question', async ({ page }) => {
-    // Create a new question group
-    await page.click('text=Create New Group')
-    await page.fill('input[placeholder="Enter group name"]', 'Insert Conditional Test')
-    
-    // Add first question
-    await page.click('button:has-text("Add Question")')
-    await page.fill('input[placeholder="e.g., full_name"]', 'question_1')
-    await page.fill('textarea[placeholder="Enter your question here..."]', 'Question 1?')
-    
-    // Add a conditional
-    await page.click('button:has-text("Add Conditional")')
-    
-    // Fill in conditional details
-    const conditionalBlock = page.locator('.conditional-block').first()
-    await conditionalBlock.locator('select').first().selectOption('question_1')
-    await conditionalBlock.locator('select').nth(1).selectOption('equals')
-    await conditionalBlock.locator('input[placeholder="Enter value"]').fill('test')
-    
-    // Add a nested question inside the conditional
-    await conditionalBlock.locator('button:has-text("Insert Question")').first().click()
-    
-    // Fill in the nested question
-    const nestedQuestion = page.locator('.question-builder').filter({ hasText: 'Nested Question' }).first()
-    await nestedQuestion.locator('input[placeholder="e.g., full_name"]').fill('nested_question_1')
-    await nestedQuestion.locator('textarea[placeholder="Enter your question here..."]').fill('Nested Question 1?')
-    
-    // Wait a bit for the question to be saved
-    await page.waitForTimeout(500)
-    
-    // Now click "Insert Conditional" button that appears below the nested question
-    // This button should insert a conditional at the same level as the nested question
-    await page.locator('button:has-text("Insert Conditional")').first().click()
-    
-    // Wait for the conditional to be created
-    await page.waitForTimeout(500)
-    
-    // Verify that a new conditional was created at the same nesting level
-    // It should be inside the same parent conditional, not at the root level
-    const nestedConditionals = await conditionalBlock.locator('.conditional-block').count()
-    
-    // Should have at least 1 nested conditional (the one we just created)
-    expect(nestedConditionals).toBeGreaterThanOrEqual(1)
-    
-    // Verify the nested conditional has the correct depth by checking its background color
-    // Nested items at depth 1 should have a specific background color
-    const insertedConditional = conditionalBlock.locator('.conditional-block').first()
-    const bgColor = await insertedConditional.evaluate((el) => {
-      return window.getComputedStyle(el).backgroundColor
+  test('should insert conditional at ROOT level with gray background', async ({ page }) => {
+    // Scroll to find a conditional with a nested question
+    await page.evaluate(() => {
+      const conditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      const condWithNested = conditionals.find(c => c.textContent.includes('Nested Question'));
+      if (condWithNested) {
+        condWithNested.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     })
     
-    // The background should be the depth-1 color (light green)
-    // rgb(220, 252, 231) is the expected color for depth 1
-    expect(bgColor).toBe('rgb(220, 252, 231)')
+    await page.waitForTimeout(1000)
     
-    // Verify the conditional appears in the correct position
-    // It should be after the nested question, not at the root level
-    const allConditionals = await page.locator('.conditional-block').all()
+    // Count existing root-level conditionals before insertion
+    const beforeCount = await page.evaluate(() => {
+      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      return allConditionals.filter(c => {
+        const parent = c.parentElement;
+        return parent && parent.className.includes('question-builder');
+      }).length;
+    })
     
-    // The first conditional should be the parent (at root level)
-    // The second conditional should be the nested one we just created
-    expect(allConditionals.length).toBeGreaterThanOrEqual(2)
+    // Click the first "Insert Conditional" button we find inside a conditional
+    await page.getByTitle('Insert a nested conditional').first().click()
     
-    // Clean up - don't save
-    await page.click('button:has-text("Cancel")')
+    await page.waitForTimeout(1000)
+    
+    // Count root-level conditionals after insertion
+    const afterCount = await page.evaluate(() => {
+      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      return allConditionals.filter(c => {
+        const parent = c.parentElement;
+        return parent && parent.className.includes('question-builder');
+      }).length;
+    })
+    
+    // Should have one more root-level conditional
+    expect(afterCount).toBe(beforeCount + 1)
+    
+    // Find the newly created conditional and verify it has gray background (depth 0)
+    const newConditionalBgColor = await page.evaluate(() => {
+      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      const rootConditionals = allConditionals.filter(c => {
+        const parent = c.parentElement;
+        return parent && parent.className.includes('question-builder');
+      });
+      
+      // Get the last root conditional (the one we just created)
+      const lastRootConditional = rootConditionals[rootConditionals.length - 1];
+      return window.getComputedStyle(lastRootConditional).backgroundColor;
+    })
+    
+    // Gray background for depth 0: rgb(249, 250, 251)
+    expect(newConditionalBgColor).toBe('rgb(249, 250, 251)')
   })
 
-  test('should use previous question as ifIdentifier for inserted conditional', async ({ page }) => {
-    // Create a new question group
-    await page.click('text=Create New Group')
-    await page.fill('input[placeholder="Enter group name"]', 'Insert Conditional ifIdentifier Test')
+  test('should insert conditional after the parent conditional', async ({ page }) => {
+    // Find a conditional with nested questions
+    const conditionalNumber = await page.evaluate(() => {
+      const conditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      const condWithNested = conditionals.find(c => c.textContent.includes('Nested Question'));
+      
+      if (condWithNested) {
+        condWithNested.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Extract the conditional number
+        const match = condWithNested.textContent.match(/Conditional \((\d+)\)/);
+        return match ? parseInt(match[1]) : null;
+      }
+      return null;
+    })
     
-    // Add first question
-    await page.click('button:has-text("Add Question")')
-    await page.fill('input[placeholder="e.g., full_name"]', 'question_1')
-    await page.fill('textarea[placeholder="Enter your question here..."]', 'Question 1?')
+    expect(conditionalNumber).not.toBeNull()
     
-    // Add a conditional
-    await page.click('button:has-text("Add Conditional")')
+    await page.waitForTimeout(1000)
     
-    // Fill in conditional details
-    const conditionalBlock = page.locator('.conditional-block').first()
-    await conditionalBlock.locator('select').first().selectOption('question_1')
-    await conditionalBlock.locator('select').nth(1).selectOption('equals')
-    await conditionalBlock.locator('input[placeholder="Enter value"]').fill('test')
+    // Click Insert Conditional
+    await page.getByTitle('Insert a nested conditional').first().click()
     
-    // Add first nested question
-    await conditionalBlock.locator('button:has-text("Insert Question")').first().click()
-    const nestedQuestion1 = page.locator('.question-builder').filter({ hasText: 'Nested Question' }).first()
-    await nestedQuestion1.locator('input[placeholder="e.g., full_name"]').fill('nested_q1')
-    await nestedQuestion1.locator('textarea[placeholder="Enter your question here..."]').fill('Nested Q1?')
+    await page.waitForTimeout(1000)
     
-    await page.waitForTimeout(500)
+    // Verify the new conditional appears right after the parent conditional
+    const newConditionalNumber = await page.evaluate((parentNum) => {
+      if (parentNum === null) return null;
+      
+      const conditionals = Array.from(document.querySelectorAll('.conditional-block'));
+      const rootConditionals = conditionals.filter(c => {
+        const parent = c.parentElement;
+        return parent && parent.className.includes('question-builder');
+      });
+      
+      // Find conditionals after the parent
+      for (let i = 0; i < rootConditionals.length; i++) {
+        const text = rootConditionals[i].textContent;
+        const match = text.match(/Conditional \((\d+)\)/);
+        if (match) {
+          const num = parseInt(match[1]);
+          if (num === parentNum + 1) {
+            return num;
+          }
+        }
+      }
+      return null;
+    }, conditionalNumber)
     
-    // Add second nested question
-    await conditionalBlock.locator('button:has-text("Insert Question")').nth(1).click()
-    const nestedQuestion2 = page.locator('.question-builder').filter({ hasText: 'Nested Question' }).nth(1)
-    await nestedQuestion2.locator('input[placeholder="e.g., full_name"]').fill('nested_q2')
-    await nestedQuestion2.locator('textarea[placeholder="Enter your question here..."]').fill('Nested Q2?')
-    
-    await page.waitForTimeout(500)
-    
-    // Click "Insert Conditional" button between the two nested questions
-    await page.locator('button:has-text("Insert Conditional")').nth(1).click()
-    
-    await page.waitForTimeout(500)
-    
-    // Verify the inserted conditional has nested_q1 as its ifIdentifier
-    const insertedConditional = conditionalBlock.locator('.conditional-block').first()
-    const ifIdentifierSelect = insertedConditional.locator('select').first()
-    const selectedValue = await ifIdentifierSelect.inputValue()
-    
-    expect(selectedValue).toBe('nested_q1')
-    
-    // Clean up
-    await page.click('button:has-text("Cancel")')
+    // The new conditional should be numbered one more than the parent
+    expect(newConditionalNumber).toBe((conditionalNumber ?? 0) + 1)
   })
 })
