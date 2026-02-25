@@ -2004,8 +2004,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Insert conditional at ROOT level (depth 0)
-                    // Find the previous question to use as ifIdentifier
+                    // Find the previous nested question to use as ifIdentifier
                     let prevQuestionForCondition: QuestionFormData | undefined
                     
                     for (let i = itemIndex - 1; i >= 0; i--) {
@@ -2018,9 +2017,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    // Insert at root level: use the parent conditional's index
-                    const insertAfterIndex = parentPath[parentPath.length - 1]
-                    addConditionalToLogicAtIndex(insertAfterIndex, undefined, prevQuestionForCondition)
+                    // Insert at root level after the current nested question
+                    // Find the root-level index by looking at questionLogic
+                    let rootInsertIndex = -1
+                    
+                    // Traverse to find the root conditional that contains this nested item
+                    const findRootConditionalIndex = (logic: QuestionLogicItem[], path: number[]): number => {
+                      if (path.length === 0) return -1
+                      return path[0]
+                    }
+                    
+                    rootInsertIndex = findRootConditionalIndex(questionLogic, parentPath)
+                    
+                    if (rootInsertIndex >= 0) {
+                      addConditionalToLogicAtIndex(rootInsertIndex, undefined, prevQuestionForCondition)
+                    }
                   }}
                   style={{
                     display: 'flex',
