@@ -2017,44 +2017,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }
                     }
                     
-                    // Insert at root level after the parent conditional
-                    // We need to find the CURRENT index of the parent conditional in questionLogic
-                    // because parentPath[0] is stale (from when the page was rendered)
-                    
-                    // Find the parent conditional by traversing the path
-                    let parentConditional: QuestionLogicItem | null = null
-                    let currentItems = questionLogic
-                    
-                    for (let i = 0; i < parentPath.length - 1; i++) {
-                      const item = currentItems[parentPath[i]]
-                      if (item?.conditional?.nestedItems) {
-                        currentItems = item.conditional.nestedItems
-                      }
-                    }
-                    
-                    // The parent conditional is at parentPath[parentPath.length - 2] in the traversed items
-                    // Or if parentPath.length === 1, it's at questionLogic[parentPath[0]]
-                    if (parentPath.length === 1) {
-                      // Direct child of root - shouldn't happen for nested questions
-                      parentConditional = questionLogic[parentPath[0]]
-                    } else {
-                      // Find in the parent's parent
-                      let parentItems = questionLogic
-                      for (let i = 0; i < parentPath.length - 2; i++) {
-                        const item = parentItems[parentPath[i]]
-                        if (item?.conditional?.nestedItems) {
-                          parentItems = item.conditional.nestedItems
-                        }
-                      }
-                      parentConditional = parentItems[parentPath[parentPath.length - 2]]
-                    }
-                    
-                    // Now find the current index of this conditional in questionLogic
-                    const currentRootIndex = questionLogic.findIndex(item => item.id === parentConditional?.id)
-                    
-                    if (currentRootIndex >= 0) {
-                      addConditionalToLogicAtIndex(currentRootIndex, undefined, prevQuestionForCondition)
-                    }
+                    // Insert conditional at the SAME LEVEL as this nested question
+                    // Insert it right before this question (at itemIndex - 1 position, after the previous item)
+                    addConditionalToLogicAtIndex(itemIndex - 1, parentPath, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
