@@ -1974,17 +1974,23 @@ const InputForms: React.FC = () => {
                       const isLastInSet = isLastInRepeatableSet(qIndex + setQuestions.length - 1)
 
                       return (
-                        <React.Fragment key={`repeatable-set-${setStartIndex}`}>
+                        <div
+                          key={`repeatable-set-${setStartIndex}`}
+                          style={{
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.5rem',
+                            backgroundColor: '#fafafa',
+                            marginBottom: '1rem',
+                            overflow: 'hidden'
+                          }}
+                        >
                           {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
                             <div
                               key={`instance-${instanceIdx}`}
                               className="repeatable-instance"
                               style={{
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '0.5rem',
                                 padding: '1rem',
-                                marginBottom: '0.75rem',
-                                backgroundColor: '#fafafa',
+                                borderBottom: instanceIdx < instanceCount - 1 ? '1px solid #e5e7eb' : 'none',
                                 position: 'relative'
                               }}
                             >
@@ -2031,21 +2037,22 @@ const InputForms: React.FC = () => {
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '0.5rem',
+                                width: '100%',
                                 padding: '0.5rem 1rem',
                                 backgroundColor: '#f3f4f6',
-                                border: '1px dashed #9ca3af',
-                                borderRadius: '0.375rem',
+                                border: 'none',
+                                borderTop: '1px dashed #9ca3af',
+                                borderRadius: '0',
                                 color: '#4b5563',
                                 cursor: 'pointer',
-                                fontSize: '0.875rem',
-                                marginBottom: '1rem'
+                                fontSize: '0.875rem'
                               }}
                             >
                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
                               Add Another
                             </button>
                           )}
-                        </React.Fragment>
+                        </div>
                       )
                     }
 
