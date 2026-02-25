@@ -1980,8 +1980,7 @@ const InputForms: React.FC = () => {
                             border: '1px solid #e5e7eb',
                             borderRadius: '0.5rem',
                             backgroundColor: '#fafafa',
-                            marginBottom: '1rem',
-                            overflow: 'hidden'
+                            marginBottom: '1rem'
                           }}
                         >
                           {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
@@ -2042,7 +2041,7 @@ const InputForms: React.FC = () => {
                                 backgroundColor: '#f3f4f6',
                                 border: 'none',
                                 borderTop: '1px dashed #9ca3af',
-                                borderRadius: '0',
+                                borderRadius: '0 0 0.5rem 0.5rem',
                                 color: '#4b5563',
                                 cursor: 'pointer',
                                 fontSize: '0.875rem'
