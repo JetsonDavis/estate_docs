@@ -1571,6 +1571,7 @@ const InputForms: React.FC = () => {
                 onChange={(e) => updateAndSavePersonBackupField('replaces', e.target.value)}
               >
                 <option value="">Select person being replaced...</option>
+                <option value="Previous Group">Previous Group</option>
                 {replaceablePersons.map((name, idx) => (
                   <option key={idx} value={name}>{name}</option>
                 ))}
