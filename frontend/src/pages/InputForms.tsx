@@ -1589,6 +1589,7 @@ const InputForms: React.FC = () => {
               >
                 <option value="and">And</option>
                 <option value="or">Or</option>
+                <option value="none">None</option>
               </select>
             </div>
 
