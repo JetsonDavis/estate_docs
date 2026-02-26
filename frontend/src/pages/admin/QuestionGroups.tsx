@@ -577,8 +577,33 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               })
             }
             
+            // Strip namespace prefixes from conditional ifIdentifier values
+            // (they're stored with full namespace in DB but questions are stripped on load)
+            const stripConditionalNamespaces = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+              return items.map(item => {
+                if (item.type === 'conditional' && item.conditional) {
+                  return {
+                    ...item,
+                    conditional: {
+                      ...item.conditional,
+                      ifIdentifier: item.conditional.ifIdentifier
+                        ? stripIdentifierNamespace(item.conditional.ifIdentifier)
+                        : item.conditional.ifIdentifier,
+                      nestedItems: item.conditional.nestedItems
+                        ? stripConditionalNamespaces(item.conditional.nestedItems)
+                        : item.conditional.nestedItems
+                    }
+                  }
+                }
+                return item
+              })
+            }
+
             // Fix undefined questionIds first
             let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
+            
+            // Strip namespace prefixes from conditional ifIdentifiers
+            fixedLogic = stripConditionalNamespaces(fixedLogic)
 
             // Recursively clean orphaned question items from logic
             // Now we only remove items that have invalid questionIds (not in DB)
