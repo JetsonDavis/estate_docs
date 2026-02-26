@@ -1597,7 +1597,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     })
   }
 
-  const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData) => {
+  const addConditionalToLogic = (afterIndex: number, parentPath?: number[], targetQuestion?: QuestionFormData, insertBeforeQuestion?: QuestionFormData) => {
 
     // Get the previous question to use as the "if" condition
     // If targetQuestion is passed, get the latest version from questions state
@@ -1699,9 +1699,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         return newLogic
       })
     } else {
-      // Add to root level - if afterIndex is -1 or invalid, just append to the end
+      // Add to root level
       setQuestionLogic(prevLogic => {
-        const insertIndex = afterIndex >= 0 ? afterIndex + 1 : prevLogic.length
+        let insertIndex: number
+        if (insertBeforeQuestion) {
+          // Find the target question's current position in prevLogic and insert right before it
+          const targetIdx = prevLogic.findIndex(item =>
+            item.type === 'question' &&
+            ((item as any).localQuestionId === insertBeforeQuestion.id ||
+             (item.questionId != null && insertBeforeQuestion.dbId != null && item.questionId === insertBeforeQuestion.dbId))
+          )
+          insertIndex = targetIdx >= 0 ? targetIdx : prevLogic.length
+        } else {
+          insertIndex = afterIndex >= 0 ? afterIndex + 1 : prevLogic.length
+        }
         const newLogic = [...prevLogic.slice(0, insertIndex), newConditional, ...prevLogic.slice(insertIndex)]
         if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
         return newLogic
@@ -2973,10 +2984,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     onClick={() => {
                       // Find the previous question to use as the conditional's ifIdentifier
                       const prevQuestion = mainLevelQuestions[qIndex - 1]
-                      // Insert BEFORE the current question's position in the logic array
-                      // (using logicIndex - 1 so the conditional lands right before this question)
-                      const insertAfter = logicIndex > 0 ? logicIndex - 1 : 0
-                      addConditionalToLogic(insertAfter, undefined, prevQuestion)
+                      // Insert directly before the current question in the logic array
+                      // This ensures the conditional goes above Q3, after any nested items under Q2
+                      addConditionalToLogic(-1, undefined, prevQuestion, question)
                     }}
                     style={{
                       display: 'flex',
