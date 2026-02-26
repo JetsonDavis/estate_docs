@@ -2973,11 +2973,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     onClick={() => {
                       // Find the previous question to use as the conditional's ifIdentifier
                       const prevQuestion = mainLevelQuestions[qIndex - 1]
-                      const prevLogicIndex = questionLogic.findIndex(item =>
-                        item.type === 'question' &&
-                        ((item as any).localQuestionId === prevQuestion.id || item.questionId === prevQuestion.dbId)
-                      )
-                      addConditionalToLogic(prevLogicIndex >= 0 ? prevLogicIndex : qIndex - 1, undefined, prevQuestion)
+                      // Insert BEFORE the current question's position in the logic array
+                      // (using logicIndex - 1 so the conditional lands right before this question)
+                      const insertAfter = logicIndex > 0 ? logicIndex - 1 : 0
+                      addConditionalToLogic(insertAfter, undefined, prevQuestion)
                     }}
                     style={{
                       display: 'flex',
