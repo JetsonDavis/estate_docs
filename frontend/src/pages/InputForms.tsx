@@ -1578,20 +1578,22 @@ const InputForms: React.FC = () => {
               </select>
             </div>
 
-            {/* Relationship Changes To dropdown */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Becomes</label>
-              <select
-                className="question-select"
-                value={personBackupData.relationship_changes_to || 'and'}
-                onChange={(e) => updateAndSavePersonBackupField('relationship_changes_to', e.target.value)}
-                style={{ fontSize: '0.875rem' }}
-              >
-                <option value="and">And</option>
-                <option value="or">Or</option>
-                <option value="none">None</option>
-              </select>
-            </div>
+            {/* Relationship Changes To dropdown - hidden when "Previous Group" is selected */}
+            {personBackupData.replaces !== 'Previous Group' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Becomes</label>
+                <select
+                  className="question-select"
+                  value={personBackupData.relationship_changes_to || 'and'}
+                  onChange={(e) => updateAndSavePersonBackupField('relationship_changes_to', e.target.value)}
+                  style={{ fontSize: '0.875rem' }}
+                >
+                  <option value="and">And</option>
+                  <option value="or">Or</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            )}
 
             {/* Name with type-ahead from earlier form entries */}
             <div>
