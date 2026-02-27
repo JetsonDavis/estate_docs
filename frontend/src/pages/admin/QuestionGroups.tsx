@@ -3761,7 +3761,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <React.Fragment key={logicItem.id}>
                     <div className="conditional-block" style={{
                       marginTop: '0.25rem',
-                      padding: '1rem',
+                      marginLeft: '-1.5rem',
+                      marginRight: '-1.5rem',
+                      padding: '1rem 1.5rem',
                       border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
                       borderRadius: '0.5rem',
                       backgroundColor: getDepthBackgroundColor(conditionalDepth)
