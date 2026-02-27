@@ -635,10 +635,17 @@ class SessionService:
                             questions_with_depth.append((question, depth))
                             question_ids_added.add(question.id)
 
-                            # If this question is explicitly repeatable, it defines the active group
+                            # If this question is explicitly repeatable, it defines/updates the active group
                             if question.repeatable and question.repeatable_group_id:
-                                active_repeatable_group_id = question.repeatable_group_id
-                                logger.info(f"{indent}  Question is repeatable, active_repeatable_group_id={active_repeatable_group_id}")
+                                if parent_repeatable_group_id and question.repeatable_group_id != parent_repeatable_group_id:
+                                    # Nested inside a parent repeatable context with a different group ID
+                                    # Override to use the parent's group ID so they form one repeatable block
+                                    repeatable_overrides[question.id] = (True, parent_repeatable_group_id)
+                                    active_repeatable_group_id = parent_repeatable_group_id
+                                    logger.info(f"{indent}  Question repeatable group overridden to parent: {parent_repeatable_group_id}")
+                                else:
+                                    active_repeatable_group_id = question.repeatable_group_id
+                                    logger.info(f"{indent}  Question is repeatable, active_repeatable_group_id={active_repeatable_group_id}")
                             elif active_repeatable_group_id and not question.repeatable:
                                 # Inherit the parent repeatable group context
                                 repeatable_overrides[question.id] = (True, active_repeatable_group_id)

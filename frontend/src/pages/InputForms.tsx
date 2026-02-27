@@ -639,14 +639,22 @@ const InputForms: React.FC = () => {
     const currentQuestion = questions[questionIndex]
     if (!currentQuestion?.repeatable) return false
 
-    // Check if next question exists and is in the same repeatable group
-    const nextQuestion = questions[questionIndex + 1]
-    if (!nextQuestion || !nextQuestion.repeatable) return true
-    // Different group ID means this is the last in the current set
-    if (nextQuestion.repeatable_group_id !== currentQuestion.repeatable_group_id) return true
-    // Different depth means this is the last in the current set
-    if ((nextQuestion.depth ?? 0) !== (currentQuestion.depth ?? 0)) return true
-    return false
+    const currentGroupId = currentQuestion.repeatable_group_id
+
+    // Look ahead to see if any subsequent question belongs to the same repeatable group
+    // (at any depth — nested questions inside conditionals share the same group ID)
+    for (let i = questionIndex + 1; i < questions.length; i++) {
+      const nextQ = questions[i]
+      if (nextQ?.repeatable && nextQ.repeatable_group_id === currentGroupId) {
+        // There's still a later question in the same group — not the last
+        return false
+      }
+      // If we hit a non-repeatable question at the same or shallower depth, stop looking
+      if (!nextQ?.repeatable && (nextQ?.depth ?? 0) <= (currentQuestion.depth ?? 0)) {
+        break
+      }
+    }
+    return true
   }
 
   const getRepeatableSetStartIndex = (questionIndex: number): number => {
@@ -654,15 +662,13 @@ const InputForms: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     const currentGroupId = currentQuestion?.repeatable_group_id
-    const currentDepth = currentQuestion?.depth ?? 0
     let startIndex = questionIndex
 
     // Walk backwards to find the start of the repeatable set
-    // Only include questions with the same repeatable_group_id and depth
+    // Include all questions with the same repeatable_group_id regardless of depth
     while (startIndex > 0 &&
            questions[startIndex - 1]?.repeatable &&
-           questions[startIndex - 1]?.repeatable_group_id === currentGroupId &&
-           (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
+           questions[startIndex - 1]?.repeatable_group_id === currentGroupId) {
       startIndex--
     }
     return startIndex
@@ -673,15 +679,13 @@ const InputForms: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     const currentGroupId = currentQuestion?.repeatable_group_id
-    const currentDepth = currentQuestion?.depth ?? 0
     const startIndex = getRepeatableSetStartIndex(questionIndex)
     const ids: number[] = []
 
-    // Collect all consecutive repeatable questions with the same group ID and depth
+    // Collect all consecutive repeatable questions with the same group ID regardless of depth
     for (let i = startIndex; i < questions.length &&
          questions[i]?.repeatable &&
-         questions[i]?.repeatable_group_id === currentGroupId &&
-         (questions[i]?.depth ?? 0) === currentDepth; i++) {
+         questions[i]?.repeatable_group_id === currentGroupId; i++) {
       ids.push(questions[i].id)
     }
     return ids
