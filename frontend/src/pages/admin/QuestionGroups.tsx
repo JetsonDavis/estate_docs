@@ -3250,14 +3250,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             )
 
             return (
-            <div key={question.id} className="question-builder">
+            <div key={question.id} className="question-builder" style={collapsedItems.has(`q-${question.id}`) ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                marginBottom: '0.5rem',
-                marginTop: '12px'
+                marginBottom: collapsedItems.has(`q-${question.id}`) ? '0.25rem' : '0.5rem',
+                marginTop: '6px'
               }}>
                 <button
                   type="button"
