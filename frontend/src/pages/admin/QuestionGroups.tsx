@@ -490,11 +490,30 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const pendingRequestsRef = useRef<number>(0)
   const [hasPendingRequests, setHasPendingRequests] = useState(false)
   const nestedQuestionIdsRef = useRef<Set<string>>(new Set())
-  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set())
+  const collapsedStorageKey = groupId ? `collapsed-items-${groupId}` : null
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => {
+    if (collapsedStorageKey) {
+      try {
+        const stored = localStorage.getItem(collapsedStorageKey)
+        if (stored) return new Set(JSON.parse(stored))
+      } catch {}
+    }
+    return new Set()
+  })
   const isEditMode = !!groupId
 
-  const toggleCollapsed = (itemId: string) => {
+  const updateCollapsedItems = (updater: (prev: Set<string>) => Set<string>) => {
     setCollapsedItems(prev => {
+      const next = updater(prev)
+      if (collapsedStorageKey) {
+        try { localStorage.setItem(collapsedStorageKey, JSON.stringify([...next])) } catch {}
+      }
+      return next
+    })
+  }
+
+  const toggleCollapsed = (itemId: string) => {
+    updateCollapsedItems(prev => {
       const next = new Set(prev)
       if (next.has(itemId)) {
         next.delete(itemId)
@@ -528,8 +547,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return ids
   }
 
-  const collapseAll = () => setCollapsedItems(getAllCollapsibleIds())
-  const expandAll = () => setCollapsedItems(new Set())
+  const collapseAll = () => updateCollapsedItems(() => getAllCollapsibleIds())
+  const expandAll = () => updateCollapsedItems(() => new Set())
 
   // Helper to generate a compact question type label
   const getQuestionTypeLabel = (q: QuestionFormData): string => {
