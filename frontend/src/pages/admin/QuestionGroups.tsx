@@ -559,13 +559,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
         <span style={{ fontWeight: 600, color: '#1f2937' }}>{q.identifier || '(no identifier)'}</span>
         <span style={{ color: '#9ca3af' }}>|</span>
-        <span style={{ color: '#6b7280', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question_text || '(no text)'}</span>
+        <span style={{ color: '#6b7280' }}>{q.question_text || '(no text)'}</span>
         <span style={{ color: '#9ca3af' }}>|</span>
         <span style={{ color: '#2563eb', fontWeight: 500 }}>{typeLabel}</span>
         {hasOptions && optionLabels && (
           <>
             <span style={{ color: '#9ca3af' }}>:</span>
-            <span style={{ color: '#6b7280', fontStyle: 'italic', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{optionLabels}</span>
+            <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{optionLabels}</span>
           </>
         )}
         {q.repeatable && (
