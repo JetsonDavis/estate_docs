@@ -3325,7 +3325,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 )}
               </div>
 
-              <div className="question-builder-header">
+              <div className="question-builder-header" style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
                   <svg
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"

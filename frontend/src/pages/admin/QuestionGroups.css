@@ -417,14 +417,14 @@
   border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
   padding: 0 1.5rem;
-  margin-bottom: 6px !important;
+  margin-bottom: 6px;
 }
 
 .question-builder-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .question-number {
