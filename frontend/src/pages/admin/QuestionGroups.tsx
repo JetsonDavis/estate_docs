@@ -551,14 +551,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   // Helper to generate compact question summary for collapsed view
-  const renderQuestionSummary = (q: QuestionFormData) => {
+  const renderQuestionSummary = (q: QuestionFormData, prevQuestion?: QuestionFormData | null) => {
     const typeLabel = getQuestionTypeLabel(q)
     const hasOptions = ['multiple_choice', 'checkbox_group', 'dropdown'].includes(q.question_type) && q.options?.length > 0
     const optionLabels = hasOptions ? q.options.map(o => o.label).filter(Boolean).join(', ') : ''
+    const isNewRepeatableGroup = q.repeatable && (
+      !prevQuestion || !prevQuestion.repeatable || prevQuestion.repeatable_group_id !== q.repeatable_group_id
+    )
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
         {q.repeatable && (
-          <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '0 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 600 }}>Repeatable</span>
+          <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '0 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 600 }}>{isNewRepeatableGroup ? 'New Repeatable' : 'Repeatable'}</span>
         )}
         <span style={{ fontWeight: 600, color: '#1f2937' }}>{q.identifier || '(no identifier)'}</span>
         <span style={{ color: '#9ca3af' }}>|</span>
@@ -2129,6 +2132,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? `${questionNumberPrefix}-${currentDisplayIndex + 1}`
           : `${currentDisplayIndex + 1}`
 
+        // Find previous question in the same nested context for repeatable group detection
+        const prevNestedQuestionItem = nestedItems.slice(0, itemIndex).reverse().find(i => i.type === 'question')
+        const prevNestedQuestionData = prevNestedQuestionItem ? getQuestionFromLogicItem(prevNestedQuestionItem) : null
+
         // Check if previous item is a conditional with nested items
         const prevItem = itemIndex > 0 ? nestedItems[itemIndex - 1] : null
         const prevIsConditionalWithItems = prevItem?.type === 'conditional' && 
@@ -2319,7 +2326,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     Nested Question ({questionNumber})
                   </span>
                   {collapsedItems.has(`nq-${nestedQuestion.id}`) && (
-                    <div style={{ marginLeft: '0.25rem' }}>{renderQuestionSummary(nestedQuestion)}</div>
+                    <div style={{ marginLeft: '0.25rem' }}>{renderQuestionSummary(nestedQuestion, prevNestedQuestionData)}</div>
                   )}
                 </div>
                 <button
@@ -3385,7 +3392,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <span style={{ fontSize: '0.75rem', color: '#10b981' }}>✓ Saved</span>
                   )}
                   {collapsedItems.has(`q-${question.id}`) && (
-                    <div style={{ marginLeft: '0.5rem' }}>{renderQuestionSummary(question)}</div>
+                    <div style={{ marginLeft: '0.5rem' }}>{renderQuestionSummary(question, qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null)}</div>
                   )}
                 </div>
                 <button
