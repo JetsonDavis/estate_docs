@@ -490,7 +490,92 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const pendingRequestsRef = useRef<number>(0)
   const [hasPendingRequests, setHasPendingRequests] = useState(false)
   const nestedQuestionIdsRef = useRef<Set<string>>(new Set())
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set())
   const isEditMode = !!groupId
+
+  const toggleCollapsed = (itemId: string) => {
+    setCollapsedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(itemId)) {
+        next.delete(itemId)
+      } else {
+        next.add(itemId)
+      }
+      return next
+    })
+  }
+
+  // Helper to generate a compact question type label
+  const getQuestionTypeLabel = (q: QuestionFormData): string => {
+    const isYesNo = q.question_type === 'multiple_choice' &&
+      q.options?.length === 2 &&
+      q.options[0]?.value === 'yes' &&
+      q.options[1]?.value === 'no'
+    if (isYesNo) return 'Yes/No'
+    const typeMap: Record<string, string> = {
+      free_text: 'Text',
+      multiple_choice: 'Radio',
+      checkbox_group: 'Checkboxes',
+      dropdown: 'Dropdown',
+      person: 'Person',
+      person_backup: 'Person (Backup)',
+      date: 'Date'
+    }
+    return typeMap[q.question_type] || q.question_type
+  }
+
+  // Helper to generate compact question summary for collapsed view
+  const renderQuestionSummary = (q: QuestionFormData) => {
+    const typeLabel = getQuestionTypeLabel(q)
+    const hasOptions = ['multiple_choice', 'checkbox_group', 'dropdown'].includes(q.question_type) && q.options?.length > 0
+    const optionLabels = hasOptions ? q.options.map(o => o.label).filter(Boolean).join(', ') : ''
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
+        <span style={{ fontWeight: 600, color: '#1f2937' }}>{q.identifier || '(no identifier)'}</span>
+        <span style={{ color: '#9ca3af' }}>|</span>
+        <span style={{ color: '#6b7280', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question_text || '(no text)'}</span>
+        <span style={{ color: '#9ca3af' }}>|</span>
+        <span style={{ color: '#2563eb', fontWeight: 500 }}>{typeLabel}</span>
+        {hasOptions && optionLabels && (
+          <>
+            <span style={{ color: '#9ca3af' }}>:</span>
+            <span style={{ color: '#6b7280', fontStyle: 'italic', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{optionLabels}</span>
+          </>
+        )}
+        {q.repeatable && (
+          <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '0 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 600 }}>Repeatable</span>
+        )}
+      </div>
+    )
+  }
+
+  // Helper to generate compact conditional summary for collapsed view
+  const renderConditionalSummary = (logicItem: QuestionLogicItem) => {
+    const cond = logicItem.conditional
+    const identifier = cond?.ifIdentifier || '?'
+    const op = cond?.operator || 'equals'
+    const val = cond?.value || '?'
+    const opLabel: Record<string, string> = {
+      equals: '==',
+      not_equals: '!=',
+      count_greater_than: 'count >',
+      count_equals: 'count ==',
+      count_less_than: 'count <'
+    }
+    const nestedCount = cond?.nestedItems?.length || 0
+    const questionCount = cond?.nestedItems?.filter(i => i.type === 'question').length || 0
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
+        <span style={{ fontWeight: 500 }}>If</span>
+        <span style={{ fontWeight: 600, color: '#7c3aed' }}>{identifier}</span>
+        <span style={{ color: '#6b7280' }}>{opLabel[op] || op}</span>
+        <span style={{ fontWeight: 600, color: '#1f2937' }}>"{val}"</span>
+        {questionCount > 0 && (
+          <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>({questionCount} question{questionCount !== 1 ? 's' : ''} inside)</span>
+        )}
+      </div>
+    )
+  }
 
   // Track pending requests
   const incrementPendingRequests = () => {
@@ -2201,10 +2286,21 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               borderRadius: '0.5rem',
               backgroundColor: getDepthBackgroundColor(depth)
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getDepthTextColor(depth) }}>
-                  Nested Question ({questionNumber})
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`nq-${nestedQuestion.id}`) ? 0 : '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`nq-${nestedQuestion.id}`)}>
+                  <svg
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    style={{ width: '0.75rem', height: '0.75rem', transition: 'transform 0.15s', transform: collapsedItems.has(`nq-${nestedQuestion.id}`) ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getDepthTextColor(depth) }}>
+                    Nested Question ({questionNumber})
+                  </span>
+                  {collapsedItems.has(`nq-${nestedQuestion.id}`) && (
+                    <div style={{ marginLeft: '0.25rem' }}>{renderQuestionSummary(nestedQuestion)}</div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={async () => {
@@ -2271,6 +2367,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </button>
               </div>
 
+              {!collapsedItems.has(`nq-${nestedQuestion.id}`) && <>
               {/* Identifier */}
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
@@ -2549,6 +2646,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   )}
                 </div>
               </div>
+              </>}
             </div>
 
             {/* Action buttons after nested question */}
@@ -2756,9 +2854,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             borderRadius: '0.5rem',
             backgroundColor: getDepthBackgroundColor(conditionalDepth)
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
-                Conditional ({conditionalNumber})
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`nc-${item.id}`) ? 0 : '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`nc-${item.id}`)}>
+                <svg
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  style={{ width: '0.75rem', height: '0.75rem', transition: 'transform 0.15s', transform: collapsedItems.has(`nc-${item.id}`) ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
+                  Conditional ({conditionalNumber})
+                </div>
+                {collapsedItems.has(`nc-${item.id}`) && (
+                  <div style={{ marginLeft: '0.25rem' }}>{renderConditionalSummary(item)}</div>
+                )}
               </div>
               <button
                 type="button"
@@ -2778,7 +2887,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {!collapsedItems.has(`nc-${item.id}`) && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {/* If identifier - dropdown of all questions */}
               <div>
                 <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
@@ -2954,7 +3063,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   </>
                 ) : null}
               </div>
-            </div>
+            </div>}
 
           </div>
         )
@@ -3213,13 +3322,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
               <div className="question-builder-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
+                  <svg
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    style={{ width: '1rem', height: '1rem', transition: 'transform 0.15s', transform: collapsedItems.has(`q-${question.id}`) ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                   <span className="question-number">Question {qIndex + 1}</span>
                   {question.isSaving && (
                     <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Saving...</span>
                   )}
                   {!question.isSaving && question.lastSaved && (
                     <span style={{ fontSize: '0.75rem', color: '#10b981' }}>✓ Saved</span>
+                  )}
+                  {collapsedItems.has(`q-${question.id}`) && (
+                    <div style={{ marginLeft: '0.5rem' }}>{renderQuestionSummary(question)}</div>
                   )}
                 </div>
                 <button
@@ -3235,7 +3353,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </button>
               </div>
 
-              <div className="question-builder-content">
+              {!collapsedItems.has(`q-${question.id}`) && <div className="question-builder-content">
                 <div className="form-group">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                     <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
@@ -3608,7 +3726,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     )}
                   </div>
                 </div>
-              </div>
+              </div>}
 
 
               {/* Render conditionals that follow this question in questionLogic */}
@@ -3644,9 +3762,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       borderRadius: '0.5rem',
                       backgroundColor: getDepthBackgroundColor(conditionalDepth)
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
-                          Conditional ({logicIndex + 1})
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`c-${logicItem.id}`) ? 0 : '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`c-${logicItem.id}`)}>
+                          <svg
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            style={{ width: '0.875rem', height: '0.875rem', transition: 'transform 0.15s', transform: collapsedItems.has(`c-${logicItem.id}`) ? 'rotate(-90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
+                            Conditional ({logicIndex + 1})
+                          </div>
+                          {collapsedItems.has(`c-${logicItem.id}`) && (
+                            <div style={{ marginLeft: '0.5rem' }}>{renderConditionalSummary(logicItem)}</div>
+                          )}
                         </div>
               
                         <button
@@ -3667,7 +3796,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </button>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {/* If identifier - dropdown of all questions */}
                         <div>
                           <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
@@ -3811,7 +3940,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                             renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
                           )}
                         </div>
-                      </div>
+                      </div>}
                     </div>
 
                     
