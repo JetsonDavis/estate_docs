@@ -3249,15 +3249,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               isLogicItemForQuestion(item, question)
             )
 
+            const isCollapsed = collapsedItems.has(`q-${question.id}`)
+            const prevQuestion = qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null
+            const prevIsCollapsed = prevQuestion ? collapsedItems.has(`q-${prevQuestion.id}`) : false
+
             return (
-            <div key={question.id} className="question-builder" style={collapsedItems.has(`q-${question.id}`) ? { marginBottom: '3px' } : undefined}>
+            <div key={question.id} className="question-builder" style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                marginBottom: collapsedItems.has(`q-${question.id}`) ? '0.25rem' : '0.5rem',
-                marginTop: '6px'
+                marginBottom: isCollapsed ? '0.25rem' : '0.5rem',
+                marginTop: prevIsCollapsed || isCollapsed ? '3px' : '12px'
               }}>
                 <button
                   type="button"
