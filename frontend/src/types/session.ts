@@ -56,6 +56,27 @@ export interface SessionProgress {
   total_answers: number
 }
 
+export interface ConditionalFollowupQuestion {
+  id: number
+  identifier: string
+  question_text: string
+  question_type: string
+  is_required: boolean
+  repeatable: boolean
+  repeatable_group_id: string | null
+  help_text: string | null
+  options: Array<{ value: string; label: string }> | null
+  person_display_mode: string | null
+  include_time: boolean | null
+  validation_rules: Record<string, any> | null
+}
+
+export interface ConditionalFollowup {
+  trigger_value: string
+  operator: string
+  questions: ConditionalFollowupQuestion[]
+}
+
 export interface QuestionToDisplay {
   id: number
   identifier: string
@@ -71,6 +92,7 @@ export interface QuestionToDisplay {
   validation_rules: Record<string, any> | null
   current_answer: string | null
   depth: number  // Nesting level for conditional questions
+  conditional_followups: ConditionalFollowup[] | null  // For repeatable questions with conditionals
 }
 
 export interface SessionQuestionsResponse {

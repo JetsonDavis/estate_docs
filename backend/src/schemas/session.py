@@ -74,6 +74,29 @@ class SessionProgressResponse(BaseModel):
     total_answers: int
 
 
+class ConditionalFollowupQuestion(BaseModel):
+    """A follow-up question definition for conditional rendering."""
+    id: int
+    identifier: str
+    question_text: str
+    question_type: str
+    is_required: bool
+    repeatable: bool = False
+    repeatable_group_id: Optional[str] = None
+    help_text: Optional[str]
+    options: Optional[List[dict]]
+    person_display_mode: Optional[str]
+    include_time: Optional[bool]
+    validation_rules: Optional[dict]
+
+
+class ConditionalFollowup(BaseModel):
+    """A conditional branch with its trigger value and follow-up questions."""
+    trigger_value: str
+    operator: str = "equals"
+    questions: List[ConditionalFollowupQuestion]
+
+
 class QuestionToDisplay(BaseModel):
     """Schema for a question to display in the document."""
     id: int
@@ -90,6 +113,7 @@ class QuestionToDisplay(BaseModel):
     validation_rules: Optional[dict]
     current_answer: Optional[str] = None
     depth: int = 0  # Nesting level for conditional questions
+    conditional_followups: Optional[List[ConditionalFollowup]] = None  # For repeatable questions with conditionals
 
 
 class SessionQuestionsResponse(BaseModel):

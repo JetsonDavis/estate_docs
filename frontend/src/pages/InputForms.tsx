@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
-import { InputForm, SessionQuestionsResponse, QuestionToDisplay } from '../types/session'
+import { InputForm, SessionQuestionsResponse, QuestionToDisplay, ConditionalFollowupQuestion } from '../types/session'
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
@@ -166,20 +166,33 @@ const InputForms: React.FC = () => {
   }
 
   // Handle radio button change - saves immediately and triggers conditional refresh
-  const handleRadioChange = async (questionId: number, newValue: string) => {
+  const handleRadioChange = async (questionId: number, newValue: string, instanceIndex: number = 0) => {
     if (!sessionData) return
 
     const question = sessionData.questions.find(q => q.id === questionId)
     if (!question) return
 
-    console.log('handleRadioChange called:', { questionId, newValue, identifier: question.identifier })
+    console.log('handleRadioChange called:', { questionId, newValue, instanceIndex, identifier: question.identifier })
+
+    // For repeatable questions, build the full JSON array with the new value
+    // We can't rely on reading state here because React may not have flushed the update yet
+    let valueToSave = newValue
+    if (question.repeatable) {
+      const arr = getRepeatableAnswerArray(questionId)
+      const updated = [...arr]
+      while (updated.length <= instanceIndex) {
+        updated.push('')
+      }
+      updated[instanceIndex] = newValue
+      valueToSave = JSON.stringify(updated)
+    }
 
     // Save the answer immediately
     try {
       await sessionService.saveAnswers(sessionData.session_id, {
-        answers: [{ question_id: questionId, answer_value: newValue }]
+        answers: [{ question_id: questionId, answer_value: valueToSave }]
       })
-      console.log('Answer saved successfully')
+      console.log('Answer saved successfully, valueToSave:', valueToSave)
     } catch (err) {
       console.error('Failed to save answer:', err)
     }
@@ -216,8 +229,19 @@ const InputForms: React.FC = () => {
       setSessionData(data)
 
       // Preserve the just-changed answer and merge with new data
+      // For repeatable questions, we need to preserve the full JSON array, not just the raw value
+      let preservedValue = newValue
+      if (question.repeatable) {
+        const arr = getRepeatableAnswerArray(questionId)
+        const updated = [...arr]
+        while (updated.length <= instanceIndex) {
+          updated.push('')
+        }
+        updated[instanceIndex] = newValue
+        preservedValue = JSON.stringify(updated)
+      }
       setAnswers(currentAnswers => {
-        const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: newValue }
+        const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: preservedValue }
 
         data.questions.forEach(q => {
           if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
@@ -640,20 +664,16 @@ const InputForms: React.FC = () => {
     if (!currentQuestion?.repeatable) return false
 
     const currentGroupId = currentQuestion.repeatable_group_id
+    const currentDepth = currentQuestion.depth ?? 0
 
-    // Look ahead to see if any subsequent question belongs to the same repeatable group
-    // (at any depth — nested questions inside conditionals share the same group ID)
-    for (let i = questionIndex + 1; i < questions.length; i++) {
-      const nextQ = questions[i]
-      if (nextQ?.repeatable && nextQ.repeatable_group_id === currentGroupId) {
-        // There's still a later question in the same group — not the last
-        return false
-      }
-      // If we hit a non-repeatable question at the same or shallower depth, stop looking
-      if (!nextQ?.repeatable && (nextQ?.depth ?? 0) <= (currentQuestion.depth ?? 0)) {
-        break
-      }
+    // Check if the next question is in the same repeatable group and depth
+    const nextQuestion = questions[questionIndex + 1]
+    if (nextQuestion?.repeatable &&
+        nextQuestion.repeatable_group_id === currentGroupId &&
+        (nextQuestion.depth ?? 0) === currentDepth) {
+      return false
     }
+
     return true
   }
 
@@ -662,13 +682,15 @@ const InputForms: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     const currentGroupId = currentQuestion?.repeatable_group_id
+    const currentDepth = currentQuestion?.depth ?? 0
     let startIndex = questionIndex
 
     // Walk backwards to find the start of the repeatable set
-    // Include all questions with the same repeatable_group_id regardless of depth
+    // Only include questions with the same repeatable_group_id and depth
     while (startIndex > 0 &&
            questions[startIndex - 1]?.repeatable &&
-           questions[startIndex - 1]?.repeatable_group_id === currentGroupId) {
+           questions[startIndex - 1]?.repeatable_group_id === currentGroupId &&
+           (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
       startIndex--
     }
     return startIndex
@@ -679,13 +701,15 @@ const InputForms: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     const currentGroupId = currentQuestion?.repeatable_group_id
+    const currentDepth = currentQuestion?.depth ?? 0
     const startIndex = getRepeatableSetStartIndex(questionIndex)
     const ids: number[] = []
 
-    // Collect all consecutive repeatable questions with the same group ID regardless of depth
+    // Collect all consecutive repeatable questions with the same group ID and depth
     for (let i = startIndex; i < questions.length &&
          questions[i]?.repeatable &&
-         questions[i]?.repeatable_group_id === currentGroupId; i++) {
+         questions[i]?.repeatable_group_id === currentGroupId &&
+         (questions[i]?.depth ?? 0) === currentDepth; i++) {
       ids.push(questions[i].id)
     }
     return ids
@@ -805,7 +829,7 @@ const InputForms: React.FC = () => {
                       // Update local state
                       handleValueChange(e.target.value)
                       // Save immediately and trigger conditional refresh for radio buttons
-                      handleRadioChange(question.id, e.target.value)
+                      handleRadioChange(question.id, e.target.value, instanceIndex)
                     }}
                   />
                   <label htmlFor={`q${question.id}-${instanceIndex}-${index}`}>{option.label}</label>
@@ -1920,7 +1944,7 @@ const InputForms: React.FC = () => {
                       return null
                     }
 
-                    // For repeatable questions, we need special handling
+                    // For repeatable questions, render as a repeatable block with per-instance follow-ups
                     if (question.repeatable) {
                       // Check if this is the start of a repeatable set
                       const setStartIndex = getRepeatableSetStartIndex(qIndex)
@@ -1981,18 +2005,51 @@ const InputForms: React.FC = () => {
                                   ×
                                 </button>
                               )}
-                              {setQuestions.map((setQuestion) => (
-                                <div key={setQuestion.id} className="question-item" style={{ marginBottom: '0.75rem' }}>
-                                  <label className="question-label">
-                                    {setQuestion.question_text}
-                                    {setQuestion.is_required && <span className="required-indicator">*</span>}
-                                  </label>
-                                  {setQuestion.help_text && (
-                                    <p className="question-help">{setQuestion.help_text}</p>
-                                  )}
-                                  {renderQuestion(setQuestion, instanceIdx)}
-                                </div>
-                              ))}
+                              {setQuestions.map((setQuestion) => {
+                                // Get this instance's answer for determining follow-ups
+                                const instanceAnswer = setQuestion.repeatable
+                                  ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
+                                  : answers[setQuestion.id] || ''
+
+                                // Find matching conditional follow-ups for this instance's answer
+                                const matchingFollowups = setQuestion.conditional_followups?.filter(fu => {
+                                  if (fu.operator === 'equals' || !fu.operator) {
+                                    return instanceAnswer === fu.trigger_value
+                                  } else if (fu.operator === 'not_equals') {
+                                    return instanceAnswer !== fu.trigger_value
+                                  }
+                                  return false
+                                }) || []
+
+                                return (
+                                  <React.Fragment key={setQuestion.id}>
+                                    <div className="question-item" style={{ marginBottom: '0.75rem' }}>
+                                      <label className="question-label">
+                                        {setQuestion.question_text}
+                                        {setQuestion.is_required && <span className="required-indicator">*</span>}
+                                      </label>
+                                      {setQuestion.help_text && (
+                                        <p className="question-help">{setQuestion.help_text}</p>
+                                      )}
+                                      {renderQuestion(setQuestion, instanceIdx)}
+                                    </div>
+                                    {matchingFollowups.map(fu =>
+                                      fu.questions.map(fq => (
+                                        <div key={`fu-${fq.id}-${instanceIdx}`} className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
+                                          <label className="question-label">
+                                            {fq.question_text}
+                                            {fq.is_required && <span className="required-indicator">*</span>}
+                                          </label>
+                                          {fq.help_text && (
+                                            <p className="question-help">{fq.help_text}</p>
+                                          )}
+                                          {renderQuestion(fq as unknown as QuestionToDisplay, instanceIdx)}
+                                        </div>
+                                      ))
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
                             </div>
                           ))}
                           {isLastInSet && (

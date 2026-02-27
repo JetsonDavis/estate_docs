@@ -428,8 +428,8 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        # Returns list of (question, depth) tuples and repeatable overrides
-        questions_with_depth, repeatable_overrides = SessionService._get_questions_from_logic(
+        # Returns tuple of (questions_with_depth, repeatable_followups)
+        questions_with_depth, repeatable_followups = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
@@ -443,13 +443,36 @@ class SessionService:
         paginated_questions = questions_with_depth[start_idx:end_idx]
 
         # Convert to response format
+        from src.schemas.session import ConditionalFollowup, ConditionalFollowupQuestion
         question_responses = []
         for q, depth in paginated_questions:
-            # Apply repeatable overrides for questions that inherit from parent context
-            q_repeatable = q.repeatable
-            q_repeatable_group_id = q.repeatable_group_id
-            if q.id in repeatable_overrides:
-                q_repeatable, q_repeatable_group_id = repeatable_overrides[q.id]
+            # Build conditional_followups if this repeatable question has them
+            cond_followups = None
+            if q.id in repeatable_followups:
+                cond_followups = []
+                for fu in repeatable_followups[q.id]:
+                    fu_questions = [
+                        ConditionalFollowupQuestion(
+                            id=fq.id,
+                            identifier=fq.identifier,
+                            question_text=fq.question_text,
+                            question_type=fq.question_type,
+                            is_required=fq.is_required,
+                            repeatable=fq.repeatable,
+                            repeatable_group_id=fq.repeatable_group_id,
+                            help_text=fq.help_text,
+                            options=fq.options,
+                            person_display_mode=fq.person_display_mode,
+                            include_time=fq.include_time,
+                            validation_rules=fq.validation_rules,
+                        )
+                        for fq in fu['questions']
+                    ]
+                    cond_followups.append(ConditionalFollowup(
+                        trigger_value=fu['trigger_value'],
+                        operator=fu['operator'],
+                        questions=fu_questions
+                    ))
 
             question_responses.append(QuestionToDisplay(
                 id=q.id,
@@ -457,15 +480,16 @@ class SessionService:
                 question_text=q.question_text,
                 question_type=q.question_type,
                 is_required=q.is_required,
-                repeatable=q_repeatable,
-                repeatable_group_id=q_repeatable_group_id,
+                repeatable=q.repeatable,
+                repeatable_group_id=q.repeatable_group_id,
                 help_text=q.help_text,
                 options=q.options,
                 person_display_mode=q.person_display_mode,
                 include_time=q.include_time,
                 validation_rules=q.validation_rules,
                 current_answer=existing_answers.get(q.id),
-                depth=depth
+                depth=depth,
+                conditional_followups=cond_followups
             ))
 
         is_last_group = current_group_index >= len(ordered_groups) - 1
@@ -569,12 +593,19 @@ class SessionService:
         db: Session,
         group: QuestionGroup,
         existing_answers: Dict[int, str]
-    ) -> List[Question]:
+    ) -> tuple:
         """
         Get questions to display based on question_logic.
         Evaluates conditionals and respects stop flags.
+        
+        Returns:
+            Tuple of (questions_with_depth, repeatable_followups)
+            - questions_with_depth: List of (question, depth) tuples
+            - repeatable_followups: Dict mapping question_id -> list of {trigger_value, operator, questions}
+              for repeatable questions that have conditional follow-ups
         """
         import logging
+        import json
         logger = logging.getLogger(__name__)
 
         logger.info(f"_get_questions_from_logic called for group {group.id} ({group.name})")
@@ -591,8 +622,12 @@ class SessionService:
             return [(q, 0) for q in questions], {}
 
         questions_with_depth = []  # List of (question, depth) tuples
-        repeatable_overrides = {}  # question_id -> (repeatable, repeatable_group_id) for inherited context
         question_ids_added = set()  # Track which question IDs have been added
+        # Track repeatable question identifiers (both namespaced and stripped)
+        repeatable_identifier_to_question_id = {}
+        # Conditional follow-ups for repeatable questions: {question_id: [{trigger_value, operator, questions}]}
+        repeatable_followups = {}
+        
         # Build answer map by identifier
         # Store both namespaced and non-namespaced versions for compatibility
         answer_by_identifier = {}
@@ -607,18 +642,43 @@ class SessionService:
                     answer_by_identifier[stripped_identifier] = answer
 
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
+        
+        # Pre-scan logic to find repeatable question identifiers
+        def find_repeatable_identifiers(items: List[Dict]):
+            for item in items:
+                if item.get('type') == 'question':
+                    qid = item.get('questionId')
+                    if qid:
+                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        if q and q.repeatable:
+                            repeatable_identifier_to_question_id[q.identifier] = q.id
+                            if '.' in q.identifier:
+                                stripped = q.identifier.split('.', 1)[1]
+                                repeatable_identifier_to_question_id[stripped] = q.id
+                elif item.get('type') == 'conditional' and item.get('conditional'):
+                    nested = item['conditional'].get('nestedItems', [])
+                    if nested:
+                        find_repeatable_identifiers(nested)
+        
+        find_repeatable_identifiers(group.question_logic)
+        logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
 
-        def process_logic_items(items: List[Dict], depth: int = 0, parent_repeatable_group_id: str = None) -> bool:
-            """Process logic items. Returns False if stop flag encountered.
-            
-            parent_repeatable_group_id: If set, nested questions that don't have their own
-            repeatable group will inherit this group ID (they're part of a repeatable context).
-            """
+        def collect_nested_questions(items: List[Dict]) -> list:
+            """Collect all question objects from nested logic items (non-recursive for now)."""
+            collected = []
+            for item in items:
+                if item.get('type') == 'question':
+                    qid = item.get('questionId')
+                    if qid:
+                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        if q:
+                            collected.append(q)
+            return collected
+
+        def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
+            """Process logic items. Returns False if stop flag encountered."""
             indent = "  " * depth
-            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}, parent_repeatable_group_id={parent_repeatable_group_id}")
-
-            # Track the active repeatable group at this level
-            active_repeatable_group_id = parent_repeatable_group_id
+            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
 
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
@@ -634,22 +694,6 @@ class SessionService:
                             logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth})")
                             questions_with_depth.append((question, depth))
                             question_ids_added.add(question.id)
-
-                            # If this question is explicitly repeatable, it defines/updates the active group
-                            if question.repeatable and question.repeatable_group_id:
-                                if parent_repeatable_group_id and question.repeatable_group_id != parent_repeatable_group_id:
-                                    # Nested inside a parent repeatable context with a different group ID
-                                    # Override to use the parent's group ID so they form one repeatable block
-                                    repeatable_overrides[question.id] = (True, parent_repeatable_group_id)
-                                    active_repeatable_group_id = parent_repeatable_group_id
-                                    logger.info(f"{indent}  Question repeatable group overridden to parent: {parent_repeatable_group_id}")
-                                else:
-                                    active_repeatable_group_id = question.repeatable_group_id
-                                    logger.info(f"{indent}  Question is repeatable, active_repeatable_group_id={active_repeatable_group_id}")
-                            elif active_repeatable_group_id and not question.repeatable:
-                                # Inherit the parent repeatable group context
-                                repeatable_overrides[question.id] = (True, active_repeatable_group_id)
-                                logger.info(f"{indent}  Question inherits repeatable group from parent: {active_repeatable_group_id}")
                         elif not question:
                             logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
                     else:
@@ -670,6 +714,27 @@ class SessionService:
                     logger.info(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
                     logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
 
+                    # Check if this conditional depends on a repeatable question
+                    # If so, collect the follow-up questions as metadata for per-instance rendering
+                    if identifier and identifier in repeatable_identifier_to_question_id:
+                        parent_q_id = repeatable_identifier_to_question_id[identifier]
+                        nested_items = cond.get('nestedItems', [])
+                        followup_questions = collect_nested_questions(nested_items)
+                        
+                        if followup_questions:
+                            if parent_q_id not in repeatable_followups:
+                                repeatable_followups[parent_q_id] = []
+                            repeatable_followups[parent_q_id].append({
+                                'trigger_value': expected_value,
+                                'operator': operator,
+                                'questions': followup_questions
+                            })
+                            logger.info(f"{indent}  Collected {len(followup_questions)} follow-up questions for repeatable q_id={parent_q_id}, trigger='{expected_value}'")
+                        
+                        # Still evaluate and add to flat list for backwards compatibility
+                        # (non-repeatable rendering paths still need them)
+                        # But mark them so the frontend knows they're also in conditional_followups
+
                     # Check if condition is met
                     # Don't show conditional questions if the referenced field is empty
                     if identifier and identifier in answer_by_identifier:
@@ -682,11 +747,18 @@ class SessionService:
 
                         # Evaluate based on operator
                         if operator == 'not_equals':
-                            condition_met = actual_value != expected_value
+                            # For repeatable questions, check if none of the array elements match
+                            try:
+                                parsed = json.loads(actual_value)
+                                if isinstance(parsed, list):
+                                    condition_met = expected_value not in parsed
+                                else:
+                                    condition_met = actual_value != expected_value
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                condition_met = actual_value != expected_value
                         elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
                             # Count operators for repeatable fields - parse JSON array and compare length
                             try:
-                                import json
                                 parsed = json.loads(actual_value)
                                 if isinstance(parsed, list):
                                     count = len(parsed)
@@ -709,17 +781,34 @@ class SessionService:
                             
                             logger.info(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
                         else:  # 'equals' or default
-                            condition_met = actual_value == expected_value
+                            # For repeatable questions, the answer may be a JSON array
+                            # Check if any element in the array matches the expected value
+                            try:
+                                parsed = json.loads(actual_value)
+                                if isinstance(parsed, list):
+                                    if operator == 'not_equals':
+                                        condition_met = expected_value not in parsed
+                                    else:
+                                        condition_met = expected_value in parsed
+                                    logger.info(f"{indent}  Array comparison: '{expected_value}' in {parsed} = {condition_met}")
+                                else:
+                                    condition_met = actual_value == expected_value
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                condition_met = actual_value == expected_value
                         
                         if condition_met:
                             logger.info(f"{indent}  Condition MET - processing nested items")
                             # Condition met - process nested items
-                            # Pass the active repeatable group context into nested items
-                            nested_items = cond.get('nestedItems', [])
-                            if nested_items:
-                                should_continue = process_logic_items(nested_items, depth + 1, active_repeatable_group_id)
-                                if not should_continue:
-                                    return False
+                            # Skip adding to flat list if this is a repeatable follow-up
+                            # (frontend will render per-instance using conditional_followups)
+                            if identifier in repeatable_identifier_to_question_id:
+                                logger.info(f"{indent}  Skipping flat list addition (repeatable follow-up)")
+                            else:
+                                nested_items = cond.get('nestedItems', [])
+                                if nested_items:
+                                    should_continue = process_logic_items(nested_items, depth + 1)
+                                    if not should_continue:
+                                        return False
                             
                             # Check for end flow flag
                             if cond.get('endFlow'):
@@ -734,8 +823,8 @@ class SessionService:
         
         process_logic_items(group.question_logic)
         logger.info(f"Final questions to display: {[(q.identifier, d) for q, d in questions_with_depth]}")
-        logger.info(f"Repeatable overrides: {repeatable_overrides}")
-        return questions_with_depth, repeatable_overrides
+        logger.info(f"Repeatable followups: {repeatable_followups}")
+        return questions_with_depth, repeatable_followups
     
     @staticmethod
     def save_answers(
