@@ -2275,21 +2275,85 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
-                    <input
-                      type="checkbox"
-                      checked={nestedQuestion.repeatable}
-                      onChange={(e) => {
-                        updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
-                        if (e.target.checked) {
-                          updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
-                        } else {
-                          updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                  {(() => {
+                    // Find the previous repeatable question within this nested context
+                    let prevRepeatableNestedQuestion: QuestionFormData | null = null
+                    for (let i = itemIndex - 1; i >= 0; i--) {
+                      const prevItem = nestedItems[i]
+                      if (prevItem.type === 'question') {
+                        const q = getQuestionFromLogicItem(prevItem)
+                        if (q?.repeatable) {
+                          prevRepeatableNestedQuestion = q
                         }
-                      }}
-                    />
-                    Repeatable
-                  </label>
+                        break // Stop at the first question we find
+                      }
+                    }
+                    // Also check the parent question if no previous sibling found
+                    if (!prevRepeatableNestedQuestion && parentQuestion?.repeatable) {
+                      prevRepeatableNestedQuestion = parentQuestion
+                    }
+
+                    if (prevRepeatableNestedQuestion) {
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={!nestedQuestion.repeatable}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', false)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                              }}
+                            />
+                            Not Repeatable
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id === prevRepeatableNestedQuestion?.repeatable_group_id}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', true)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id)
+                              }}
+                            />
+                            Join Repeatable Group
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`repeatable-${nestedQuestion.id}`}
+                              checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id !== prevRepeatableNestedQuestion?.repeatable_group_id && nestedQuestion.repeatable_group_id !== undefined}
+                              onChange={() => {
+                                updateQuestion(nestedQuestion.id, 'repeatable', true)
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                              }}
+                            />
+                            Start New Repeatable Group
+                          </label>
+                        </div>
+                      )
+                    } else {
+                      return (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
+                          <input
+                            type="checkbox"
+                            checked={nestedQuestion.repeatable}
+                            onChange={(e) => {
+                              updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
+                              if (e.target.checked) {
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                              } else {
+                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                              }
+                            }}
+                          />
+                          Repeatable
+                        </label>
+                      )
+                    }
+                  })()}
                 </div>
                 <input
                   type="text"
