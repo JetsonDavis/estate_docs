@@ -428,8 +428,8 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        # Returns list of (question, depth) tuples
-        questions_with_depth = SessionService._get_questions_from_logic(
+        # Returns list of (question, depth) tuples and repeatable overrides
+        questions_with_depth, repeatable_overrides = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
@@ -445,14 +445,20 @@ class SessionService:
         # Convert to response format
         question_responses = []
         for q, depth in paginated_questions:
+            # Apply repeatable overrides for questions that inherit from parent context
+            q_repeatable = q.repeatable
+            q_repeatable_group_id = q.repeatable_group_id
+            if q.id in repeatable_overrides:
+                q_repeatable, q_repeatable_group_id = repeatable_overrides[q.id]
+
             question_responses.append(QuestionToDisplay(
                 id=q.id,
                 identifier=q.identifier,
                 question_text=q.question_text,
                 question_type=q.question_type,
                 is_required=q.is_required,
-                repeatable=q.repeatable,
-                repeatable_group_id=q.repeatable_group_id,
+                repeatable=q_repeatable,
+                repeatable_group_id=q_repeatable_group_id,
                 help_text=q.help_text,
                 options=q.options,
                 person_display_mode=q.person_display_mode,
@@ -582,9 +588,10 @@ class SessionService:
                 Question.question_group_id == group.id,
                 Question.is_active == True
             ).order_by(Question.display_order).all()
-            return [(q, 0) for q in questions]
+            return [(q, 0) for q in questions], {}
 
         questions_with_depth = []  # List of (question, depth) tuples
+        repeatable_overrides = {}  # question_id -> (repeatable, repeatable_group_id) for inherited context
         question_ids_added = set()  # Track which question IDs have been added
         # Build answer map by identifier
         # Store both namespaced and non-namespaced versions for compatibility
@@ -601,10 +608,17 @@ class SessionService:
 
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
 
-        def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
-            """Process logic items. Returns False if stop flag encountered."""
+        def process_logic_items(items: List[Dict], depth: int = 0, parent_repeatable_group_id: str = None) -> bool:
+            """Process logic items. Returns False if stop flag encountered.
+            
+            parent_repeatable_group_id: If set, nested questions that don't have their own
+            repeatable group will inherit this group ID (they're part of a repeatable context).
+            """
             indent = "  " * depth
-            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
+            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}, parent_repeatable_group_id={parent_repeatable_group_id}")
+
+            # Track the active repeatable group at this level
+            active_repeatable_group_id = parent_repeatable_group_id
 
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
@@ -620,6 +634,15 @@ class SessionService:
                             logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth})")
                             questions_with_depth.append((question, depth))
                             question_ids_added.add(question.id)
+
+                            # If this question is explicitly repeatable, it defines the active group
+                            if question.repeatable and question.repeatable_group_id:
+                                active_repeatable_group_id = question.repeatable_group_id
+                                logger.info(f"{indent}  Question is repeatable, active_repeatable_group_id={active_repeatable_group_id}")
+                            elif active_repeatable_group_id and not question.repeatable:
+                                # Inherit the parent repeatable group context
+                                repeatable_overrides[question.id] = (True, active_repeatable_group_id)
+                                logger.info(f"{indent}  Question inherits repeatable group from parent: {active_repeatable_group_id}")
                         elif not question:
                             logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
                     else:
@@ -684,9 +707,10 @@ class SessionService:
                         if condition_met:
                             logger.info(f"{indent}  Condition MET - processing nested items")
                             # Condition met - process nested items
+                            # Pass the active repeatable group context into nested items
                             nested_items = cond.get('nestedItems', [])
                             if nested_items:
-                                should_continue = process_logic_items(nested_items, depth + 1)
+                                should_continue = process_logic_items(nested_items, depth + 1, active_repeatable_group_id)
                                 if not should_continue:
                                     return False
                             
@@ -703,7 +727,8 @@ class SessionService:
         
         process_logic_items(group.question_logic)
         logger.info(f"Final questions to display: {[(q.identifier, d) for q, d in questions_with_depth]}")
-        return questions_with_depth
+        logger.info(f"Repeatable overrides: {repeatable_overrides}")
+        return questions_with_depth, repeatable_overrides
     
     @staticmethod
     def save_answers(

@@ -2046,8 +2046,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   padding: '0.2rem 0.5rem',
                   fontSize: '0.65rem',
                   background: 'white',
-                  color: '#7c3aed',
-                  border: '1px dashed #7c3aed',
+                  color: '#2563eb',
+                  border: '1px dashed #2563eb',
                   borderRadius: '0.25rem',
                   cursor: 'pointer',
                   opacity: 0.7,
@@ -2062,7 +2062,44 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </svg>
                 Insert Question
               </button>
-              {itemIndex > 0 && (
+              {/* Insert question one level up - pastel light blue arrow */}
+              {parentPath.length > 0 && itemIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parentPathUp = parentPath.slice(0, -1)
+                    const insertBeforeIndex = parentPath[parentPath.length - 1]
+                    if (parentPathUp.length > 0) {
+                      insertNestedQuestionBeforeIndex(insertBeforeIndex, parentPathUp, depth - 1)
+                    } else {
+                      // Insert at root level before the parent conditional
+                      insertQuestionBeforeIndex(insertBeforeIndex, insertBeforeIndex)
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.65rem',
+                    background: '#bae6fd',
+                    color: '#1e3a5f',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert question one level up"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </button>
+              )}
+              {
                 <button
                   type="button"
                   onClick={() => {
@@ -2080,8 +2117,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     }
                     
                     // Insert conditional at the SAME LEVEL as this nested question
-                    // Insert it right before this question (at itemIndex - 1 position, after the previous item)
-                    addConditionalToLogicAtIndex(itemIndex - 1, parentPath, prevQuestionForCondition)
+                    // Insert it before this item
+                    addConditionalToLogicAtIndex(Math.max(0, itemIndex - 1), parentPath, prevQuestionForCondition)
                   }}
                   style={{
                     display: 'flex',
@@ -2105,6 +2142,53 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Insert Conditional
+                </button>
+              }
+              {/* Insert conditional one level up - light purple arrow */}
+              {parentPath.length > 0 && itemIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parentPathUp = parentPath.slice(0, -1)
+                    const insertAfterIndex = parentPath[parentPath.length - 1]
+                    // Find the previous question to use as ifIdentifier
+                    let prevQuestionForCondition: QuestionFormData | undefined
+                    for (let i = itemIndex - 1; i >= 0; i--) {
+                      const prevItem = nestedItems[i]
+                      if (prevItem.type === 'question') {
+                        prevQuestionForCondition = questions.find(q =>
+                          q.id === (prevItem as any).localQuestionId || q.dbId === prevItem.questionId
+                        )
+                        break
+                      }
+                    }
+                    addConditionalToLogicAtIndex(
+                      insertAfterIndex,
+                      parentPathUp.length > 0 ? parentPathUp : undefined,
+                      prevQuestionForCondition
+                    )
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.65rem',
+                    background: '#c4b5fd',
+                    color: '#4c1d95',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert conditional one level up"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
                 </button>
               )}
             </div>
