@@ -505,6 +505,32 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     })
   }
 
+  const getAllCollapsibleIds = (): Set<string> => {
+    const ids = new Set<string>()
+    // Main-level questions
+    for (const q of questions) {
+      ids.add(`q-${q.id}`)
+      ids.add(`nq-${q.id}`)
+    }
+    // Walk logic tree for conditionals and nested items
+    const walkLogic = (items: QuestionLogicItem[]) => {
+      for (const item of items) {
+        if (item.type === 'conditional') {
+          ids.add(`c-${item.id}`)
+          ids.add(`nc-${item.id}`)
+          if (item.conditional?.nestedItems) {
+            walkLogic(item.conditional.nestedItems)
+          }
+        }
+      }
+    }
+    walkLogic(questionLogic)
+    return ids
+  }
+
+  const collapseAll = () => setCollapsedItems(getAllCollapsibleIds())
+  const expandAll = () => setCollapsedItems(new Set())
+
   // Helper to generate a compact question type label
   const getQuestionTypeLabel = (q: QuestionFormData): string => {
     const isYesNo = q.question_type === 'multiple_choice' &&
@@ -3239,8 +3265,40 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
         {groupInfoSaved && (
         <div className="form-section">
-          <div className="form-section-header">
+          <div className="form-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h2 className="form-section-title" style={{ marginBottom: 0 }}>Questions</h2>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={expandAll}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.7rem',
+                  background: 'white',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={collapseAll}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.7rem',
+                  background: 'white',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Collapse All
+              </button>
+            </div>
           </div>
 
           {mainLevelQuestions.map((question, qIndex) => {
