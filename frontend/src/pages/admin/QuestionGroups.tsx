@@ -3022,7 +3022,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 })()}
               </div>
 
-              {/* Nested items */}
+            </div>}
+
+              {/* Nested items - always visible even when collapsed */}
               <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
                   <>
@@ -3063,7 +3065,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   </>
                 ) : null}
               </div>
-            </div>}
 
           </div>
         )
@@ -3940,13 +3941,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           })()}
                         </div>
 
-                        {/* Nested items */}
-                        <div style={{ marginTop: '0.5rem' }}>
-                          {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
-                            renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
-                          )}
-                        </div>
                       </div>}
+
+                      {/* Nested items - always visible even when collapsed */}
+                      <div style={{ marginTop: '0.5rem' }}>
+                        {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
+                          renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
+                        )}
+                      </div>
                     </div>
 
                     
