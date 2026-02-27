@@ -416,7 +416,6 @@ const stripIdentifierNamespace = (identifier: string): string => {
 }
 
 // Color scheme for different nesting depths
-// Level 0 (root): gray, Level 1: purple, Level 2: green, Level 3: amber, Level 4: red
 const getDepthBackgroundColor = (depth: number): string => {
   const colors = [
     '#f9fafb', // Level 0: gray-50
@@ -424,6 +423,12 @@ const getDepthBackgroundColor = (depth: number): string => {
     '#f0fdf4', // Level 2: green-50
     '#fffbeb', // Level 3: amber-50
     '#fef2f2', // Level 4: red-50
+    '#eff6ff', // Level 5: blue-50
+    '#fdf2f8', // Level 6: pink-50
+    '#f0fdfa', // Level 7: teal-50
+    '#fefce8', // Level 8: yellow-50
+    '#fdf4ff', // Level 9: fuchsia-50
+    '#f8fafc', // Level 10: slate-50
   ]
   return colors[Math.min(depth, colors.length - 1)]
 }
@@ -435,6 +440,12 @@ const getDepthBorderColor = (depth: number): string => {
     '#bbf7d0', // Level 2: green-200
     '#fde68a', // Level 3: amber-200
     '#fecaca', // Level 4: red-200
+    '#bfdbfe', // Level 5: blue-200
+    '#fbcfe8', // Level 6: pink-200
+    '#99f6e4', // Level 7: teal-200
+    '#fef08a', // Level 8: yellow-200
+    '#f5d0fe', // Level 9: fuchsia-200
+    '#cbd5e1', // Level 10: slate-200
   ]
   return colors[Math.min(depth, colors.length - 1)]
 }
@@ -446,6 +457,12 @@ const getDepthTextColor = (depth: number): string => {
     '#16a34a', // Level 2: green-600
     '#d97706', // Level 3: amber-600
     '#dc2626', // Level 4: red-600
+    '#2563eb', // Level 5: blue-600
+    '#db2777', // Level 6: pink-600
+    '#0d9488', // Level 7: teal-600
+    '#ca8a04', // Level 8: yellow-600
+    '#c026d3', // Level 9: fuchsia-600
+    '#475569', // Level 10: slate-600
   ]
   return colors[Math.min(depth, colors.length - 1)]
 }
@@ -1973,7 +1990,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     parentQuestion?: QuestionFormData,
     questionNumberPrefix?: string
   ): React.ReactNode => {
-    if (depth > 4) return null // Max 4 levels of nesting
+    if (depth > 10) return null // Max 10 levels of nesting
 
     // Filter to only items that have valid questions, and track their display index
     let questionDisplayIndex = 0
@@ -2387,7 +2404,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             </div>
 
             {/* Action buttons after nested question */}
-            {depth <= 4 && (
+            {depth <= 10 && (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginLeft: '1rem' }}>
                 {isLastQuestionInGroup && (
                   <button
@@ -2412,33 +2429,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     Add Follow-on Question
                   </button>
                 )}
-                {depth > 0 && depth < 4 && isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Insert conditional at SAME level after this question
-                      addConditionalToLogicAtIndex(itemIndex, parentPath, nestedQuestion)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#7c3aed',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Add Follow-on Conditional
-                  </button>
-                )}
-                {/* Move item one level up - orange arrow */}
+                {/* Move item one level up - light blue arrow */}
                 {parentPath.length > 0 && isLastQuestionInGroup && (
                   <button
                     type="button"
@@ -2492,13 +2483,72 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       gap: '0.25rem',
                       padding: '0.25rem 0.5rem',
                       fontSize: '0.7rem',
-                      background: '#f97316',
-                      color: 'white',
+                      background: '#bae6fd',
+                      color: '#1e3a5f',
                       border: 'none',
                       borderRadius: '0.25rem',
                       cursor: 'pointer'
                     }}
                     title="Move question one level up"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                )}
+                {depth > 0 && depth < 10 && isLastQuestionInGroup && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Insert conditional at SAME level after this question
+                      addConditionalToLogicAtIndex(itemIndex, parentPath, nestedQuestion)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.7rem',
+                      background: '#7c3aed',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Add Follow-on Conditional
+                  </button>
+                )}
+                {/* Add conditional one level up - light purple */}
+                {parentPath.length > 0 && isLastQuestionInGroup && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Insert conditional one level higher than the current level
+                      const parentPathUp = parentPath.slice(0, -1)
+                      const insertAfterIndex = parentPath[parentPath.length - 1]
+                      addConditionalToLogicAtIndex(
+                        insertAfterIndex,
+                        parentPathUp.length > 0 ? parentPathUp : undefined,
+                        nestedQuestion
+                      )
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.7rem',
+                      background: '#c4b5fd',
+                      color: '#4c1d95',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Add conditional one level up"
                   >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />

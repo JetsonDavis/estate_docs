@@ -1197,105 +1197,6 @@ const InputForms: React.FC = () => {
               </div>
             </div>
 
-            {/* Trustor Information Section */}
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Trustor Information</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Trustor Is Living</label>
-                    <select
-                      className="question-select"
-                      value={personData.trustor_is_living ?? 1}
-                      onChange={(e) => updatePersonField('trustor_is_living', e.target.value)}
-                      onBlur={savePersonOnBlur}
-                    >
-                      <option value={1}>Yes</option>
-                      <option value={0}>No (Deceased)</option>
-                    </select>
-                  </div>
-                  {String(personData.trustor_is_living) === '0' && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Death</label>
-                      <input
-                        type="date"
-                        className="question-input"
-                        value={personData.date_of_death || ''}
-                        onChange={(e) => updatePersonField('date_of_death', e.target.value)}
-                        onBlur={savePersonOnBlur}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: String(personData.trustor_is_living) !== '0' ? '#9ca3af' : undefined }}>Death Certificate Received</label>
-                    <select
-                      className="question-select"
-                      value={personData.trustor_death_certificate_received ?? 0}
-                      onChange={(e) => updatePersonField('trustor_death_certificate_received', e.target.value)}
-                      onBlur={savePersonOnBlur}
-                      disabled={String(personData.trustor_is_living) !== '0'}
-                      style={{ opacity: String(personData.trustor_is_living) !== '0' ? 0.5 : 1, cursor: String(personData.trustor_is_living) !== '0' ? 'not-allowed' : undefined }}
-                    >
-                      <option value={0}>No</option>
-                      <option value={1}>Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Of Sound Mind</label>
-                    <select
-                      className="question-select"
-                      value={personData.trustor_of_sound_mind ?? 1}
-                      onChange={(e) => updatePersonField('trustor_of_sound_mind', e.target.value)}
-                      onBlur={savePersonOnBlur}
-                    >
-                      <option value={1}>Yes</option>
-                      <option value={0}>No</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Has Relinquished</label>
-                    <select
-                      className="question-select"
-                      value={personData.trustor_has_relinquished ?? 0}
-                      onChange={(e) => updatePersonField('trustor_has_relinquished', e.target.value)}
-                      onBlur={savePersonOnBlur}
-                    >
-                      <option value={0}>No</option>
-                      <option value={1}>Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquished Date</label>
-                    <input
-                      type="date"
-                      className="question-input"
-                      value={personData.trustor_relinquished_date || ''}
-                      onChange={(e) => updatePersonField('trustor_relinquished_date', e.target.value)}
-                      onBlur={savePersonOnBlur}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquishment Doc Received</label>
-                  <select
-                    className="question-select"
-                    value={personData.trustor_reling_doc_received ?? 0}
-                    onChange={(e) => updatePersonField('trustor_reling_doc_received', e.target.value)}
-                    onBlur={savePersonOnBlur}
-                  >
-                    <option value={0}>No</option>
-                    <option value={1}>Yes</option>
-                  </select>
-                </div>
-              </div>
-            </div>
                 </div>
               </details>
             )}
@@ -1794,105 +1695,6 @@ const InputForms: React.FC = () => {
               </div>
             </div>
 
-            {/* Trustor Information Section */}
-            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '1rem' }}>
-              <h4 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>Trustor Information</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Trustor Is Living</label>
-                    <select
-                      className="question-select"
-                      value={personBackupData.trustor_is_living ?? 1}
-                      onChange={(e) => updatePersonBackupField('trustor_is_living', e.target.value)}
-                      onBlur={savePersonBackupOnBlur}
-                    >
-                      <option value={1}>Yes</option>
-                      <option value={0}>No (Deceased)</option>
-                    </select>
-                  </div>
-                  {String(personBackupData.trustor_is_living) === '0' && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Death</label>
-                      <input
-                        type="date"
-                        className="question-input"
-                        value={personBackupData.date_of_death || ''}
-                        onChange={(e) => updatePersonBackupField('date_of_death', e.target.value)}
-                        onBlur={savePersonBackupOnBlur}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: String(personBackupData.trustor_is_living) !== '0' ? '#9ca3af' : undefined }}>Death Certificate Received</label>
-                    <select
-                      className="question-select"
-                      value={personBackupData.trustor_death_certificate_received ?? 0}
-                      onChange={(e) => updatePersonBackupField('trustor_death_certificate_received', e.target.value)}
-                      onBlur={savePersonBackupOnBlur}
-                      disabled={String(personBackupData.trustor_is_living) !== '0'}
-                      style={{ opacity: String(personBackupData.trustor_is_living) !== '0' ? 0.5 : 1, cursor: String(personBackupData.trustor_is_living) !== '0' ? 'not-allowed' : undefined }}
-                    >
-                      <option value={0}>No</option>
-                      <option value={1}>Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Of Sound Mind</label>
-                    <select
-                      className="question-select"
-                      value={personBackupData.trustor_of_sound_mind ?? 1}
-                      onChange={(e) => updatePersonBackupField('trustor_of_sound_mind', e.target.value)}
-                      onBlur={savePersonBackupOnBlur}
-                    >
-                      <option value={1}>Yes</option>
-                      <option value={0}>No</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Has Relinquished</label>
-                    <select
-                      className="question-select"
-                      value={personBackupData.trustor_has_relinquished ?? 0}
-                      onChange={(e) => updatePersonBackupField('trustor_has_relinquished', e.target.value)}
-                      onBlur={savePersonBackupOnBlur}
-                    >
-                      <option value={0}>No</option>
-                      <option value={1}>Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquished Date</label>
-                    <input
-                      type="date"
-                      className="question-input"
-                      value={personBackupData.trustor_relinquished_date || ''}
-                      onChange={(e) => updatePersonBackupField('trustor_relinquished_date', e.target.value)}
-                      onBlur={savePersonBackupOnBlur}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Relinquishment Doc Received</label>
-                  <select
-                    className="question-select"
-                    value={personBackupData.trustor_reling_doc_received ?? 0}
-                    onChange={(e) => updatePersonBackupField('trustor_reling_doc_received', e.target.value)}
-                    onBlur={savePersonBackupOnBlur}
-                  >
-                    <option value={0}>No</option>
-                    <option value={1}>Yes</option>
-                  </select>
-                </div>
-              </div>
-            </div>
                 </div>
               </details>
             )}
@@ -2282,31 +2084,15 @@ const InputForms: React.FC = () => {
                     </button>
                   )}
 
-                  {/* Show Update button when there are multiple pages and we're not on the last page */}
-                  {sessionData.total_pages > 1 && currentPage < sessionData.total_pages && hasChanges && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await saveCurrentAnswers()
-                        setHasChanges(false)
-                      }}
-                      disabled={submitting}
-                      className="btn btn-secondary"
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      {submitting ? 'Updating...' : 'Update'}
-                    </button>
-                  )}
-
                   <button
                     type="button"
                     onClick={() => handleNavigate('forward')}
                     disabled={submitting}
                     className="btn btn-primary"
                   >
-                    {submitting ? (hasChanges ? 'Updating...' : 'Saving...') : (
+                    {submitting ? 'Saving...' : (
                       sessionData.is_last_group && currentPage >= sessionData.total_pages
-                        ? (hasChanges ? 'Update' : 'Exit')
+                        ? 'Exit'
                         : 'Next →'
                     )}
                   </button>
