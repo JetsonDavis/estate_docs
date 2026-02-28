@@ -90,6 +90,7 @@ export interface QuestionGroup {
   identifier: string
   display_order: number
   question_logic: QuestionLogicItem[] | null
+  collapsed_items: string[] | null
   created_at: string
   updated_at: string
   is_active: boolean
@@ -109,6 +110,7 @@ export interface QuestionGroupUpdate {
   description?: string
   display_order?: number
   question_logic?: QuestionLogicItem[]
+  collapsed_items?: string[]
   is_active?: boolean
 }
 

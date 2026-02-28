@@ -490,24 +490,33 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const pendingRequestsRef = useRef<number>(0)
   const [hasPendingRequests, setHasPendingRequests] = useState(false)
   const nestedQuestionIdsRef = useRef<Set<string>>(new Set())
-  const collapsedStorageKey = groupId ? `collapsed-items-${groupId}` : null
-  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => {
-    if (collapsedStorageKey) {
-      try {
-        const stored = localStorage.getItem(collapsedStorageKey)
-        if (stored) return new Set(JSON.parse(stored))
-      } catch {}
-    }
-    return new Set()
-  })
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set())
+  const collapsedSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isEditMode = !!groupId
+
+  const saveCollapsedItems = (items: Set<string>) => {
+    const targetGroupId = groupId || null
+    if (!targetGroupId) return
+
+    if (collapsedSaveTimeoutRef.current) {
+      clearTimeout(collapsedSaveTimeoutRef.current)
+    }
+
+    collapsedSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await questionGroupService.updateQuestionGroup(targetGroupId, {
+          collapsed_items: [...items]
+        })
+      } catch (err) {
+        console.error('Failed to save collapsed items:', err)
+      }
+    }, 500)
+  }
 
   const updateCollapsedItems = (updater: (prev: Set<string>) => Set<string>) => {
     setCollapsedItems(prev => {
       const next = updater(prev)
-      if (collapsedStorageKey) {
-        try { localStorage.setItem(collapsedStorageKey, JSON.stringify([...next])) } catch {}
-      }
+      saveCollapsedItems(next)
       return next
     })
   }
@@ -688,6 +697,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               })
             : []
           setQuestions(loadedQuestions)
+
+          // Load collapsed items from DB
+          if (groupData.collapsed_items && groupData.collapsed_items.length > 0) {
+            setCollapsedItems(new Set(groupData.collapsed_items))
+          }
 
           // Load question logic if it exists, and clean up orphaned items
           if (groupData.question_logic && groupData.question_logic.length > 0) {

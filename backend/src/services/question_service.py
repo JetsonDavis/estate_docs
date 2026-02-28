@@ -93,6 +93,8 @@ class QuestionGroupService:
             group.display_order = group_data.display_order
         if group_data.question_logic is not None:
             group.question_logic = group_data.question_logic
+        if group_data.collapsed_items is not None:
+            group.collapsed_items = group_data.collapsed_items
         if group_data.is_active is not None:
             group.is_active = group_data.is_active
 

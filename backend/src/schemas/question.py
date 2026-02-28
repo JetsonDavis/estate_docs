@@ -133,6 +133,7 @@ class QuestionGroupUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
     display_order: Optional[int] = Field(None, ge=0)
     question_logic: Optional[List[Dict[str, Any]]] = None
+    collapsed_items: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
 
@@ -144,6 +145,7 @@ class QuestionGroupResponse(BaseModel):
     identifier: str
     display_order: int
     question_logic: Optional[List[Dict[str, Any]]] = None
+    collapsed_items: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
     is_active: bool

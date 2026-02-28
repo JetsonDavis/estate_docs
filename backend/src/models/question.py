@@ -31,6 +31,9 @@ class QuestionGroup(Base, TimestampMixin, SoftDeleteMixin):
     # Structure: [{ type: 'question', questionId: 123 }, { type: 'conditional', ifIdentifier: 'prev_q', value: 'yes', nestedItems: [...] }]
     question_logic = Column(JSON, nullable=True)
     
+    # UI state: list of collapsed item IDs for the question group editor
+    collapsed_items = Column(JSON, nullable=True)
+    
     # Relationships
     questions = relationship(
         "Question",
