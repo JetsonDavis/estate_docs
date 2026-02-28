@@ -2143,6 +2143,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     let questionDisplayIndex = 0
     let conditionalDisplayIndex = 0
 
+    // Build repeatable group color map for nested questions
+    const nestedRepeatableColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
+    const nestedGroupColorMap = new Map<string, string>()
+    let nestedColorIdx = 0
+    for (const ni of nestedItems) {
+      if (ni.type === 'question') {
+        const nq = getQuestionFromLogicItem(ni)
+        if (nq?.repeatable && nq.repeatable_group_id && !nestedGroupColorMap.has(nq.repeatable_group_id)) {
+          nestedGroupColorMap.set(nq.repeatable_group_id, nestedRepeatableColors[nestedColorIdx % nestedRepeatableColors.length])
+          nestedColorIdx++
+        }
+      }
+    }
+
+    // Build ordered list of question-type items for neighbor lookups
+    const nestedQuestionItems: { itemIndex: number; question: QuestionFormData }[] = []
+    for (let ni = 0; ni < nestedItems.length; ni++) {
+      if (nestedItems[ni].type === 'question') {
+        const nq = getQuestionFromLogicItem(nestedItems[ni])
+        if (nq) nestedQuestionItems.push({ itemIndex: ni, question: nq })
+      }
+    }
+
     return nestedItems.map((item, itemIndex) => {
       const currentPath = [...parentPath, itemIndex]
 
@@ -2175,8 +2198,34 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           prevItem.conditional?.nestedItems && 
           prevItem.conditional.nestedItems.length > 0
         
+        // Repeatable group bracket info for nested questions
+        const nestedGroupId = nestedQuestion.repeatable && nestedQuestion.repeatable_group_id ? nestedQuestion.repeatable_group_id : null
+        const nestedGroupColor = nestedGroupId ? nestedGroupColorMap.get(nestedGroupId) || null : null
+        const qItemIdx = nestedQuestionItems.findIndex(qi => qi.itemIndex === itemIndex)
+        const prevNestedInGroup = qItemIdx > 0 && nestedQuestionItems[qItemIdx - 1].question.repeatable && nestedQuestionItems[qItemIdx - 1].question.repeatable_group_id === nestedGroupId && nestedGroupId !== null
+        const nextNestedInGroup = qItemIdx < nestedQuestionItems.length - 1 && nestedQuestionItems[qItemIdx + 1].question.repeatable && nestedQuestionItems[qItemIdx + 1].question.repeatable_group_id === nestedGroupId && nestedGroupId !== null
+
         return (
-          <div key={item.id} style={{ marginBottom: '1rem' }}>
+          <div key={item.id} style={{ marginBottom: '1rem', position: 'relative' }}>
+            {/* Repeatable group bracket for nested questions */}
+            {nestedGroupColor && (
+              <div style={{
+                position: 'absolute',
+                left: '-8px',
+                top: prevNestedInGroup ? '-8px' : '28px',
+                bottom: nextNestedInGroup ? '-8px' : '12px',
+                width: '8px',
+                borderLeft: `3px solid ${nestedGroupColor}`,
+                borderTop: !prevNestedInGroup ? `3px solid ${nestedGroupColor}` : 'none',
+                borderBottom: !nextNestedInGroup ? `3px solid ${nestedGroupColor}` : 'none',
+                borderRight: 'none',
+                borderRadius: !prevNestedInGroup && !nextNestedInGroup ? '4px 0 0 4px'
+                  : !prevNestedInGroup ? '4px 0 0 0'
+                  : !nextNestedInGroup ? '0 0 0 4px'
+                  : '0',
+                zIndex: 1
+              }} />
+            )}
             {/* Insert Question and Insert Conditional buttons before each nested question */}
             {/* Hide if previous item is a conditional with nested items (it has its own Insert button) */}
             {!prevIsConditionalWithItems && (
@@ -3367,14 +3416,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {groupColor && (
                 <div style={{
                   position: 'absolute',
-                  left: '-6px',
+                  left: '-10px',
                   top: prevInSameGroup ? '-6px' : '40px',
                   bottom: nextInSameGroup ? '-6px' : '12px',
-                  width: '4px',
-                  backgroundColor: groupColor,
-                  borderRadius: !prevInSameGroup && !nextInSameGroup ? '2px'
-                    : !prevInSameGroup ? '2px 2px 0 0'
-                    : !nextInSameGroup ? '0 0 2px 2px'
+                  width: '10px',
+                  borderLeft: `3px solid ${groupColor}`,
+                  borderTop: !prevInSameGroup ? `3px solid ${groupColor}` : 'none',
+                  borderBottom: !nextInSameGroup ? `3px solid ${groupColor}` : 'none',
+                  borderRight: 'none',
+                  borderRadius: !prevInSameGroup && !nextInSameGroup ? '4px 0 0 4px'
+                    : !prevInSameGroup ? '4px 0 0 0'
+                    : !nextInSameGroup ? '0 0 0 4px'
                     : '0',
                   zIndex: 1
                 }} />
@@ -3892,7 +3944,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`c-${logicItem.id}`)}>
                           <span style={{ fontSize: '0.65rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`c-${logicItem.id}`) ? '\u25B6' : '\u25BC'}</span>
                           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
-                            Conditional ({logicIndex + 1})
+                            Conditional ({qIndex + 1}-{condIndex + 1})
                           </div>
                           {collapsedItems.has(`c-${logicItem.id}`) && (
                             <div style={{ marginLeft: '0.5rem' }}>{renderConditionalSummary(logicItem)}</div>
@@ -4060,7 +4112,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       {/* Nested items - always visible even when collapsed */}
                       <div style={{ marginTop: '0.5rem' }}>
                         {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
-                          renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, (logicIndex + 1).toString())
+                          renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)
                         )}
                       </div>
                     </div>
