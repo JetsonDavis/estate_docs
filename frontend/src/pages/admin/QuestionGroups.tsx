@@ -3331,7 +3331,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             </div>
           </div>
 
-          {mainLevelQuestions.map((question, qIndex) => {
+          {(() => {
+            // Build group color map
+            const repeatableGroupColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
+            const groupColorMap = new Map<string, string>()
+            let colorIdx = 0
+            for (const q of mainLevelQuestions) {
+              if (q.repeatable && q.repeatable_group_id && !groupColorMap.has(q.repeatable_group_id)) {
+                groupColorMap.set(q.repeatable_group_id, repeatableGroupColors[colorIdx % repeatableGroupColors.length])
+                colorIdx++
+              }
+            }
+
+            return mainLevelQuestions.map((question, qIndex) => {
             // Find the logic index for this question to use for insertion
             const logicIndex = questionLogic.findIndex(item =>
               item.type === 'question' &&
@@ -3342,8 +3354,32 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             const prevQuestion = qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null
             const prevIsCollapsed = prevQuestion ? collapsedItems.has(`q-${prevQuestion.id}`) : false
 
+            // Repeatable group bracket info
+            const groupId = question.repeatable && question.repeatable_group_id ? question.repeatable_group_id : null
+            const groupColor = groupId ? groupColorMap.get(groupId) || '#3b82f6' : null
+            const prevInSameGroup = prevQuestion?.repeatable && prevQuestion?.repeatable_group_id === groupId && groupId !== null
+            const nextQuestion = qIndex < mainLevelQuestions.length - 1 ? mainLevelQuestions[qIndex + 1] : null
+            const nextInSameGroup = nextQuestion?.repeatable && nextQuestion?.repeatable_group_id === groupId && groupId !== null
+
             return (
-            <div key={question.id} className="question-builder" style={isCollapsed ? { marginBottom: '3px' } : undefined}>
+            <div key={question.id} style={{ position: 'relative' }}>
+              {/* Repeatable group bracket */}
+              {groupColor && (
+                <div style={{
+                  position: 'absolute',
+                  left: '-6px',
+                  top: prevInSameGroup ? '-6px' : '40px',
+                  bottom: nextInSameGroup ? '-6px' : '12px',
+                  width: '4px',
+                  backgroundColor: groupColor,
+                  borderRadius: !prevInSameGroup && !nextInSameGroup ? '2px'
+                    : !prevInSameGroup ? '2px 2px 0 0'
+                    : !nextInSameGroup ? '0 0 2px 2px'
+                    : '0',
+                  zIndex: 1
+                }} />
+              )}
+            <div className="question-builder" style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
@@ -4036,7 +4072,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 })
               })()}
             </div>
-          )})}
+            </div>
+          )})
+          })()}
 
 
           {questions.length === 0 && (
