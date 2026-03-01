@@ -708,23 +708,58 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             // Create a set of valid question IDs
             const validQuestionIds = new Set(loadedQuestions.map(q => q.dbId))
             
-            // Build a map of localQuestionId -> dbId for questions that have been saved
-            // This is used to fix question slots that were saved with undefined questionId
-            const localIdToDbId = new Map<string, number>()
+            // First pass: Sync question IDs between logic items and loaded questions.
+            // Logic items reference questions via questionId (DB id) or localQuestionId (timestamp).
+            // When loading from DB, question.id = dbId.toString(), which doesn't match localQuestionId.
+            // We need to:
+            // 1. For logic items WITH questionId: update the matching question's id to localQuestionId
+            // 2. For logic items WITHOUT questionId: find the matching question and patch questionId
+            const dbIdToQuestion = new Map<number, typeof loadedQuestions[0]>()
             for (const q of loadedQuestions) {
-              if (q.dbId && q.id) {
-                localIdToDbId.set(q.id, q.dbId)
+              if (q.dbId) dbIdToQuestion.set(q.dbId, q)
+            }
+            
+            // Collect all questionIds already assigned in logic items
+            const collectAssignedIds = (items: any[]): Set<number> => {
+              const ids = new Set<number>()
+              for (const item of items) {
+                if (item.type === 'question' && item.questionId) ids.add(item.questionId)
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  for (const id of collectAssignedIds(item.conditional.nestedItems)) ids.add(id)
+                }
+              }
+              return ids
+            }
+            const assignedIds = collectAssignedIds(groupData.question_logic)
+
+            // Sync localQuestionId -> question.id for items that DO have questionId
+            const syncQuestionIds = (items: any[]) => {
+              for (const item of items) {
+                if (item.type === 'question' && item.questionId && item.localQuestionId) {
+                  const q = dbIdToQuestion.get(item.questionId)
+                  if (q) q.id = item.localQuestionId
+                }
+                if (item.type === 'conditional' && item.conditional?.nestedItems) {
+                  syncQuestionIds(item.conditional.nestedItems)
+                }
               }
             }
+            syncQuestionIds(groupData.question_logic)
 
-            // First pass: Fix question items that have localQuestionId but undefined questionId
-            // This must happen BEFORE cleanOrphanedItems or the slots will be removed
+            // For items WITHOUT questionId, find unassigned questions and patch
+            const unassignedDbIds = Array.from(
+              loadedQuestions.filter(q => q.dbId && !assignedIds.has(q.dbId)).map(q => q.dbId!)
+            )
+            let unassignedIdx = 0
+
             const fixUndefinedQuestionIds = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
               return items.map(item => {
                 if (item.type === 'question' && !item.questionId) {
                   const localId = (item as any).localQuestionId
-                  if (localId && localIdToDbId.has(localId)) {
-                    const dbId = localIdToDbId.get(localId)!
+                  if (localId && unassignedIdx < unassignedDbIds.length) {
+                    const dbId = unassignedDbIds[unassignedIdx++]
+                    const q = dbIdToQuestion.get(dbId)
+                    if (q) q.id = localId  // sync question.id to localQuestionId
                     return { ...item, questionId: dbId }
                   }
                 }
@@ -1883,10 +1918,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         let insertIndex: number
         if (insertBeforeQuestion) {
           // Find the target question's current position in prevLogic and insert right before it
+          // Use isLogicItemForQuestion which handles localQuestionId AND questionId matching
           const targetIdx = prevLogic.findIndex(item =>
-            item.type === 'question' &&
-            ((item as any).localQuestionId === insertBeforeQuestion.id ||
-             (item.questionId != null && insertBeforeQuestion.dbId != null && item.questionId === insertBeforeQuestion.dbId))
+            item.type === 'question' && isLogicItemForQuestion(item, insertBeforeQuestion)
           )
           insertIndex = targetIdx >= 0 ? targetIdx : prevLogic.length
         } else {
@@ -3050,13 +3084,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
         return (
           <div key={item.id} style={{ position: 'relative' }}>
+          <div className="conditional-block" style={{
+            marginBottom: '1rem',
+            marginLeft: '2rem',
+            padding: '1rem',
+            position: 'relative',
+            border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
+            borderRadius: '0.5rem',
+            backgroundColor: getDepthBackgroundColor(conditionalDepth)
+          }}>
             {/* Repeatable group bracket continuation on conditional */}
             {conditionalBracketColor && (
               <div style={{
                 position: 'absolute',
-                left: '-8px',
-                top: '-8px',
-                bottom: condNextInGroup ? '-8px' : '12px',
+                left: 'calc(-2rem - 8px)',
+                top: condPrevInGroup ? '-1rem' : '0',
+                bottom: condNextInGroup ? '-1rem' : '12px',
                 width: '8px',
                 borderLeft: `3px solid ${conditionalBracketColor}`,
                 borderTop: 'none',
@@ -3066,14 +3109,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 zIndex: 1
               }} />
             )}
-          <div className="conditional-block" style={{
-            marginBottom: '1rem',
-            marginLeft: '2rem',
-            padding: '1rem',
-            border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
-            borderRadius: '0.5rem',
-            backgroundColor: getDepthBackgroundColor(conditionalDepth)
-          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`nc-${item.id}`) ? 0 : '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`nc-${item.id}`)}>
                 <span style={{ fontSize: '0.6rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`nc-${item.id}`) ? '\u25B6' : '\u25BC'}</span>
@@ -3584,7 +3619,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       // Find the previous question to use as the conditional's ifIdentifier
                       const prevQuestion = mainLevelQuestions[qIndex - 1]
                       // Insert directly before the current question in the logic array
-                      // This ensures the conditional goes above Q3, after any nested items under Q2
                       addConditionalToLogic(-1, undefined, prevQuestion, question)
                     }}
                     style={{
@@ -4008,6 +4042,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </div>
               </div>}
 
+            </div>
 
               {/* Render conditionals that follow this question in questionLogic */}
               {(() => {
@@ -4036,9 +4071,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   return (
                     <React.Fragment key={logicItem.id}>
                     <div className="conditional-block" style={{
-                      marginTop: '0.25rem',
-                      marginLeft: '-1.5rem',
-                      marginRight: '-1.5rem',
+                      marginTop: '0.5rem',
                       padding: '1rem 1.5rem',
                       border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
                       borderRadius: '0.5rem',
@@ -4227,7 +4260,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   )
                 })
               })()}
-            </div>
             </div>
           )})
           })()}
