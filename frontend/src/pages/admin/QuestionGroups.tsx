@@ -2143,17 +2143,41 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     let questionDisplayIndex = 0
     let conditionalDisplayIndex = 0
 
-    // Build repeatable group color map for nested questions
+    // Helper: recursively check if a logic item (or its nested children) contains
+    // a question belonging to a specific repeatable group
+    const itemContainsGroupMember = (logicItem: QuestionLogicItem, groupId: string): boolean => {
+      if (logicItem.type === 'question') {
+        const q = getQuestionFromLogicItem(logicItem)
+        return !!(q?.repeatable && q.repeatable_group_id === groupId)
+      }
+      if (logicItem.type === 'conditional' && logicItem.conditional?.nestedItems) {
+        return logicItem.conditional.nestedItems.some(ni => itemContainsGroupMember(ni, groupId))
+      }
+      return false
+    }
+
+    // Helper: collect all repeatable group IDs from nested items (recursively through conditionals)
+    const collectGroupIds = (items: QuestionLogicItem[]): Set<string> => {
+      const ids = new Set<string>()
+      for (const ni of items) {
+        if (ni.type === 'question') {
+          const nq = getQuestionFromLogicItem(ni)
+          if (nq?.repeatable && nq.repeatable_group_id) ids.add(nq.repeatable_group_id)
+        } else if (ni.type === 'conditional' && ni.conditional?.nestedItems) {
+          for (const id of collectGroupIds(ni.conditional.nestedItems)) ids.add(id)
+        }
+      }
+      return ids
+    }
+
+    // Build repeatable group color map for nested questions (including inside conditionals)
     const nestedRepeatableColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
     const nestedGroupColorMap = new Map<string, string>()
     let nestedColorIdx = 0
-    for (const ni of nestedItems) {
-      if (ni.type === 'question') {
-        const nq = getQuestionFromLogicItem(ni)
-        if (nq?.repeatable && nq.repeatable_group_id && !nestedGroupColorMap.has(nq.repeatable_group_id)) {
-          nestedGroupColorMap.set(nq.repeatable_group_id, nestedRepeatableColors[nestedColorIdx % nestedRepeatableColors.length])
-          nestedColorIdx++
-        }
+    for (const gid of collectGroupIds(nestedItems)) {
+      if (!nestedGroupColorMap.has(gid)) {
+        nestedGroupColorMap.set(gid, nestedRepeatableColors[nestedColorIdx % nestedRepeatableColors.length])
+        nestedColorIdx++
       }
     }
 
@@ -2199,11 +2223,32 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           prevItem.conditional.nestedItems.length > 0
         
         // Repeatable group bracket info for nested questions
+        // Check across conditional boundaries (not just direct question siblings)
         const nestedGroupId = nestedQuestion.repeatable && nestedQuestion.repeatable_group_id ? nestedQuestion.repeatable_group_id : null
         const nestedGroupColor = nestedGroupId ? nestedGroupColorMap.get(nestedGroupId) || null : null
-        const qItemIdx = nestedQuestionItems.findIndex(qi => qi.itemIndex === itemIndex)
-        const prevNestedInGroup = qItemIdx > 0 && nestedQuestionItems[qItemIdx - 1].question.repeatable && nestedQuestionItems[qItemIdx - 1].question.repeatable_group_id === nestedGroupId && nestedGroupId !== null
-        const nextNestedInGroup = qItemIdx < nestedQuestionItems.length - 1 && nestedQuestionItems[qItemIdx + 1].question.repeatable && nestedQuestionItems[qItemIdx + 1].question.repeatable_group_id === nestedGroupId && nestedGroupId !== null
+        // Check if any previous item (question or conditional containing group member) is in same group
+        let prevNestedInGroup = false
+        if (nestedGroupId) {
+          for (let pi = itemIndex - 1; pi >= 0; pi--) {
+            if (itemContainsGroupMember(nestedItems[pi], nestedGroupId)) { prevNestedInGroup = true; break }
+            // Stop if we hit a question NOT in the group (gap breaks the bracket)
+            if (nestedItems[pi].type === 'question') {
+              const pq = getQuestionFromLogicItem(nestedItems[pi])
+              if (!pq?.repeatable || pq.repeatable_group_id !== nestedGroupId) break
+            }
+          }
+        }
+        // Check if any subsequent item (question or conditional containing group member) is in same group
+        let nextNestedInGroup = false
+        if (nestedGroupId) {
+          for (let si = itemIndex + 1; si < nestedItems.length; si++) {
+            if (itemContainsGroupMember(nestedItems[si], nestedGroupId)) { nextNestedInGroup = true; break }
+            if (nestedItems[si].type === 'question') {
+              const sq = getQuestionFromLogicItem(nestedItems[si])
+              if (!sq?.repeatable || sq.repeatable_group_id !== nestedGroupId) break
+            }
+          }
+        }
 
         return (
           <div key={item.id} style={{ marginBottom: '1rem', position: 'relative' }}>
@@ -2955,8 +3000,62 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           ? depth + 1 
           : depth
         
+        // Check if this conditional is part of a repeatable group bracket
+        // (i.e., it contains group members and is adjacent to group members)
+        let conditionalBracketGroupId: string | null = null
+        let conditionalBracketColor: string | null = null
+        let condPrevInGroup = false
+        let condNextInGroup = false
+        // Find which group this conditional belongs to (if it contains a group member)
+        for (const [gid] of nestedGroupColorMap) {
+          if (itemContainsGroupMember(item, gid)) {
+            // Check if a previous item is also in this group
+            let hasPrev = false
+            for (let pi = itemIndex - 1; pi >= 0; pi--) {
+              if (itemContainsGroupMember(nestedItems[pi], gid)) { hasPrev = true; break }
+              if (nestedItems[pi].type === 'question') {
+                const pq = getQuestionFromLogicItem(nestedItems[pi])
+                if (!pq?.repeatable || pq.repeatable_group_id !== gid) break
+              }
+            }
+            // Check if a subsequent item is also in this group
+            let hasNext = false
+            for (let si = itemIndex + 1; si < nestedItems.length; si++) {
+              if (itemContainsGroupMember(nestedItems[si], gid)) { hasNext = true; break }
+              if (nestedItems[si].type === 'question') {
+                const sq = getQuestionFromLogicItem(nestedItems[si])
+                if (!sq?.repeatable || sq.repeatable_group_id !== gid) break
+              }
+            }
+            if (hasPrev || hasNext) {
+              conditionalBracketGroupId = gid
+              conditionalBracketColor = nestedGroupColorMap.get(gid) || null
+              condPrevInGroup = hasPrev
+              condNextInGroup = hasNext
+              break
+            }
+          }
+        }
+
         return (
-          <div key={item.id} className="conditional-block" style={{
+          <div key={item.id} style={{ position: 'relative' }}>
+            {/* Repeatable group bracket continuation on conditional */}
+            {conditionalBracketColor && (
+              <div style={{
+                position: 'absolute',
+                left: '-8px',
+                top: '-8px',
+                bottom: condNextInGroup ? '-8px' : '12px',
+                width: '8px',
+                borderLeft: `3px solid ${conditionalBracketColor}`,
+                borderTop: 'none',
+                borderBottom: !condNextInGroup ? `3px solid ${conditionalBracketColor}` : 'none',
+                borderRight: 'none',
+                borderRadius: !condNextInGroup ? '0 0 0 4px' : '0',
+                zIndex: 1
+              }} />
+            )}
+          <div className="conditional-block" style={{
             marginBottom: '1rem',
             marginLeft: '2rem',
             padding: '1rem',
@@ -3171,6 +3270,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 ) : null}
               </div>
 
+          </div>
           </div>
         )
       }
