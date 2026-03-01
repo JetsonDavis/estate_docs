@@ -1175,7 +1175,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
       if (question.dbId) {
         // Update existing question
-        await questionGroupService.updateQuestion(question.dbId, {
+        const updatePayload = {
           question_text: question.question_text,
           question_type: question.question_type,
           identifier: question.identifier,
@@ -1186,7 +1186,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           options: question.question_type === 'multiple_choice' || question.question_type === 'checkbox_group' || question.question_type === 'dropdown' ? question.options : undefined,
           person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
           include_time: question.question_type === 'date' ? question.include_time : undefined
-        })
+        }
+        await questionGroupService.updateQuestion(question.dbId, updatePayload)
       } else {
         // Create new question - only include fields with values
         const createPayload: any = {

@@ -65,7 +65,7 @@ class QuestionCreate(QuestionBase):
 
 class QuestionUpdate(BaseModel):
     """Schema for updating a question."""
-    question_text: Optional[str] = Field(None, min_length=1, max_length=1000)
+    question_text: Optional[str] = Field(None, max_length=1000)
     question_type: Optional[str] = Field(None, pattern="^(multiple_choice|free_text|database_dropdown|person|person_backup|date|checkbox_group|dropdown)$")
     identifier: Optional[str] = Field(None, min_length=1, max_length=100)
     repeatable: Optional[bool] = None
