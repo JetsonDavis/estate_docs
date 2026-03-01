@@ -492,6 +492,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const nestedQuestionIdsRef = useRef<Set<string>>(new Set())
   const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set())
   const collapsedSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [flashingQuestions, setFlashingQuestions] = useState<Map<string, 'add' | 'delete'>>(new Map())
+
+  const flashQuestion = (id: string, type: 'add' | 'delete') => {
+    setFlashingQuestions(prev => new Map(prev).set(id, type))
+    setTimeout(() => {
+      setFlashingQuestions(prev => {
+        const next = new Map(prev)
+        next.delete(id)
+        return next
+      })
+    }, type === 'add' ? 800 : 400)
+  }
+
   const isEditMode = !!groupId
 
   const saveCollapsedItems = (items: Set<string>) => {
@@ -1021,6 +1034,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       options: []
     }
     setQuestions(prev => [...prev, newQuestion])
+    flashQuestion(newQuestion.id, 'add')
     return newQuestion
   }
 
@@ -1295,52 +1309,58 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const removeQuestion = async (id: string) => {
     const questionToRemove = questions.find(q => q.id === id)
 
-    // If the question has a dbId, delete it from the database
-    if (questionToRemove?.dbId) {
-      incrementPendingRequests()
-      try {
-        await questionGroupService.deleteQuestion(questionToRemove.dbId)
-      } catch (err) {
-        console.error('Failed to delete question from database:', err)
-      } finally {
-        decrementPendingRequests()
-      }
-    }
+    // Flash delete animation, then remove after animation completes
+    flashQuestion(id, 'delete')
 
-    setQuestions(questions.filter(q => q.id !== id))
-    
-    // Also remove the question from questionLogic (including nested items)
-    const removeFromLogic = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-      const result: QuestionLogicItem[] = []
-      for (const item of items) {
-        // Check if this is the question to remove
-        if (item.type === 'question') {
-          const localId = (item as any).localQuestionId
-          if (localId === id || (questionToRemove?.dbId != null && item.questionId != null && item.questionId === questionToRemove.dbId)) {
-            continue // Skip this item (remove it)
+    const doRemove = async () => {
+      // If the question has a dbId, delete it from the database
+      if (questionToRemove?.dbId) {
+        incrementPendingRequests()
+        try {
+          await questionGroupService.deleteQuestion(questionToRemove.dbId)
+        } catch (err) {
+          console.error('Failed to delete question from database:', err)
+        } finally {
+          decrementPendingRequests()
+        }
+      }
+
+      setQuestions(prev => prev.filter(q => q.id !== id))
+      
+      // Also remove the question from questionLogic (including nested items)
+      const removeFromLogic = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+        const result: QuestionLogicItem[] = []
+        for (const item of items) {
+          if (item.type === 'question') {
+            const localId = (item as any).localQuestionId
+            if (localId === id || (questionToRemove?.dbId != null && item.questionId != null && item.questionId === questionToRemove.dbId)) {
+              continue
+            }
+          }
+          if (item.conditional?.nestedItems) {
+            result.push({
+              ...item,
+              conditional: {
+                ...item.conditional,
+                nestedItems: removeFromLogic(item.conditional.nestedItems)
+              }
+            })
+          } else {
+            result.push(item)
           }
         }
-        // Recursively process nested items in conditionals
-        if (item.conditional?.nestedItems) {
-          result.push({
-            ...item,
-            conditional: {
-              ...item.conditional,
-              nestedItems: removeFromLogic(item.conditional.nestedItems)
-            }
-          })
-        } else {
-          result.push(item)
-        }
+        return result
       }
-      return result
+      
+      setQuestionLogic(prevLogic => {
+        const newLogic = removeFromLogic(prevLogic)
+        saveQuestionLogic(newLogic)
+        return newLogic
+      })
     }
-    
-    setQuestionLogic(prevLogic => {
-      const newLogic = removeFromLogic(prevLogic)
-      saveQuestionLogic(newLogic)
-      return newLogic
-    })
+
+    // Delay removal to let the animation play
+    setTimeout(doRemove, 400)
   }
 
   const addOption = (questionId: string) => {
@@ -1431,6 +1451,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       newQuestion,
       ...prev.slice(questionArrayIndex)
     ])
+    flashQuestion(newQuestion.id, 'add')
 
     const newLogicItem: QuestionLogicItem = {
       id: Date.now().toString(),
@@ -1463,6 +1484,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       is_required: false,
       options: []
     }
+    flashQuestion(newQuestion.id, 'add')
 
     const newLogicItem: QuestionLogicItem = {
       id: Date.now().toString() + '_logic',
@@ -1706,6 +1728,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // Add to questions array
     setQuestions(prev => [...prev, newQuestion])
+    flashQuestion(newQuestion.id, 'add')
 
     const newLogicItem: QuestionLogicItem = {
       id: (Date.now() + 1).toString(),
@@ -2493,7 +2516,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               padding: '1rem',
               border: `1px solid ${getDepthBorderColor(depth)}`,
               borderRadius: '0.5rem',
-              backgroundColor: getDepthBackgroundColor(depth)
+              backgroundColor: getDepthBackgroundColor(depth),
+              ...(flashingQuestions.has(nestedQuestion.id) ? {
+                animation: flashingQuestions.get(nestedQuestion.id) === 'add'
+                  ? 'flash-add 0.8s ease-out forwards'
+                  : 'flash-delete 0.4s ease-out forwards'
+              } : {})
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`nq-${nestedQuestion.id}`) ? 0 : '0.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`nq-${nestedQuestion.id}`)}>
@@ -2507,54 +2535,57 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </div>
                 <button
                   type="button"
-                  onClick={async () => {
-                    // First remove from database if it has a dbId
-                    if (nestedQuestion.dbId) {
-                      incrementPendingRequests()
-                      try {
-                        await questionGroupService.deleteQuestion(nestedQuestion.dbId)
-                      } catch (err) {
-                        console.error('Failed to delete nested question from database:', err)
-                      } finally {
-                        decrementPendingRequests()
+                  onClick={() => {
+                    // Flash delete animation first
+                    flashQuestion(nestedQuestion.id, 'delete')
+
+                    setTimeout(async () => {
+                      // First remove from database if it has a dbId
+                      if (nestedQuestion.dbId) {
+                        incrementPendingRequests()
+                        try {
+                          await questionGroupService.deleteQuestion(nestedQuestion.dbId)
+                        } catch (err) {
+                          console.error('Failed to delete nested question from database:', err)
+                        } finally {
+                          decrementPendingRequests()
+                        }
                       }
-                    }
-                    
-                    // Remove the question from state
-                    setQuestions(prev => prev.filter(q => q.id !== nestedQuestion.id))
+                      
+                      // Remove the question from state
+                      setQuestions(prev => prev.filter(q => q.id !== nestedQuestion.id))
 
-                    // Capture savedGroupId before the callback
-                    const currentGroupId = savedGroupId
+                      // Capture savedGroupId before the callback
+                      const currentGroupId = savedGroupId
 
-                    // Remove the logic item from nestedItems
-                    setQuestionLogic(prev => {
-                      const removeFromNestedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-                        return items.filter(logicItem => {
-                          // Filter out the item we're deleting
-                          if (logicItem.id === item.id) {
-                            return false
-                          }
-                          return true
-                        }).map(logicItem => {
-                          // Recursively process nested conditionals
-                          if (logicItem.conditional?.nestedItems) {
-                            return {
-                              ...logicItem,
-                              conditional: {
-                                ...logicItem.conditional,
-                                nestedItems: removeFromNestedItems(logicItem.conditional.nestedItems)
+                      // Remove the logic item from nestedItems
+                      setQuestionLogic(prev => {
+                        const removeFromNestedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+                          return items.filter(logicItem => {
+                            if (logicItem.id === item.id) {
+                              return false
+                            }
+                            return true
+                          }).map(logicItem => {
+                            if (logicItem.conditional?.nestedItems) {
+                              return {
+                                ...logicItem,
+                                conditional: {
+                                  ...logicItem.conditional,
+                                  nestedItems: removeFromNestedItems(logicItem.conditional.nestedItems)
+                                }
                               }
                             }
-                          }
-                          return logicItem
-                        })
-                      }
-                      const updated = removeFromNestedItems(prev)
-                      if (currentGroupId) {
-                        saveQuestionLogic(updated, currentGroupId)
-                      }
-                      return updated
-                    })
+                            return logicItem
+                          })
+                        }
+                        const updated = removeFromNestedItems(prev)
+                        if (currentGroupId) {
+                          saveQuestionLogic(updated, currentGroupId)
+                        }
+                        return updated
+                      })
+                    }, 400)
                   }}
                   style={{
                     background: 'none',
@@ -3577,7 +3608,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   zIndex: 1
                 }} />
               )}
-            <div className="question-builder" style={isCollapsed ? { marginBottom: '3px' } : undefined}>
+            <div className={`question-builder${flashingQuestions.has(question.id) ? ` flash-${flashingQuestions.get(question.id)}` : ''}`} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
