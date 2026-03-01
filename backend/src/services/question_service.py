@@ -250,7 +250,9 @@ class QuestionService:
             question.is_active = question_data.is_active
         if question_data.repeatable is not None:
             question.repeatable = question_data.repeatable
-        if question_data.repeatable_group_id is not None:
+            # When repeatable changes, always sync group_id from payload
+            question.repeatable_group_id = question_data.repeatable_group_id
+        elif question_data.repeatable_group_id is not None:
             question.repeatable_group_id = question_data.repeatable_group_id
         
         db.commit()

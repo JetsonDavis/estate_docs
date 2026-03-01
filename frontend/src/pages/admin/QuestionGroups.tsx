@@ -1005,6 +1005,20 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }))
   }
 
+  const updateQuestionFields = (id: string, fields: Partial<QuestionFormData>) => {
+    setQuestions(prevQuestions => prevQuestions.map(q => {
+      if (q.id === id) {
+        const updated = { ...q, ...fields }
+        if ('identifier' in fields) {
+          checkIdentifierUniqueness(updated)
+        }
+        triggerAutoSave(updated)
+        return updated
+      }
+      return q
+    }))
+  }
+
   const checkIdentifierUniqueness = (question: QuestionFormData) => {
     // Clear existing timeout for this question
     if (identifierCheckTimeoutRefs.current[question.id]) {
@@ -2554,8 +2568,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               name={`repeatable-${nestedQuestion.id}`}
                               checked={!nestedQuestion.repeatable}
                               onChange={() => {
-                                updateQuestion(nestedQuestion.id, 'repeatable', false)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                                updateQuestionFields(nestedQuestion.id, { repeatable: false, repeatable_group_id: undefined })
                               }}
                             />
                             Not Repeatable
@@ -2566,8 +2579,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               name={`repeatable-${nestedQuestion.id}`}
                               checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id === prevRepeatableNestedQuestion?.repeatable_group_id}
                               onChange={() => {
-                                updateQuestion(nestedQuestion.id, 'repeatable', true)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id)
+                                updateQuestionFields(nestedQuestion.id, { repeatable: true, repeatable_group_id: prevRepeatableNestedQuestion?.repeatable_group_id || prevRepeatableNestedQuestion?.id })
                               }}
                             />
                             Join Repeatable Group
@@ -2578,8 +2590,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               name={`repeatable-${nestedQuestion.id}`}
                               checked={nestedQuestion.repeatable && nestedQuestion.repeatable_group_id !== prevRepeatableNestedQuestion?.repeatable_group_id && nestedQuestion.repeatable_group_id !== undefined}
                               onChange={() => {
-                                updateQuestion(nestedQuestion.id, 'repeatable', true)
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                                updateQuestionFields(nestedQuestion.id, { repeatable: true, repeatable_group_id: nestedQuestion.id })
                               }}
                             />
                             Start New Repeatable Group
@@ -2593,11 +2604,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                             type="checkbox"
                             checked={nestedQuestion.repeatable}
                             onChange={(e) => {
-                              updateQuestion(nestedQuestion.id, 'repeatable', e.target.checked)
                               if (e.target.checked) {
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', nestedQuestion.id)
+                                updateQuestionFields(nestedQuestion.id, { repeatable: true, repeatable_group_id: nestedQuestion.id })
                               } else {
-                                updateQuestion(nestedQuestion.id, 'repeatable_group_id', undefined)
+                                updateQuestionFields(nestedQuestion.id, { repeatable: false, repeatable_group_id: undefined })
                               }
                             }}
                           />
@@ -3670,8 +3680,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 name={`repeatable-${question.id}`}
                                 checked={!question.repeatable}
                                 onChange={() => {
-                                  updateQuestion(question.id, 'repeatable', false)
-                                  updateQuestion(question.id, 'repeatable_group_id', undefined)
+                                  updateQuestionFields(question.id, { repeatable: false, repeatable_group_id: undefined })
                                 }}
                               />
                               Not Repeatable
@@ -3682,9 +3691,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 name={`repeatable-${question.id}`}
                                 checked={question.repeatable && question.repeatable_group_id === prevRepeatableQuestion?.repeatable_group_id}
                                 onChange={() => {
-                                  updateQuestion(question.id, 'repeatable', true)
-                                  // Join the previous question's group
-                                  updateQuestion(question.id, 'repeatable_group_id', prevRepeatableQuestion?.repeatable_group_id || prevRepeatableQuestion?.id)
+                                  updateQuestionFields(question.id, { repeatable: true, repeatable_group_id: prevRepeatableQuestion?.repeatable_group_id || prevRepeatableQuestion?.id })
                                 }}
                               />
                               Join Repeatable Group
@@ -3695,9 +3702,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 name={`repeatable-${question.id}`}
                                 checked={question.repeatable && question.repeatable_group_id !== prevRepeatableQuestion?.repeatable_group_id && question.repeatable_group_id !== undefined}
                                 onChange={() => {
-                                  updateQuestion(question.id, 'repeatable', true)
-                                  // Start a new group with this question's ID
-                                  updateQuestion(question.id, 'repeatable_group_id', question.id)
+                                  updateQuestionFields(question.id, { repeatable: true, repeatable_group_id: question.id })
                                 }}
                               />
                               Start New Repeatable Group
@@ -3712,12 +3717,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               type="checkbox"
                               checked={question.repeatable}
                               onChange={(e) => {
-                                updateQuestion(question.id, 'repeatable', e.target.checked)
                                 if (e.target.checked) {
-                                  // Start a new group with this question's ID
-                                  updateQuestion(question.id, 'repeatable_group_id', question.id)
+                                  updateQuestionFields(question.id, { repeatable: true, repeatable_group_id: question.id })
                                 } else {
-                                  updateQuestion(question.id, 'repeatable_group_id', undefined)
+                                  updateQuestionFields(question.id, { repeatable: false, repeatable_group_id: undefined })
                                 }
                               }}
                             />
