@@ -15,6 +15,7 @@ from ..schemas.session import (
     SessionAnswerResponse,
     SessionQuestionsResponse,
     SaveAnswersRequest,
+    DeleteAnswersRequest,
     NavigateRequest
 )
 from ..services.session_service import SessionService
@@ -236,6 +237,28 @@ async def save_answers(
         session_id,
         int(current_user["sub"]),
         answers_data.answers
+    )
+
+
+@router.post("/{session_id}/delete-answers", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_answers(
+    session_id: int,
+    request_data: DeleteAnswersRequest,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete answers for specific questions in a session.
+    Used when a conditional choice changes and the old followup answers should be removed.
+
+    - **session_id**: Session ID
+    - **question_ids**: List of question IDs whose answers should be deleted
+    """
+    SessionService.delete_answers(
+        db,
+        session_id,
+        int(current_user["sub"]),
+        request_data.question_ids
     )
 
 

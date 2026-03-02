@@ -287,6 +287,28 @@ const InputForms: React.FC = () => {
     return false
   }
 
+  // Recursively collect all question IDs from conditional followups that match a given answer.
+  // If answer is undefined, collect ALL followup question IDs regardless of matching.
+  const collectFollowupQuestionIds = (question: any, answer?: string): number[] => {
+    const cfus = question?.conditional_followups
+    if (!cfus || cfus.length === 0) return []
+    const ids: number[] = []
+    for (const cfu of cfus) {
+      // If answer provided, only collect from matching branches; otherwise collect all
+      const matches = answer === undefined
+        ? true
+        : evaluateConditional(cfu.operator, answer, cfu.trigger_value, answer)
+      if (matches) {
+        for (const fq of (cfu.questions || [])) {
+          ids.push(fq.id)
+          // Recurse into deeper followups (collect all since the parent is being removed)
+          ids.push(...collectFollowupQuestionIds(fq))
+        }
+      }
+    }
+    return ids
+  }
+
   const handleAnswerChange = (questionId: number, value: string) => {
     const previousValue = answers[questionId]
 
@@ -353,6 +375,44 @@ const InputForms: React.FC = () => {
     console.log('isConditionalDependency:', isConditionalDependency)
     if (!isConditionalDependency) return
 
+    // Delete answers from outgoing conditional branches that no longer match
+    // Collect IDs from old matching branches, then subtract IDs still matching with new value
+    const oldValue = answers[questionId] || ''
+    const oldMatchIds = collectFollowupQuestionIds(question, oldValue)
+    const newMatchIds = new Set(collectFollowupQuestionIds(question, newValue))
+    const idsToDelete = oldMatchIds.filter(id => !newMatchIds.has(id))
+
+    if (idsToDelete.length > 0) {
+      console.log('Deleting outgoing conditional followup answers:', idsToDelete)
+      try {
+        await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
+      } catch (err) {
+        console.error('Failed to delete outgoing answers:', err)
+      }
+      // Clear from local state
+      setAnswers(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+      setPersonAnswers(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+      setPersonConjunctions(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+    }
+
     // Trigger conditional refresh
     try {
       setConditionalLoading(true)
@@ -383,9 +443,17 @@ const InputForms: React.FC = () => {
       setAnswers(currentAnswers => {
         const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: preservedValue }
 
+        // Remove deleted IDs that may have been re-added from existing_answers
+        for (const id of idsToDelete) {
+          delete newAnswers[id]
+        }
+
         data.questions.forEach(q => {
           if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
-            newAnswers[q.id] = data.existing_answers[q.id]
+            // Only load from existing_answers if this question wasn't just deleted
+            if (!idsToDelete.includes(q.id)) {
+              newAnswers[q.id] = data.existing_answers[q.id]
+            }
           }
         })
 
@@ -395,15 +463,22 @@ const InputForms: React.FC = () => {
       setPersonAnswers(currentPersonAnswers => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
+        // Remove deleted IDs
+        for (const id of idsToDelete) {
+          delete newPersonAnswers[id]
+        }
+
         data.questions.forEach(q => {
           if ((q.question_type === 'person' || q.question_type === 'person_backup') && data.existing_answers[q.id]) {
-            try {
-              const parsed = JSON.parse(data.existing_answers[q.id])
-              if (Array.isArray(parsed)) {
-                newPersonAnswers[q.id] = parsed
+            if (!idsToDelete.includes(q.id)) {
+              try {
+                const parsed = JSON.parse(data.existing_answers[q.id])
+                if (Array.isArray(parsed)) {
+                  newPersonAnswers[q.id] = parsed
+                }
+              } catch {
+                // Not an array, ignore
               }
-            } catch {
-              // Not an array, ignore
             }
           }
         })

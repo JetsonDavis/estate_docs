@@ -91,6 +91,14 @@ export const sessionService = {
   },
 
   /**
+   * Delete answers for specific question IDs in a session.
+   * Used when a conditional choice changes to clear stale followup answers.
+   */
+  deleteAnswers: async (sessionId: number, questionIds: number[]): Promise<void> => {
+    await apiClient.post(`/sessions/${sessionId}/delete-answers`, { question_ids: questionIds })
+  },
+
+  /**
    * Delete a session
    */
   deleteSession: async (sessionId: number): Promise<void> => {

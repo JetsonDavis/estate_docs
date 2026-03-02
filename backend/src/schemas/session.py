@@ -149,6 +149,11 @@ class SaveAnswersRequest(BaseModel):
     answers: List[SessionAnswerCreate]
 
 
+class DeleteAnswersRequest(BaseModel):
+    """Schema for deleting answers by question IDs."""
+    question_ids: List[int]
+
+
 class NavigateRequest(BaseModel):
     """Schema for navigation request."""
     direction: str = Field(..., pattern="^(forward|backward)$")

@@ -977,6 +977,43 @@ class SessionService:
         db.commit()
     
     @staticmethod
+    def delete_answers(
+        db: Session,
+        session_id: int,
+        user_id: int,
+        question_ids: List[int]
+    ) -> int:
+        """
+        Delete answers for specific questions in a session.
+
+        Args:
+            db: Database session
+            session_id: Session ID
+            user_id: User ID
+            question_ids: List of question IDs whose answers should be deleted
+
+        Returns:
+            Number of answers deleted
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+
+        if not question_ids:
+            return 0
+
+        deleted = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id,
+            SessionAnswer.question_id.in_(question_ids)
+        ).delete(synchronize_session='fetch')
+
+        db.commit()
+        return deleted
+
+    @staticmethod
     def navigate_session(
         db: Session,
         session_id: int,
