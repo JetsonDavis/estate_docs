@@ -2092,6 +2092,7 @@ const InputForms: React.FC = () => {
 
                   // Track which repeatable sets we've already rendered
                   const renderedRepeatableSets = new Set<number>()
+                  let topLevelQuestionNum = 0
 
                   return sessionData.questions.map((question, qIndex) => {
                     // Hide questions after the triggering question while loading
@@ -2109,6 +2110,8 @@ const InputForms: React.FC = () => {
                         return null
                       }
                       renderedRepeatableSets.add(setStartIndex)
+                      topLevelQuestionNum++
+                      const repeatableQNum = topLevelQuestionNum
 
                       // Get all questions in this repeatable set
                       const setQuestionIds = getRepeatableSetQuestionIds(qIndex)
@@ -2161,7 +2164,10 @@ const InputForms: React.FC = () => {
                                   ×
                                 </button>
                               )}
-                              {setQuestions.map((setQuestion) => {
+                              {setQuestions.map((setQuestion, setQIdx) => {
+                                const setQLabel = setQuestions.length > 1
+                                  ? `Q${repeatableQNum}${String.fromCharCode(97 + setQIdx)}`
+                                  : `Q${repeatableQNum}`
                                 // Get this instance's answer for determining follow-ups
                                 const instanceAnswer = setQuestion.repeatable
                                   ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
@@ -2177,6 +2183,7 @@ const InputForms: React.FC = () => {
                                   <React.Fragment key={setQuestion.id}>
                                     <div className="question-item" style={{ marginBottom: '0.75rem' }}>
                                       <label className="question-label">
+                                        <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{setQLabel}.</span>
                                         {replaceLoopToken(setQuestion.question_text, instanceIdx)}
                                         {setQuestion.is_required && <span className="required-indicator">*</span>}
                                       </label>
@@ -2190,7 +2197,7 @@ const InputForms: React.FC = () => {
                                       // Handles both repeatable and non-repeatable nested questions
                                       // Uses synthetic IDs (realId * 100000 + instanceIdx) for non-repeatable questions
                                       // so each parent repeatable instance gets its own answer key
-                                      const renderNestedFollowups = (question: any, parentInstanceIdx: number, depth: number, keyPrefix: string): React.ReactNode[] => {
+                                      const renderNestedFollowups = (question: any, parentInstanceIdx: number, depth: number, keyPrefix: string, parentLabel: string = ''): React.ReactNode[] => {
                                         // Use synthetic ID if available (set on virtualQ), falling back to real ID
                                         const effectiveId = question.id
                                         const realId = effectiveId >= 100000 ? Math.floor(effectiveId / 100000) : effectiveId
@@ -2203,8 +2210,11 @@ const InputForms: React.FC = () => {
                                         const allNestedQs = matchedFollowups.flatMap((nfu: any) => nfu.questions)
                                         const renderedRepeatableGroups = new Set<string>()
 
+                                        let nestedQCounter = 0
                                         return allNestedQs.map((nfq: any, nfqIdx: number) => {
                                           const nfqKey = `${keyPrefix}-nfq-${nfq.id}-${parentInstanceIdx}-d${depth}-${nfqIdx}`
+                                          nestedQCounter++
+                                          const nfqLabel = `${parentLabel}.${nestedQCounter}`
 
                                           if (nfq.repeatable) {
                                             // Repeatable nested follow-up: render with Add Another pattern
@@ -2265,6 +2275,7 @@ const InputForms: React.FC = () => {
                                                         <React.Fragment key={`${nfqKey}-rq-${rQ.id}-${rIdx}`}>
                                                           <div className="question-item" style={{ marginBottom: '0.75rem' }}>
                                                             <label className="question-label">
+                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                               {replaceLoopToken(rQ.question_text, rIdx)}
                                                               {rQ.is_required && <span className="required-indicator">*</span>}
                                                             </label>
@@ -2273,7 +2284,7 @@ const InputForms: React.FC = () => {
                                                             )}
                                                             {renderQuestion(rVirtualQ, rIdx)}
                                                           </div>
-                                                          {renderNestedFollowups(rQ, rIdx, depth + 1, `${nfqKey}-rq-${rQ.id}-${rIdx}`)}
+                                                          {renderNestedFollowups(rQ, rIdx, depth + 1, `${nfqKey}-rq-${rQ.id}-${rIdx}`, nfqLabel)}
                                                         </React.Fragment>
                                                       )
                                                     })}
@@ -2315,6 +2326,7 @@ const InputForms: React.FC = () => {
                                                 borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
                                               }}>
                                                 <label className="question-label">
+                                                  <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                   {replaceLoopToken(nfq.question_text, parentInstanceIdx)}
                                                   {nfq.is_required && <span className="required-indicator">*</span>}
                                                 </label>
@@ -2323,7 +2335,7 @@ const InputForms: React.FC = () => {
                                                 )}
                                                 {renderQuestion(nfqVirtual, 0)}
                                               </div>
-                                              {renderNestedFollowups(nfqWithEffId, parentInstanceIdx, depth + 1, nfqKey)}
+                                              {renderNestedFollowups(nfqWithEffId, parentInstanceIdx, depth + 1, nfqKey, nfqLabel)}
                                             </React.Fragment>
                                           )
                                         })
@@ -2332,8 +2344,11 @@ const InputForms: React.FC = () => {
                                       // Collect all follow-up questions, grouping repeatable ones by group ID
                                       const allFuQuestions = matchingFollowups.flatMap(fu => fu.questions)
                                       const renderedFuGroups = new Set<string>()
+                                      let fuQCounter = 0
                                       return allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
+                                          fuQCounter++
+                                          const fuLabel = `${setQLabel}.${fuQCounter}`
                                           // Non-repeatable follow-up: use synthetic ID for instances > 0
                                           // Instance 0 uses real ID (preserves backend persistence)
                                           const fqEffectiveId = instanceIdx > 0 ? fq.id * 100000 + instanceIdx : fq.id
@@ -2343,6 +2358,7 @@ const InputForms: React.FC = () => {
                                             <React.Fragment key={`fu-${fq.id}-${instanceIdx}`}>
                                               <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
                                                 <label className="question-label">
+                                                  <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuLabel}.</span>
                                                   {replaceLoopToken(fq.question_text, instanceIdx)}
                                                   {fq.is_required && <span className="required-indicator">*</span>}
                                                 </label>
@@ -2351,11 +2367,13 @@ const InputForms: React.FC = () => {
                                                 )}
                                                 {renderQuestion(fqVirtual, 0)}
                                               </div>
-                                              {renderNestedFollowups(fqWithEffId, instanceIdx, 2, `fu-${fq.id}`)}
+                                              {renderNestedFollowups(fqWithEffId, instanceIdx, 2, `fu-${fq.id}`, fuLabel)}
                                             </React.Fragment>
                                           )
                                         }
 
+                                        fuQCounter++
+                                        const fuRepLabel = `${setQLabel}.${fuQCounter}`
                                         // Repeatable follow-up: group by repeatable_group_id
                                         const fuGroupId = fq.repeatable_group_id || String(fq.id)
                                         const fuGroupKey = `${fuGroupId}-${instanceIdx}`
@@ -2428,6 +2446,7 @@ const InputForms: React.FC = () => {
                                                     <React.Fragment key={`fuq-${fuQ.id}-${fuIdx}`}>
                                                       <div className="question-item" style={{ marginBottom: fuQIdx < fuSetQuestions.length - 1 && nestedFollowups.length === 0 ? '0.75rem' : 0 }}>
                                                         <label className="question-label">
+                                                          <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuRepLabel}.</span>
                                                           {replaceLoopToken(fuQ.question_text, fuIdx)}
                                                           {fuQ.is_required && <span className="required-indicator">*</span>}
                                                         </label>
@@ -2446,6 +2465,7 @@ const InputForms: React.FC = () => {
                                                                 borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
                                                               }}>
                                                                 <label className="question-label">
+                                                                  <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuRepLabel}.{nfqIdx + 1}.</span>
                                                                   {replaceLoopToken(nfq.question_text, fuIdx)}
                                                                   {nfq.is_required && <span className="required-indicator">*</span>}
                                                                 </label>
@@ -2454,7 +2474,7 @@ const InputForms: React.FC = () => {
                                                                 )}
                                                                 {renderQuestion({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
                                                               </div>
-                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey)}
+                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey, `${fuRepLabel}.${nfqIdx + 1}`)}
                                                             </React.Fragment>
                                                           )
                                                         })
@@ -2520,10 +2540,13 @@ const InputForms: React.FC = () => {
                       )
                     }
 
+                    topLevelQuestionNum++
+                    const nonRepQLabel = `Q${topLevelQuestionNum}`
                     return (
                       <React.Fragment key={question.id}>
                         <div className="question-item">
                           <label className="question-label">
+                            <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nonRepQLabel}.</span>
                             {question.question_text}
                             {question.is_required && <span className="required-indicator">*</span>}
                           </label>
