@@ -448,19 +448,19 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        # Returns tuple of (questions_with_depth, repeatable_followups)
-        questions_with_depth, repeatable_followups = SessionService._get_questions_from_logic(
+        # Returns tuple of (questions_with_data, repeatable_followups)
+        questions_with_data, repeatable_followups = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
         # Paginate questions
-        total_questions = len(questions_with_depth)
+        total_questions = len(questions_with_data)
         total_pages = max(1, math.ceil(total_questions / questions_per_page))
         page = max(1, min(page, total_pages))
 
         start_idx = (page - 1) * questions_per_page
         end_idx = start_idx + questions_per_page
-        paginated_questions = questions_with_depth[start_idx:end_idx]
+        paginated_questions = questions_with_data[start_idx:end_idx]
 
         # Convert to response format
         from src.schemas.session import ConditionalFollowup, ConditionalFollowupQuestion
@@ -496,7 +496,7 @@ class SessionService:
             )
 
         question_responses = []
-        for q, depth in paginated_questions:
+        for q, depth, hierarchical_number in paginated_questions:
             # Build conditional_followups if this repeatable question has them
             cond_followups = None
             if q.id in repeatable_followups:
@@ -524,7 +524,8 @@ class SessionService:
                 validation_rules=q.validation_rules,
                 current_answer=existing_answers.get(q.id),
                 depth=depth,
-                conditional_followups=cond_followups
+                conditional_followups=cond_followups,
+                hierarchical_number=hierarchical_number
             ))
 
         is_last_group = current_group_index >= len(ordered_groups) - 1
@@ -632,10 +633,10 @@ class SessionService:
         """
         Get questions to display based on question_logic.
         Evaluates conditionals and respects stop flags.
-        
+
         Returns:
-            Tuple of (questions_with_depth, repeatable_followups)
-            - questions_with_depth: List of (question, depth) tuples
+            Tuple of (questions_with_data, repeatable_followups)
+            - questions_with_data: List of (question, depth, hierarchical_number) tuples
             - repeatable_followups: Dict mapping question_id -> list of {trigger_value, operator, questions}
               for repeatable questions that have conditional follow-ups
         """
@@ -654,9 +655,9 @@ class SessionService:
                 Question.question_group_id == group.id,
                 Question.is_active == True
             ).order_by(Question.display_order).all()
-            return [(q, 0) for q in questions], {}
+            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}
 
-        questions_with_depth = []  # List of (question, depth) tuples
+        questions_with_data = []  # List of (question, depth, hierarchical_number) tuples
         question_ids_added = set()  # Track which question IDs have been added
         # Track repeatable question identifiers (both namespaced and stripped)
         repeatable_identifier_to_question_id = {}
@@ -750,10 +751,12 @@ class SessionService:
                             collected.append((q, sub_followups_map.get(q.id)))
             return collected
 
-        def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
+        def process_logic_items(items: List[Dict], depth: int = 0, number_prefix: str = "") -> bool:
             """Process logic items. Returns False if stop flag encountered."""
             indent = "  " * depth
             logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
+
+            question_counter = 0  # Counter for questions at this level
 
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
@@ -766,8 +769,10 @@ class SessionService:
                             Question.is_active == True
                         ).first()
                         if question and question.id not in question_ids_added:
-                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth})")
-                            questions_with_depth.append((question, depth))
+                            question_counter += 1
+                            hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
+                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
+                            questions_with_data.append((question, depth, hierarchical_number))
                             question_ids_added.add(question.id)
                         elif not question:
                             logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
@@ -881,10 +886,13 @@ class SessionService:
                             else:
                                 nested_items = cond.get('nestedItems', [])
                                 if nested_items:
-                                    should_continue = process_logic_items(nested_items, depth + 1)
+                                    # Get the hierarchical number of the last added question
+                                    # to use as prefix for nested questions
+                                    nested_prefix = questions_with_data[-1][2] if questions_with_data else ""
+                                    should_continue = process_logic_items(nested_items, depth + 1, nested_prefix)
                                     if not should_continue:
                                         return False
-                            
+
                             # Check for end flow flag
                             if cond.get('endFlow'):
                                 logger.info(f"{indent}  End flow flag encountered")
@@ -893,13 +901,13 @@ class SessionService:
                             logger.info(f"{indent}  Condition NOT MET (value mismatch)")
                     else:
                         logger.info(f"{indent}  Condition NOT MET (identifier not in answers)")
-            
+
             return True
-        
+
         process_logic_items(group.question_logic)
-        logger.info(f"Final questions to display: {[(q.identifier, d) for q, d in questions_with_depth]}")
+        logger.info(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
         logger.info(f"Repeatable followups: {repeatable_followups}")
-        return questions_with_depth, repeatable_followups
+        return questions_with_data, repeatable_followups
     
     @staticmethod
     def save_answers(

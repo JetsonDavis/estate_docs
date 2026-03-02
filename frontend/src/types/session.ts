@@ -93,6 +93,7 @@ export interface QuestionToDisplay {
   current_answer: string | null
   depth: number  // Nesting level for conditional questions
   conditional_followups: ConditionalFollowup[] | null  // For repeatable questions with conditionals
+  hierarchical_number?: string | null  // Hierarchical numbering like "1-1-1"
 }
 
 export interface SessionQuestionsResponse {

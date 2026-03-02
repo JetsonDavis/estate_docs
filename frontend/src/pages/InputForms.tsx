@@ -2181,7 +2181,7 @@ const InputForms: React.FC = () => {
 
                                 return (
                                   <React.Fragment key={setQuestion.id}>
-                                    <div className="question-item" style={{ marginBottom: '0.75rem' }}>
+                                    <div className="question-item" style={{ marginBottom: matchingFollowups.length > 0 ? '0.25rem' : '0.75rem' }}>
                                       <label className="question-label">
                                         <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{setQLabel}.</span>
                                         {replaceLoopToken(setQuestion.question_text, instanceIdx)}
@@ -2308,7 +2308,7 @@ const InputForms: React.FC = () => {
                                                   }}
                                                 >
                                                   <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                                                  Add Another
+                                                  Add Another ({nfqLabel})
                                                 </button>
                                               </div>
                                             )
@@ -2502,7 +2502,7 @@ const InputForms: React.FC = () => {
                                               }}
                                             >
                                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                                              Add Another
+                                              Add Another ({fuRepLabel})
                                             </button>
                                           </div>
                                         )
@@ -2533,7 +2533,7 @@ const InputForms: React.FC = () => {
                               }}
                             >
                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                              Add Another
+                              Add Another ({setQuestions.length > 1 ? `Q${repeatableQNum}a–${String.fromCharCode(97 + setQuestions.length - 1)}` : `Q${repeatableQNum}`})
                             </button>
                           )}
                         </div>

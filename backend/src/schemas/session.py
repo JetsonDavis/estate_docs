@@ -118,7 +118,8 @@ class QuestionToDisplay(BaseModel):
     validation_rules: Optional[dict]
     current_answer: Optional[str] = None
     depth: int = 0  # Nesting level for conditional questions
-    conditional_followups: Optional[List[ConditionalFollowup]] = None  # For repeatable questions with conditionals
+    conditional_followups: Optional[List[ConditionalFollowup]] = None
+    hierarchical_number: Optional[str] = None  # e.g., "1-1-1"
 
 
 class SessionQuestionsResponse(BaseModel):
