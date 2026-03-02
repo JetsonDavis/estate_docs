@@ -687,3 +687,253 @@ test.describe('10-Level Deep Nested Conditionals', () => {
     console.log('✅ Answers at levels 4, 5, and 6 persist after page reload');
   });
 });
+
+/**
+ * Test suite: Nested repeatable followup gets its own "Add Another" button.
+ *
+ * Structure:
+ *   Q1: "bene_type" (repeatable, multiple_choice: cash / asset)
+ *       Conditional: if bene_type = "cash"
+ *           Q2: "cash_recipient" (repeatable, person, same group as Q3)
+ *           Q3: "backup_plan" (repeatable, multiple_choice: remainder / other, same group as Q2)
+ *               Conditional: if backup_plan = "other"
+ *                   Q4: "backup_person" (repeatable, person_backup) ← OWN repeatable group
+ *
+ * The test verifies:
+ *   1. Selecting "cash" on Q1 shows Q2 and Q3
+ *   2. Selecting "other" on Q3 shows Q4
+ *   3. Q4 has its own "Add Another" button
+ *   4. Clicking Q4's "Add Another" adds another Q4 instance (person_backup), NOT another Q2
+ */
+test.describe('Nested Repeatable Followup Add Another', () => {
+  let setupContext: BrowserContext;
+  let groupId: number;
+  let sessionId: number;
+  let q1: any, q2: any, q3: any, q4: any;
+  const uniqueId = `nrfa_${Date.now()}`;
+
+  test.beforeAll(async ({ browser }) => {
+    setupContext = await browser.newContext();
+    await apiLoginContext(setupContext);
+    const req = setupContext.request;
+
+    // 1. Create group
+    const groupResp = await req.post(`${API_URL}/question-groups`, {
+      data: {
+        name: `NestedCondRepeat_${uniqueId}`,
+        identifier: `ncr_${uniqueId}`,
+        description: 'Test: nested repeatable followup gets own Add Another',
+        display_order: 0,
+      },
+    });
+    expect(groupResp.ok()).toBeTruthy();
+    const group = await groupResp.json();
+    groupId = group.id;
+
+    // Shared repeatable_group_id for Q2+Q3
+    const sharedGroupId = `grp_${Date.now()}`;
+    // Separate repeatable_group_id for Q4
+    const q4GroupId = `grp_q4_${Date.now()}`;
+
+    // Q1: parent repeatable multiple_choice
+    const q1Resp = await req.post(`${API_URL}/question-groups/${groupId}/questions`, {
+      data: {
+        identifier: 'bene_type',
+        question_text: 'What type of beneficiary?',
+        question_type: 'multiple_choice',
+        is_required: true,
+        repeatable: true,
+        display_order: 0,
+        question_group_id: groupId,
+        options: [
+          { value: 'cash', label: 'cash' },
+          { value: 'asset', label: 'asset' },
+        ],
+      },
+    });
+    expect(q1Resp.ok()).toBeTruthy();
+    q1 = await q1Resp.json();
+
+    // Q2: repeatable person (conditional followup of Q1)
+    const q2Resp = await req.post(`${API_URL}/question-groups/${groupId}/questions`, {
+      data: {
+        identifier: 'cash_recipient',
+        question_text: 'Who gets the cash?',
+        question_type: 'person',
+        is_required: false,
+        repeatable: true,
+        repeatable_group_id: sharedGroupId,
+        display_order: 1,
+        question_group_id: groupId,
+      },
+    });
+    expect(q2Resp.ok()).toBeTruthy();
+    q2 = await q2Resp.json();
+
+    // Q3: repeatable multiple_choice (same group as Q2)
+    const q3Resp = await req.post(`${API_URL}/question-groups/${groupId}/questions`, {
+      data: {
+        identifier: 'backup_plan',
+        question_text: 'What if the bene cannot receive?',
+        question_type: 'multiple_choice',
+        is_required: false,
+        repeatable: true,
+        repeatable_group_id: sharedGroupId,
+        display_order: 2,
+        question_group_id: groupId,
+        options: [
+          { value: 'remainder', label: 'remainder' },
+          { value: 'other', label: 'other' },
+        ],
+      },
+    });
+    expect(q3Resp.ok()).toBeTruthy();
+    q3 = await q3Resp.json();
+
+    // Q4: repeatable person_backup (nested conditional followup of Q3, own group)
+    const q4Resp = await req.post(`${API_URL}/question-groups/${groupId}/questions`, {
+      data: {
+        identifier: 'backup_person',
+        question_text: 'Who is the backup beneficiary?',
+        question_type: 'person_backup',
+        is_required: false,
+        repeatable: true,
+        repeatable_group_id: q4GroupId,
+        display_order: 3,
+        question_group_id: groupId,
+      },
+    });
+    expect(q4Resp.ok()).toBeTruthy();
+    q4 = await q4Resp.json();
+
+    // Wire up question_logic
+    const questionLogic = [
+      { type: 'question', questionId: q1.id },
+      {
+        type: 'conditional',
+        conditional: {
+          ifIdentifier: 'bene_type',
+          operator: 'equals',
+          value: 'cash',
+          nestedItems: [
+            { type: 'question', questionId: q2.id },
+            { type: 'question', questionId: q3.id },
+            {
+              type: 'conditional',
+              conditional: {
+                ifIdentifier: 'backup_plan',
+                operator: 'equals',
+                value: 'other',
+                nestedItems: [
+                  { type: 'question', questionId: q4.id },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const updateResp = await req.put(`${API_URL}/question-groups/${groupId}`, {
+      data: { question_logic: questionLogic },
+    });
+    expect(updateResp.ok(), `Update logic failed: ${await updateResp.text()}`).toBeTruthy();
+
+    // Create session
+    const sessResp = await req.post(`${API_URL}/sessions/`, {
+      data: {
+        client_identifier: `NestedCondTest_${uniqueId}`,
+        starting_group_id: groupId,
+      },
+    });
+    expect(sessResp.ok()).toBeTruthy();
+    const session = await sessResp.json();
+    sessionId = session.id;
+
+    console.log(`Nested repeatable followup test: group=${groupId}, session=${sessionId}`);
+    console.log(`  Q1=${q1.id} Q2=${q2.id} Q3=${q3.id} Q4=${q4.id}`);
+  });
+
+  test.afterAll(async () => {
+    if (setupContext) {
+      await setupContext.request.delete(`${API_URL}/question-groups/${groupId}`).catch(() => {});
+      await setupContext.request.delete(`${API_URL}/sessions/${sessionId}`).catch(() => {});
+      await setupContext.close();
+    }
+  });
+
+  test('Nested repeatable followup Q4 has its own Add Another that adds Q4, not Q2', async ({ page }) => {
+    await login(page);
+    await page.goto(`${BASE_URL}/document?session=${sessionId}`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000);
+
+    // Step 1: Q1 is visible
+    await expect(page.getByText('What type of beneficiary?')).toBeVisible();
+    console.log('Step 1: Q1 visible ✓');
+
+    // Step 2: Select "cash" on Q1 → Q2 and Q3 should appear
+    await page.getByLabel('cash').first().click();
+    await page.waitForTimeout(2000);
+    await expect(page.getByText('Who gets the cash?')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('What if the bene cannot receive?')).toBeVisible({ timeout: 5000 });
+    console.log('Step 2: Q2 and Q3 visible after selecting "cash" ✓');
+
+    // Step 3: Select "other" on Q3 → Q4 should appear
+    await page.getByLabel('other').first().click();
+    await page.waitForTimeout(2000);
+    await expect(page.getByText('Who is the backup beneficiary?')).toBeVisible({ timeout: 5000 });
+    console.log('Step 3: Q4 visible after selecting "other" ✓');
+
+    // Step 4: Count "Full name" inputs — should be 1 for Q2 + 1 for Q4 = 2
+    const nameInputsBefore = await page.locator('input[placeholder="Full name"]').count();
+    console.log(`Step 4: Name inputs before Add Another: ${nameInputsBefore}`);
+    expect(nameInputsBefore).toBe(2); // Q2 + Q4
+
+    // Step 5: Find the "Add Another" button that belongs to Q4's group
+    // There should be an Add Another button associated with the backup person question
+    // It should NOT add another "Who gets the cash?" but rather another "Who is the backup beneficiary?"
+    const addAnotherButtons = page.getByRole('button', { name: /Add Another/i });
+    const addAnotherCount = await addAnotherButtons.count();
+    console.log(`Step 5: Add Another buttons found: ${addAnotherCount}`);
+
+    // There should be at least 2 Add Another buttons:
+    // one for the Q2+Q3 set, one for Q4
+    expect(addAnotherCount).toBeGreaterThanOrEqual(2);
+
+    // Log all button texts to find the right one
+    for (let i = 0; i < addAnotherCount; i++) {
+      const btnText = (await addAnotherButtons.nth(i).innerText()).trim().replace(/\n/g, ' ');
+      console.log(`  btn ${i}: ${btnText}`);
+    }
+
+    // Click the FIRST Add Another — in this layout Q4's button appears before the parent group's
+    // because Q4 is nested inside the parent group's iteration
+    await addAnotherButtons.first().click();
+    await page.waitForTimeout(2000);
+
+    // Step 6: After clicking, we should have one MORE "Full name" input
+    // AND another "Who is the backup beneficiary?" instance
+    const nameInputsAfter = await page.locator('input[placeholder="Full name"]').count();
+    console.log(`Step 6: Name inputs after Add Another: ${nameInputsAfter}`);
+
+    // Should be 3: Q2(1) + Q4(2)
+    // If the bug is present, it would be 3 too but: Q2(2) + Q4(1) — wrong grouping
+    expect(nameInputsAfter).toBe(3);
+
+    // The critical check: count how many "Who is the backup beneficiary?" labels are visible
+    // If the Add Another worked correctly, there should be 2 instances of Q4
+    // If the bug is present, there would still be 1 Q4 and 2 Q2s instead
+    const backupLabels = await page.getByText('Who is the backup beneficiary?').count();
+    console.log(`Step 6: "Who is the backup beneficiary?" count: ${backupLabels}`);
+    // BUG CHECK: backup bene should appear twice (2 instances), not once
+    expect(backupLabels).toBe(2);
+
+    // Also verify Q2 still only has 1 instance
+    const cashRecipientLabels = await page.getByText('Who gets the cash?').count();
+    console.log(`Step 6: "Who gets the cash?" count: ${cashRecipientLabels}`);
+    expect(cashRecipientLabels).toBe(1);
+
+    console.log('✅ Nested repeatable followup Add Another works correctly');
+  });
+});

@@ -2491,10 +2491,110 @@ const InputForms: React.FC = () => {
                                                         )}
                                                         {renderQuestion(virtualQ, fuIdx)}
                                                       </div>
-                                                      {nestedFollowups.length > 0 && nestedFollowups.flatMap((nfu: any) =>
-                                                        nfu.questions.map((nfq: any, nfqIdx: number) => {
+                                                      {nestedFollowups.length > 0 && (() => {
+                                                        const allNfqs = nestedFollowups.flatMap((nfu: any) => nfu.questions)
+                                                        const renderedNfqGroups = new Set<string>()
+                                                        return allNfqs.map((nfq: any, nfqIdx: number) => {
                                                           const nfqKey = `rfuq-${nfq.id}-${instanceIdx}-${fuIdx}`
                                                           const nfqNestedLabel = nfq.hierarchical_number || `${fuRepLabel}.${nfqIdx + 1}`
+
+                                                          if (nfq.repeatable) {
+                                                            // Repeatable nested followup: render with its own Add Another pattern
+                                                            const nfqGroupId = nfq.repeatable_group_id || String(nfq.id)
+                                                            const nfqGroupKey = `${nfqGroupId}-${instanceIdx}-${fuIdx}`
+                                                            if (renderedNfqGroups.has(nfqGroupKey)) return null
+                                                            renderedNfqGroups.add(nfqGroupKey)
+
+                                                            const nfqSetQs = allNfqs.filter((q: any) =>
+                                                              q.repeatable && (q.repeatable_group_id || String(q.id)) === nfqGroupId
+                                                            )
+                                                            const nfqSynIds = nfqSetQs.map((q: any) => q.id * 100000 + instanceIdx)
+
+                                                            let nfqInstCount = 1
+                                                            for (const sid of nfqSynIds) {
+                                                              const arr = getRepeatableAnswerArray(sid)
+                                                              if (arr.length > nfqInstCount) nfqInstCount = arr.length
+                                                            }
+
+                                                            return (
+                                                              <div key={nfqKey} style={{
+                                                                marginBottom: '0.75rem', marginLeft: '1rem',
+                                                                borderLeft: '2px solid #d1d5db', paddingLeft: '1rem',
+                                                                border: '1px solid #e5e7eb', borderRadius: '0.5rem',
+                                                                backgroundColor: '#fafafa'
+                                                              }}>
+                                                                {Array.from({ length: nfqInstCount }).map((_, nfqRIdx) => (
+                                                                  <div key={`${nfqKey}-ri-${nfqRIdx}`} style={{
+                                                                    padding: '0.75rem',
+                                                                    borderBottom: nfqRIdx < nfqInstCount - 1 ? '1px solid #e5e7eb' : 'none',
+                                                                    position: 'relative'
+                                                                  }}>
+                                                                    {nfqInstCount > 1 && (
+                                                                      <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                          for (const sid of nfqSynIds) {
+                                                                            const arr = getRepeatableAnswerArray(sid)
+                                                                            if (arr.length > 1) {
+                                                                              setRepeatableAnswerArray(sid, arr.filter((_, i) => i !== nfqRIdx))
+                                                                            }
+                                                                          }
+                                                                        }}
+                                                                        style={{
+                                                                          position: 'absolute', top: '0.25rem', right: '0.25rem',
+                                                                          background: 'none', border: 'none', color: '#dc2626',
+                                                                          cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                                        }}
+                                                                        title="Remove this entry"
+                                                                      >×</button>
+                                                                    )}
+                                                                    {nfqSetQs.map((nfqQ: any, nfqQIdx: number) => {
+                                                                      const nfqSid = nfqSynIds[nfqQIdx]
+                                                                      const nfqVirtualQ = { ...nfqQ, id: nfqSid } as unknown as QuestionToDisplay
+                                                                      return (
+                                                                        <React.Fragment key={`${nfqKey}-rq-${nfqQ.id}-${nfqRIdx}`}>
+                                                                          <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
+                                                                            <label className="question-label">
+                                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
+                                                                              {replaceLoopToken(nfqQ.question_text, nfqRIdx)}
+                                                                              {nfqQ.is_required && <span className="required-indicator">*</span>}
+                                                                            </label>
+                                                                            {nfqQ.help_text && (
+                                                                              <p className="question-help">{replaceLoopToken(nfqQ.help_text, nfqRIdx)}</p>
+                                                                            )}
+                                                                            {renderQuestion(nfqVirtualQ, nfqRIdx)}
+                                                                          </div>
+                                                                          {renderNestedFollowups(nfqQ, nfqRIdx, 3, `${nfqKey}-rq-${nfqQ.id}-${nfqRIdx}`, nfqNestedLabel)}
+                                                                        </React.Fragment>
+                                                                      )
+                                                                    })}
+                                                                  </div>
+                                                                ))}
+                                                                <button
+                                                                  type="button"
+                                                                  onClick={() => {
+                                                                    for (const sid of nfqSynIds) {
+                                                                      const arr = getRepeatableAnswerArray(sid)
+                                                                      setRepeatableAnswerArray(sid, [...arr, ''])
+                                                                    }
+                                                                  }}
+                                                                  style={{
+                                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                                    width: '100%', padding: '0.5rem 1rem',
+                                                                    backgroundColor: '#f3f4f6', border: 'none',
+                                                                    borderTop: '1px dashed #9ca3af',
+                                                                    borderRadius: '0 0 0.5rem 0.5rem',
+                                                                    color: '#4b5563', cursor: 'pointer', fontSize: '0.875rem'
+                                                                  }}
+                                                                >
+                                                                  <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
+                                                                  Add Another ({(nfqSetQs[0] as any)?.hierarchical_number || nfqNestedLabel})
+                                                                </button>
+                                                              </div>
+                                                            )
+                                                          }
+
+                                                          // Non-repeatable nested followup
                                                           return (
                                                             <React.Fragment key={nfqKey}>
                                                               <div className="question-item" style={{
@@ -2515,7 +2615,7 @@ const InputForms: React.FC = () => {
                                                             </React.Fragment>
                                                           )
                                                         })
-                                                      )}
+                                                      })()}
                                                     </React.Fragment>
                                                   )
                                                 })}
