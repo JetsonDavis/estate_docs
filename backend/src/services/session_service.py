@@ -448,8 +448,8 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        # Returns tuple of (questions_with_data, repeatable_followups, question_numbers)
-        questions_with_data, repeatable_followups, question_numbers = SessionService._get_questions_from_logic(
+        # Returns tuple of (questions_with_data, repeatable_followups, question_numbers, all_followups)
+        questions_with_data, repeatable_followups, question_numbers, all_followups = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
@@ -498,11 +498,13 @@ class SessionService:
 
         question_responses = []
         for q, depth, hierarchical_number in paginated_questions:
-            # Build conditional_followups if this repeatable question has them
+            # Build conditional_followups for any question that has them
+            # (repeatable questions use these for per-instance rendering,
+            # all questions use them for answer deletion when conditionals change)
             cond_followups = None
-            if q.id in repeatable_followups:
+            if q.id in all_followups:
                 cond_followups = []
-                for fu in repeatable_followups[q.id]:
+                for fu in all_followups[q.id]:
                     fu_questions = [build_followup_question(fq_tuple) for fq_tuple in fu['questions']]
                     cond_followups.append(ConditionalFollowup(
                         trigger_value=fu['trigger_value'],
@@ -664,8 +666,12 @@ class SessionService:
         question_ids_added = set()  # Track which question IDs have been added
         # Track repeatable question identifiers (both namespaced and stripped)
         repeatable_identifier_to_question_id = {}
+        # Track ALL question identifiers (for conditional followup collection on non-repeatable too)
+        all_identifier_to_question_id = {}
         # Conditional follow-ups for repeatable questions: {question_id: [{trigger_value, operator, questions}]}
         repeatable_followups = {}
+        # Conditional follow-ups for ALL questions (including non-repeatable): used for answer deletion
+        all_followups = {}
         
         # Build answer map by identifier
         # Store both namespaced and non-namespaced versions for compatibility
@@ -682,25 +688,31 @@ class SessionService:
 
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
         
-        # Pre-scan logic to find repeatable question identifiers
-        def find_repeatable_identifiers(items: List[Dict]):
+        # Pre-scan logic to find question identifiers (repeatable and non-repeatable)
+        def find_question_identifiers(items: List[Dict]):
             for item in items:
                 if item.get('type') == 'question':
                     qid = item.get('questionId')
                     if qid:
                         q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
-                        if q and q.repeatable:
-                            repeatable_identifier_to_question_id[q.identifier] = q.id
+                        if q:
+                            all_identifier_to_question_id[q.identifier] = q.id
                             if '.' in q.identifier:
                                 stripped = q.identifier.split('.', 1)[1]
-                                repeatable_identifier_to_question_id[stripped] = q.id
+                                all_identifier_to_question_id[stripped] = q.id
+                            if q.repeatable:
+                                repeatable_identifier_to_question_id[q.identifier] = q.id
+                                if '.' in q.identifier:
+                                    stripped = q.identifier.split('.', 1)[1]
+                                    repeatable_identifier_to_question_id[stripped] = q.id
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     nested = item['conditional'].get('nestedItems', [])
                     if nested:
-                        find_repeatable_identifiers(nested)
+                        find_question_identifiers(nested)
         
-        find_repeatable_identifiers(group.question_logic)
+        find_question_identifiers(group.question_logic)
         logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
+        logger.info(f"All identifiers: {all_identifier_to_question_id}")
 
         # PASS 1: Assign hierarchical numbers to ALL questions in the tree
         # This ensures numbering matches the admin view exactly
@@ -828,26 +840,33 @@ class SessionService:
                     logger.info(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
                     logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
 
-                    # Check if this conditional depends on a repeatable question
-                    # If so, collect the follow-up questions as metadata for per-instance rendering
-                    if identifier and identifier in repeatable_identifier_to_question_id:
-                        parent_q_id = repeatable_identifier_to_question_id[identifier]
+                    # Collect conditional follow-up questions as metadata
+                    # For repeatable questions: used for per-instance rendering
+                    # For all questions: used by frontend to identify which answers to delete on change
+                    if identifier and identifier in all_identifier_to_question_id:
+                        parent_q_id = all_identifier_to_question_id[identifier]
                         nested_items = cond.get('nestedItems', [])
                         followup_questions = collect_nested_questions(nested_items)
                         
                         if followup_questions:
-                            if parent_q_id not in repeatable_followups:
-                                repeatable_followups[parent_q_id] = []
-                            repeatable_followups[parent_q_id].append({
+                            # Always collect into all_followups for answer deletion
+                            if parent_q_id not in all_followups:
+                                all_followups[parent_q_id] = []
+                            all_followups[parent_q_id].append({
                                 'trigger_value': expected_value,
                                 'operator': operator,
                                 'questions': followup_questions
                             })
-                            logger.info(f"{indent}  Collected {len(followup_questions)} follow-up questions for repeatable q_id={parent_q_id}, trigger='{expected_value}'")
-                        
-                        # Still evaluate and add to flat list for backwards compatibility
-                        # (non-repeatable rendering paths still need them)
-                        # But mark them so the frontend knows they're also in conditional_followups
+                            # Also collect into repeatable_followups if it's a repeatable question
+                            if identifier in repeatable_identifier_to_question_id:
+                                if parent_q_id not in repeatable_followups:
+                                    repeatable_followups[parent_q_id] = []
+                                repeatable_followups[parent_q_id].append({
+                                    'trigger_value': expected_value,
+                                    'operator': operator,
+                                    'questions': followup_questions
+                                })
+                            logger.info(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
 
                     # Check if condition is met
                     # Don't show conditional questions if the referenced field is empty
@@ -939,7 +958,7 @@ class SessionService:
         process_logic_items(group.question_logic)
         logger.info(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
         logger.info(f"Repeatable followups: {repeatable_followups}")
-        return questions_with_data, repeatable_followups, question_numbers
+        return questions_with_data, repeatable_followups, question_numbers, all_followups
     
     @staticmethod
     def save_answers(

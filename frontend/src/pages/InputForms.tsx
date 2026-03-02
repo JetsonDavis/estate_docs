@@ -375,12 +375,13 @@ const InputForms: React.FC = () => {
     console.log('isConditionalDependency:', isConditionalDependency)
     if (!isConditionalDependency) return
 
-    // Delete answers from outgoing conditional branches that no longer match
-    // Collect IDs from old matching branches, then subtract IDs still matching with new value
-    const oldValue = answers[questionId] || ''
-    const oldMatchIds = collectFollowupQuestionIds(question, oldValue)
+    // Delete answers from ALL conditional branches that don't match the new value.
+    // We collect ALL followup IDs, then subtract the ones matching the new value.
+    // This handles the case where oldValue was empty (first interaction) or switching
+    // between branches — all non-active branches get their answers deleted.
+    const allFollowupIds = collectFollowupQuestionIds(question) // undefined = collect ALL
     const newMatchIds = new Set(collectFollowupQuestionIds(question, newValue))
-    const idsToDelete = oldMatchIds.filter(id => !newMatchIds.has(id))
+    const idsToDelete = allFollowupIds.filter(id => !newMatchIds.has(id))
 
     if (idsToDelete.length > 0) {
       console.log('Deleting outgoing conditional followup answers:', idsToDelete)
