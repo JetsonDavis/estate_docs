@@ -422,7 +422,7 @@ const getDepthBackgroundColor = (depth: number): string => {
     '#faf5ff', // Level 1: purple-50
     '#f0fdf4', // Level 2: green-50
     '#fffbeb', // Level 3: amber-50
-    '#fef2f2', // Level 4: red-50
+    '#ecfeff', // Level 4: cyan-50
     '#eff6ff', // Level 5: blue-50
     '#fdf2f8', // Level 6: pink-50
     '#f0fdfa', // Level 7: teal-50
@@ -439,7 +439,7 @@ const getDepthBorderColor = (depth: number): string => {
     '#e9d5ff', // Level 1: purple-200
     '#bbf7d0', // Level 2: green-200
     '#fde68a', // Level 3: amber-200
-    '#fecaca', // Level 4: red-200
+    '#a5f3fc', // Level 4: cyan-200
     '#bfdbfe', // Level 5: blue-200
     '#fbcfe8', // Level 6: pink-200
     '#99f6e4', // Level 7: teal-200
@@ -456,7 +456,7 @@ const getDepthTextColor = (depth: number): string => {
     '#7c3aed', // Level 1: purple-600
     '#16a34a', // Level 2: green-600
     '#d97706', // Level 3: amber-600
-    '#dc2626', // Level 4: red-600
+    '#0891b2', // Level 4: cyan-600
     '#2563eb', // Level 5: blue-600
     '#db2777', // Level 6: pink-600
     '#0d9488', // Level 7: teal-600
@@ -2252,7 +2252,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
 
     // Build repeatable group color map for nested questions (including inside conditionals)
-    const nestedRepeatableColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
+    const nestedRepeatableColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#0891b2', '#06b6d4']
     const nestedGroupColorMap = new Map<string, string>()
     let nestedColorIdx = 0
     for (const gid of collectGroupIds(nestedItems)) {
@@ -3573,7 +3573,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
           {(() => {
             // Build group color map
-            const repeatableGroupColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
+            const repeatableGroupColors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#0891b2', '#06b6d4']
             const groupColorMap = new Map<string, string>()
             let colorIdx = 0
             for (const q of mainLevelQuestions) {

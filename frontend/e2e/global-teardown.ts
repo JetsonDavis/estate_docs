@@ -88,6 +88,7 @@ async function globalTeardown(config: FullConfig) {
       /^Complex_/,
       /^Test Group /,
       /^NestedCondRepeat_/,
+      /^ncr10_/,
     ];
 
     const testGroups = allGroups.filter(g =>
@@ -113,6 +114,37 @@ async function globalTeardown(config: FullConfig) {
     }
 
     console.log(`✅ Cleanup done: deleted ${deletedCount} test groups, preserved ${skippedCount} pre-existing groups`);
+
+    // Clean up test-created sessions
+    const testSessionPatterns = [
+      /^NestedCondTest_/,
+      /^E2E_/,
+      /^TestSession_/,
+    ];
+
+    try {
+      const sessionsResponse = await context.request.get(`${backendURL}/api/v1/sessions/`);
+      if (sessionsResponse.ok()) {
+        const sessions = await sessionsResponse.json();
+        const allSessions = Array.isArray(sessions) ? sessions : [];
+        const testSessions = allSessions.filter((s: any) =>
+          testSessionPatterns.some(pattern => pattern.test(s.client_identifier || ''))
+        );
+
+        let deletedSessions = 0;
+        for (const session of testSessions) {
+          try {
+            const delResp = await context.request.delete(`${backendURL}/api/v1/sessions/${session.id}`);
+            if (delResp.ok()) deletedSessions++;
+          } catch (e) {
+            // ignore individual session delete failures
+          }
+        }
+        console.log(`✅ Session cleanup: deleted ${deletedSessions} test sessions, preserved ${allSessions.length - testSessions.length} pre-existing sessions`);
+      }
+    } catch (e) {
+      console.log('⚠️  Session cleanup failed:', e);
+    }
   } catch (error) {
     console.error('❌ Error during database cleanup:', error);
     // Don't fail the tests if cleanup fails
