@@ -2110,8 +2110,6 @@ const InputForms: React.FC = () => {
                         return null
                       }
                       renderedRepeatableSets.add(setStartIndex)
-                      topLevelQuestionNum++
-                      const repeatableQNum = topLevelQuestionNum
 
                       // Get all questions in this repeatable set
                       const setQuestionIds = getRepeatableSetQuestionIds(qIndex)
@@ -2165,9 +2163,11 @@ const InputForms: React.FC = () => {
                                 </button>
                               )}
                               {setQuestions.map((setQuestion, setQIdx) => {
+                                // Use hierarchical number from backend, fallback to simple counter
+                                const baseNumber = setQuestion.hierarchical_number || '1'
                                 const setQLabel = setQuestions.length > 1
-                                  ? `Q${repeatableQNum}${String.fromCharCode(97 + setQIdx)}`
-                                  : `Q${repeatableQNum}`
+                                  ? `${baseNumber}${String.fromCharCode(97 + setQIdx)}`
+                                  : baseNumber
                                 // Get this instance's answer for determining follow-ups
                                 const instanceAnswer = setQuestion.repeatable
                                   ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
@@ -2308,7 +2308,7 @@ const InputForms: React.FC = () => {
                                                   }}
                                                 >
                                                   <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                                                  Add Another ({nfqLabel})
+                                                  Add Another ({(rSetQs[0] as any)?.hierarchical_number || nfqLabel})
                                                 </button>
                                               </div>
                                             )
@@ -2502,7 +2502,7 @@ const InputForms: React.FC = () => {
                                               }}
                                             >
                                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                                              Add Another ({fuRepLabel})
+                                              Add Another ({(fuSetQuestions[0] as any)?.hierarchical_number || fuRepLabel})
                                             </button>
                                           </div>
                                         )
@@ -2533,15 +2533,15 @@ const InputForms: React.FC = () => {
                               }}
                             >
                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                              Add Another ({setQuestions.length > 1 ? `Q${repeatableQNum}a–${String.fromCharCode(97 + setQuestions.length - 1)}` : `Q${repeatableQNum}`})
+                              Add Another ({setQuestions.length > 1 ? `${setQuestions[0].hierarchical_number || '1'}a–${String.fromCharCode(97 + setQuestions.length - 1)}` : `${setQuestions[0].hierarchical_number || '1'}`})
                             </button>
                           )}
                         </div>
                       )
                     }
 
-                    topLevelQuestionNum++
-                    const nonRepQLabel = `Q${topLevelQuestionNum}`
+                    // Non-repeatable question - use hierarchical number from backend
+                    const nonRepQLabel = question.hierarchical_number || '1'
                     return (
                       <React.Fragment key={question.id}>
                         <div className="question-item">

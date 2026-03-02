@@ -756,26 +756,31 @@ class SessionService:
             indent = "  " * depth
             logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
 
-            question_counter = 0  # Counter for questions at this level
+            question_counter = 0  # Counter for ALL questions at this level (logical position)
+            last_question_number = number_prefix  # Track the last question's number for nested items
 
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
 
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
+                    # Always increment counter to maintain logical position numbering (matches admin view)
+                    question_counter += 1
+                    hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
+                    last_question_number = hierarchical_number  # Remember this for conditionals
+
                     if question_id:
                         question = db.query(Question).filter(
                             Question.id == question_id,
                             Question.is_active == True
                         ).first()
+                        # Only add to result if found, active, and not already added
                         if question and question.id not in question_ids_added:
-                            question_counter += 1
-                            hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
                             logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
                             questions_with_data.append((question, depth, hierarchical_number))
                             question_ids_added.add(question.id)
                         elif not question:
-                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive")
+                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive (but counted as position {hierarchical_number})")
                     else:
                         logger.warning(f"{indent}  Question item has no questionId")
 
@@ -886,9 +891,9 @@ class SessionService:
                             else:
                                 nested_items = cond.get('nestedItems', [])
                                 if nested_items:
-                                    # Get the hierarchical number of the last added question
-                                    # to use as prefix for nested questions
-                                    nested_prefix = questions_with_data[-1][2] if questions_with_data else ""
+                                    # Use the last question number at this level as prefix for nested questions
+                                    # This matches the admin view's numbering logic
+                                    nested_prefix = last_question_number
                                     should_continue = process_logic_items(nested_items, depth + 1, nested_prefix)
                                     if not should_continue:
                                         return False
