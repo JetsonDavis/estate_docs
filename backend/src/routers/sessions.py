@@ -272,7 +272,7 @@ async def get_session_identifiers(
 ) -> List[str]:
     """
     Get all question identifiers from a session that have been answered.
-    
+
     - **session_id**: Session ID
     """
     identifiers = SessionService.get_session_identifiers(db, session_id, int(current_user["sub"]))
@@ -281,5 +281,28 @@ async def get_session_identifiers(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found"
         )
-    
+
     return identifiers
+
+
+@router.post("/{session_id}/copy", response_model=InputFormResponse, status_code=status.HTTP_201_CREATED)
+async def copy_session(
+    session_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+) -> InputFormResponse:
+    """
+    Create a copy of a session with all its answers.
+
+    - **session_id**: Session ID to copy
+    """
+    session = SessionService.copy_session(db, session_id, int(current_user["sub"]))
+
+    # Get the question group name if there's a current_group_id
+    response = InputFormResponse.model_validate(session)
+    if session.current_group_id:
+        group = QuestionGroupService.get_question_group_by_id(db, session.current_group_id)
+        if group:
+            response.current_group_name = group.name
+
+    return response

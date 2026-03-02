@@ -18,6 +18,26 @@ from ..schemas.session import (
 )
 
 
+def generate_copy_name(original_name: str, existing_names: List[str]) -> str:
+    """
+    Generate a macOS-style copy name for client identifiers.
+    - "Original" -> "Original copy"
+    - "Original copy" -> "Original copy copy"
+    - "Original copy copy" -> "Original copy copy copy"
+    """
+    base_name = original_name
+    copy_suffix = " copy"
+
+    # Start with "name copy"
+    new_name = f"{base_name}{copy_suffix}"
+
+    # If that exists, keep adding " copy" until we find a unique name
+    while new_name in existing_names:
+        new_name = f"{new_name}{copy_suffix}"
+
+    return new_name
+
+
 class SessionService:
     """Service for document session operations."""
 
@@ -998,27 +1018,90 @@ class SessionService:
     def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[List[str]]:
         """
         Get all question identifiers from a session that have been answered.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID (for authorization)
-            
+
         Returns:
             List of identifiers if session found, None otherwise
         """
         session = SessionService.get_session(db, session_id, user_id)
         if not session:
             return None
-        
+
         # Get all answers for this session with their question identifiers
         answers = db.query(SessionAnswer, Question.identifier).join(
             Question, SessionAnswer.question_id == Question.id
         ).filter(
             SessionAnswer.session_id == session_id
         ).all()
-        
+
         # Extract unique identifiers
         identifiers = list(set([identifier for _, identifier in answers]))
-        
+
         return sorted(identifiers)
+
+    @staticmethod
+    def copy_session(db: Session, session_id: int, user_id: int) -> InputForm:
+        """
+        Create a copy of a session with all its answers.
+
+        Args:
+            db: Database session
+            session_id: Session ID to copy
+            user_id: User ID (for authorization and ownership)
+
+        Returns:
+            Created session copy
+        """
+        # Get the original session
+        original_session = SessionService.get_session(db, session_id, user_id)
+        if not original_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+
+        # Get all existing client identifiers for this user for uniqueness check
+        user_sessions = db.query(InputForm).filter(
+            InputForm.user_id == user_id
+        ).all()
+        existing_names = [s.client_identifier for s in user_sessions]
+
+        # Generate unique client identifier
+        new_client_identifier = generate_copy_name(
+            original_session.client_identifier,
+            existing_names
+        )
+
+        # Create the new session
+        new_session = InputForm(
+            client_identifier=new_client_identifier,
+            user_id=user_id,
+            flow_id=original_session.flow_id,
+            current_group_id=original_session.current_group_id,
+            is_completed=False  # Copy starts as not completed
+        )
+
+        db.add(new_session)
+        db.flush()  # Get the new session ID without committing
+
+        # Copy all answers from the original session
+        original_answers = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+
+        for original_answer in original_answers:
+            new_answer = SessionAnswer(
+                session_id=new_session.id,
+                question_id=original_answer.question_id,
+                answer_value=original_answer.answer_value
+            )
+            db.add(new_answer)
+
+        db.commit()
+        db.refresh(new_session)
+
+        return new_session

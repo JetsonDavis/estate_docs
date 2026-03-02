@@ -163,6 +163,40 @@ async def delete_question_group(
     QuestionGroupService.delete_question_group(db, group_id)
 
 
+@router.post("/{group_id}/copy", response_model=QuestionGroupResponse, status_code=status.HTTP_201_CREATED)
+async def copy_question_group(
+    group_id: int,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db)
+) -> QuestionGroupResponse:
+    """
+    Create a copy of a question group with all its questions (admin only).
+    """
+    group = QuestionGroupService.copy_question_group(db, group_id)
+    questions = QuestionService.list_questions_by_group(db, group.id, include_inactive=False)
+    return QuestionGroupResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        identifier=group.identifier,
+        display_order=group.display_order,
+        question_logic=group.question_logic,
+        collapsed_items=group.collapsed_items,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+        is_active=group.is_active,
+        question_count=len(questions),
+        questions=[
+            {
+                "id": q.id,
+                "identifier": q.identifier,
+                "question_text": q.question_text,
+                "question_type": q.question_type
+            } for q in questions
+        ]
+    )
+
+
 # Question endpoints within a group
 @router.post("/{group_id}/questions", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
 async def create_question(

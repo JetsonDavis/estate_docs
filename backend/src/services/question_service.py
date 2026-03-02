@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from ..models.question import QuestionGroup, Question, QuestionType
+from ..models.question import QuestionGroup, Question
 from ..schemas.question import (
     QuestionGroupCreate,
     QuestionGroupUpdate,
@@ -8,6 +8,45 @@ from ..schemas.question import (
     QuestionUpdate
 )
 from fastapi import HTTPException, status
+
+
+def generate_copy_name(original_name: str, existing_names: List[str]) -> str:
+    """
+    Generate a macOS-style copy name.
+    - "Original" -> "Original copy"
+    - "Original copy" -> "Original copy copy"
+    - "Original copy copy" -> "Original copy copy copy"
+    """
+    base_name = original_name
+    copy_suffix = " copy"
+
+    # Start with "name copy"
+    new_name = f"{base_name}{copy_suffix}"
+
+    # If that exists, keep adding " copy" until we find a unique name
+    while new_name in existing_names:
+        new_name = f"{new_name}{copy_suffix}"
+
+    return new_name
+
+
+def generate_copy_identifier(original_identifier: str, existing_identifiers: List[str]) -> str:
+    """
+    Generate a unique identifier for a copy.
+    - "original" -> "original_copy"
+    - "original_copy" -> "original_copy_copy"
+    """
+    base_identifier = original_identifier
+    copy_suffix = "_copy"
+
+    # Start with "identifier_copy"
+    new_identifier = f"{base_identifier}{copy_suffix}"
+
+    # If that exists, keep adding "_copy" until we find a unique identifier
+    while new_identifier in existing_identifiers:
+        new_identifier = f"{new_identifier}{copy_suffix}"
+
+    return new_identifier
 
 
 class QuestionGroupService:
@@ -121,6 +160,119 @@ class QuestionGroupService:
         db.commit()
 
         return True
+
+    @staticmethod
+    def copy_question_group(db: Session, group_id: int) -> QuestionGroup:
+        """Create a copy of a question group with all its questions."""
+        # Get the original group
+        original_group = db.query(QuestionGroup).filter(QuestionGroup.id == group_id).first()
+        if not original_group:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question group not found"
+            )
+
+        # Get all existing group names and identifiers for uniqueness check
+        all_groups = db.query(QuestionGroup).all()
+        existing_names = [g.name for g in all_groups]
+        existing_identifiers = [g.identifier for g in all_groups]
+
+        # Generate unique name and identifier
+        new_name = generate_copy_name(original_group.name, existing_names)
+        new_identifier = generate_copy_identifier(original_group.identifier, existing_identifiers)
+
+        # Create the new group
+        new_group = QuestionGroup(
+            name=new_name,
+            description=original_group.description,
+            identifier=new_identifier,
+            display_order=original_group.display_order,
+            question_logic=original_group.question_logic,
+            collapsed_items=original_group.collapsed_items,
+            is_active=original_group.is_active
+        )
+
+        db.add(new_group)
+        db.flush()  # Get the new group ID without committing
+
+        # Copy all questions from the original group
+        original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
+
+        # Build a mapping of old identifiers to new identifiers for updating question_logic
+        identifier_mapping = {}
+
+        for original_question in original_questions:
+            # Strip the old namespace prefix and add the new one
+            old_namespace = f"{original_group.identifier}."
+            if original_question.identifier.startswith(old_namespace):
+                base_identifier = original_question.identifier[len(old_namespace):]
+            else:
+                base_identifier = original_question.identifier
+
+            new_identifier = f"{new_group.identifier}.{base_identifier}"
+            identifier_mapping[original_question.identifier] = new_identifier
+
+            # Create the new question - copy directly from original
+            new_question = Question(
+                question_group_id=new_group.id,
+                question_text=original_question.question_text,
+                question_type=original_question.question_type,  # Copy directly
+                identifier=new_identifier,
+                repeatable=original_question.repeatable,
+                repeatable_group_id=original_question.repeatable_group_id,
+                display_order=original_question.display_order,
+                is_required=original_question.is_required,
+                help_text=original_question.help_text,
+                options=original_question.options,
+                database_table=original_question.database_table,
+                database_value_column=original_question.database_value_column,
+                database_label_column=original_question.database_label_column,
+                validation_rules=original_question.validation_rules,
+                is_active=original_question.is_active
+            )
+
+            db.add(new_question)
+            db.flush()  # Flush each question immediately to avoid bulk insert issues
+
+        # Update question_logic to use new identifiers
+        if new_group.question_logic:
+            updated_logic = []
+            for logic_item in new_group.question_logic:
+                updated_item = logic_item.copy()
+
+                # Update ifIdentifier if it exists
+                if 'ifIdentifier' in updated_item and updated_item['ifIdentifier'] in identifier_mapping:
+                    updated_item['ifIdentifier'] = identifier_mapping[updated_item['ifIdentifier']]
+
+                # Update identifier in nested items recursively
+                def update_nested_identifiers(items):
+                    if not items:
+                        return items
+                    updated_items = []
+                    for item in items:
+                        updated_nested = item.copy()
+                        if item.get('type') == 'question' and 'identifier' in item:
+                            if item['identifier'] in identifier_mapping:
+                                updated_nested['identifier'] = identifier_mapping[item['identifier']]
+                        elif item.get('type') == 'conditional':
+                            if 'ifIdentifier' in item and item['ifIdentifier'] in identifier_mapping:
+                                updated_nested['ifIdentifier'] = identifier_mapping[item['ifIdentifier']]
+                            if 'items' in item:
+                                updated_nested['items'] = update_nested_identifiers(item['items'])
+                        updated_items.append(updated_nested)
+                    return updated_items
+
+                if 'items' in updated_item:
+                    updated_item['items'] = update_nested_identifiers(updated_item['items'])
+
+                updated_logic.append(updated_item)
+
+            new_group.question_logic = updated_logic
+
+        db.commit()
+        db.refresh(new_group)
+
+        return new_group
 
 
 class QuestionService:

@@ -103,5 +103,13 @@ export const sessionService = {
   getSessionIdentifiers: async (sessionId: number): Promise<string[]> => {
     const response = await apiClient.get<string[]>(`/sessions/${sessionId}/identifiers`)
     return response.data
+  },
+
+  /**
+   * Copy a session with all its answers
+   */
+  copySession: async (sessionId: number): Promise<InputForm> => {
+    const response = await apiClient.post<InputForm>(`/sessions/${sessionId}/copy`)
+    return response.data
   }
 }

@@ -91,4 +91,9 @@ export const questionGroupService = {
     )
     return response.data
   },
+
+  async copyQuestionGroup(groupId: number): Promise<QuestionGroup> {
+    const response = await apiClient.post<QuestionGroup>(`/question-groups/${groupId}/copy`)
+    return response.data
+  },
 }

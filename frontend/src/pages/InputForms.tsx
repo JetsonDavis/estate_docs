@@ -39,6 +39,7 @@ const InputForms: React.FC = () => {
   // Person search state for person type questions
   const [personSuggestions, setPersonSuggestions] = useState<Record<number, Person[]>>({})
   const personSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [copyingSessionId, setCopyingSessionId] = useState<number | null>(null)
 
   // Ref for debouncing answer changes that might affect conditionals
   const conditionalRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -184,6 +185,13 @@ const InputForms: React.FC = () => {
       return searchAll(realId)
     }
     return undefined
+  }
+
+  // Get the answer for a synthetic ID, falling back to the real ID
+  // This handles initial load where backend answers are keyed by real question ID
+  // but the frontend renders non-repeatable followups with synthetic IDs
+  const getEffectiveAnswer = (syntheticId: number, realId: number): string => {
+    return answers[syntheticId] || answers[realId] || ''
   }
 
   // Shared conditional evaluation: supports equals, not_equals, count_greater_than, count_equals, count_less_than
@@ -867,7 +875,13 @@ const InputForms: React.FC = () => {
       const arr = getRepeatableAnswerArray(question.id)
       value = arr[instanceIndex] || ''
     } else {
+      // For synthetic IDs (non-repeatable followups inside repeatable groups),
+      // fall back to real ID answer if synthetic has no value yet (e.g., after page reload)
       value = answers[question.id] || ''
+      if (!value && question.id >= 100000) {
+        const realId = Math.floor(question.id / 100000)
+        value = answers[realId] || ''
+      }
     }
 
     // Handler for value changes - uses repeatable-aware update if needed
@@ -1906,6 +1920,54 @@ const InputForms: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
+                            setCopyingSessionId(session.id)
+                            sessionService.copySession(session.id)
+                              .then((copiedSession) => {
+                                // Insert the copied session directly above the original
+                                setSessions(prev => {
+                                  const index = prev.findIndex(s => s.id === session.id)
+                                  if (index !== -1) {
+                                    const newSessions = [...prev]
+                                    newSessions.splice(index, 0, copiedSession)
+                                    return newSessions
+                                  }
+                                  return [copiedSession, ...prev]
+                                })
+                              })
+                              .catch(err => {
+                                alert('Failed to copy form: ' + (err.response?.data?.detail || err.message))
+                              })
+                              .finally(() => {
+                                setCopyingSessionId(null)
+                              })
+                          }}
+                          style={{
+                            padding: '0.375rem',
+                            color: '#0ea5e9',
+                            background: 'white',
+                            border: '1px solid #0ea5e9',
+                            borderRadius: '0.25rem',
+                            cursor: copyingSessionId === session.id ? 'wait' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          title="Copy"
+                          disabled={copyingSessionId === session.id}
+                        >
+                          {copyingSessionId === session.id ? (
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem', animation: 'spin 1s linear infinite' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
                             if (window.confirm(`Are you sure you want to delete the form for "${session.client_identifier}"?`)) {
                               sessionService.deleteSession(session.id)
                                 .then(() => {
@@ -2102,8 +2164,13 @@ const InputForms: React.FC = () => {
                                     {(() => {
                                       // Recursive renderer for nested conditional followups to arbitrary depth
                                       // Handles both repeatable and non-repeatable nested questions
+                                      // Uses synthetic IDs (realId * 100000 + instanceIdx) for non-repeatable questions
+                                      // so each parent repeatable instance gets its own answer key
                                       const renderNestedFollowups = (question: any, parentInstanceIdx: number, depth: number, keyPrefix: string): React.ReactNode[] => {
-                                        const qAnswer = answers[question.id] || ''
+                                        // Use synthetic ID if available (set on virtualQ), falling back to real ID
+                                        const effectiveId = question.id
+                                        const realId = effectiveId >= 100000 ? Math.floor(effectiveId / 100000) : effectiveId
+                                        const qAnswer = getEffectiveAnswer(effectiveId, realId)
                                         const matchedFollowups = (question as any).conditional_followups?.filter((cfu: any) => {
                                           return evaluateConditional(cfu.operator, qAnswer, cfu.trigger_value, qAnswer)
                                         }) || []
@@ -2212,7 +2279,11 @@ const InputForms: React.FC = () => {
                                             )
                                           }
 
-                                          // Non-repeatable nested follow-up: render with recursive nesting
+                                          // Non-repeatable nested follow-up: use synthetic ID for instances > 0
+                                          // Instance 0 uses real ID (preserves backend persistence)
+                                          const nfqEffectiveId = parentInstanceIdx > 0 ? nfq.id * 100000 + parentInstanceIdx : nfq.id
+                                          const nfqVirtual = { ...nfq, id: nfqEffectiveId } as unknown as QuestionToDisplay
+                                          const nfqWithEffId = { ...nfq, id: nfqEffectiveId }
                                           return (
                                             <React.Fragment key={nfqKey}>
                                               <div className="question-item" style={{
@@ -2226,9 +2297,9 @@ const InputForms: React.FC = () => {
                                                 {nfq.help_text && (
                                                   <p className="question-help">{replaceLoopToken(nfq.help_text, parentInstanceIdx)}</p>
                                                 )}
-                                                {renderQuestion(nfq as unknown as QuestionToDisplay, parentInstanceIdx)}
+                                                {renderQuestion(nfqVirtual, 0)}
                                               </div>
-                                              {renderNestedFollowups(nfq, parentInstanceIdx, depth + 1, nfqKey)}
+                                              {renderNestedFollowups(nfqWithEffId, parentInstanceIdx, depth + 1, nfqKey)}
                                             </React.Fragment>
                                           )
                                         })
@@ -2239,7 +2310,11 @@ const InputForms: React.FC = () => {
                                       const renderedFuGroups = new Set<string>()
                                       return allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
-                                          // Non-repeatable follow-up: render normally with recursive nested conditionals
+                                          // Non-repeatable follow-up: use synthetic ID for instances > 0
+                                          // Instance 0 uses real ID (preserves backend persistence)
+                                          const fqEffectiveId = instanceIdx > 0 ? fq.id * 100000 + instanceIdx : fq.id
+                                          const fqVirtual = { ...fq, id: fqEffectiveId } as unknown as QuestionToDisplay
+                                          const fqWithEffId = { ...fq, id: fqEffectiveId }
                                           return (
                                             <React.Fragment key={`fu-${fq.id}-${instanceIdx}`}>
                                               <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
@@ -2250,9 +2325,9 @@ const InputForms: React.FC = () => {
                                                 {fq.help_text && (
                                                   <p className="question-help">{replaceLoopToken(fq.help_text, instanceIdx)}</p>
                                                 )}
-                                                {renderQuestion(fq as unknown as QuestionToDisplay, instanceIdx)}
+                                                {renderQuestion(fqVirtual, 0)}
                                               </div>
-                                              {renderNestedFollowups(fq, instanceIdx, 2, `fu-${fq.id}`)}
+                                              {renderNestedFollowups(fqWithEffId, instanceIdx, 2, `fu-${fq.id}`)}
                                             </React.Fragment>
                                           )
                                         }
@@ -2353,9 +2428,9 @@ const InputForms: React.FC = () => {
                                                                 {nfq.help_text && (
                                                                   <p className="question-help">{replaceLoopToken(nfq.help_text, fuIdx)}</p>
                                                                 )}
-                                                                {renderQuestion({ ...nfq, id: nfq.id * 100000 + instanceIdx } as unknown as QuestionToDisplay, fuIdx)}
+                                                                {renderQuestion({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
                                                               </div>
-                                                              {renderNestedFollowups(nfq, fuIdx, 2, nfqKey)}
+                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey)}
                                                             </React.Fragment>
                                                           )
                                                         })
