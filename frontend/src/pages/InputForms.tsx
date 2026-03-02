@@ -150,6 +150,69 @@ const InputForms: React.FC = () => {
     }
   }
 
+  // Find a question by ID in sessionData.questions OR recursively inside conditional_followups
+  // Also handles synthetic IDs (realId * 100000 + instanceIdx) used by repeatable followups
+  const findQuestionById = (questionId: number): any | undefined => {
+    if (!sessionData) return undefined
+    // Recursively search conditional_followups
+    const searchFollowups = (cfus: any[] | null | undefined): any | undefined => {
+      if (!cfus) return undefined
+      for (const cfu of cfus) {
+        for (const q of (cfu.questions || [])) {
+          if (q.id === questionId) return q
+          const deeper = searchFollowups(q.conditional_followups)
+          if (deeper) return deeper
+        }
+      }
+      return undefined
+    }
+    const searchAll = (targetId: number): any | undefined => {
+      const topLevel = sessionData.questions.find(q => q.id === targetId)
+      if (topLevel) return topLevel
+      for (const q of sessionData.questions) {
+        const found = searchFollowups(q.conditional_followups)
+        if (found) return found
+      }
+      return undefined
+    }
+    // Try direct ID first
+    const direct = searchAll(questionId)
+    if (direct) return direct
+    // If not found, try deriving real ID from synthetic ID (realId * 100000 + instanceIdx)
+    if (questionId >= 100000) {
+      const realId = Math.floor(questionId / 100000)
+      return searchAll(realId)
+    }
+    return undefined
+  }
+
+  // Shared conditional evaluation: supports equals, not_equals, count_greater_than, count_equals, count_less_than
+  const evaluateConditional = (operator: string | undefined, answer: string, triggerValue: string, fullAnswer?: string): boolean => {
+    const op = operator || 'equals'
+    if (op === 'equals') return answer === triggerValue
+    if (op === 'not_equals') return answer !== triggerValue
+    if (op === 'count_greater_than' || op === 'count_equals' || op === 'count_less_than') {
+      // Count operators: parse the full answer (JSON array) and compare length to threshold
+      const source = fullAnswer !== undefined ? fullAnswer : answer
+      let count = 0
+      try {
+        const parsed = JSON.parse(source)
+        if (Array.isArray(parsed)) {
+          count = parsed.filter((v: any) => v !== '' && v !== null && v !== undefined).length
+        } else if (source && source !== '') {
+          count = 1
+        }
+      } catch {
+        count = (source && source !== '') ? 1 : 0
+      }
+      const threshold = parseInt(triggerValue, 10) || 0
+      if (op === 'count_greater_than') return count > threshold
+      if (op === 'count_equals') return count === threshold
+      return count < threshold // count_less_than
+    }
+    return false
+  }
+
   const handleAnswerChange = (questionId: number, value: string) => {
     const previousValue = answers[questionId]
 
@@ -169,10 +232,13 @@ const InputForms: React.FC = () => {
   const handleRadioChange = async (questionId: number, newValue: string, instanceIndex: number = 0) => {
     if (!sessionData) return
 
-    const question = sessionData.questions.find(q => q.id === questionId)
+    const question = findQuestionById(questionId)
     if (!question) return
 
-    console.log('handleRadioChange called:', { questionId, newValue, instanceIndex, identifier: question.identifier })
+    // Derive real question ID for backend saves (synthetic IDs are realId * 100000 + instanceIdx)
+    const realQuestionId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
+
+    console.log('handleRadioChange called:', { questionId, realQuestionId, newValue, instanceIndex, identifier: question.identifier })
 
     // For repeatable questions, build the full JSON array with the new value
     // We can't rely on reading state here because React may not have flushed the update yet
@@ -187,10 +253,10 @@ const InputForms: React.FC = () => {
       valueToSave = JSON.stringify(updated)
     }
 
-    // Save the answer immediately
+    // Save the answer immediately (use real question ID for backend)
     try {
       await sessionService.saveAnswers(sessionData.session_id, {
-        answers: [{ question_id: questionId, answer_value: valueToSave }]
+        answers: [{ question_id: realQuestionId, answer_value: valueToSave }]
       })
       console.log('Answer saved successfully, valueToSave:', valueToSave)
     } catch (err) {
@@ -282,14 +348,17 @@ const InputForms: React.FC = () => {
   const handleAnswerBlur = async (questionId: number, valueOverride?: string) => {
     if (!sessionData) return
 
-    const question = sessionData.questions.find(q => q.id === questionId)
+    const question = findQuestionById(questionId)
     if (!question) return
+
+    // Derive real question ID for backend saves (synthetic IDs are realId * 100000 + instanceIdx)
+    const realQuestionId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
 
     // Save the current answer value (use override if provided to avoid stale state)
     const currentValue = valueOverride !== undefined ? valueOverride : (answers[questionId] || '')
     try {
       await sessionService.saveAnswers(sessionData.session_id, {
-        answers: [{ question_id: questionId, answer_value: currentValue }]
+        answers: [{ question_id: realQuestionId, answer_value: currentValue }]
       })
     } catch (err) {
       console.error('Failed to save answer:', err)
@@ -606,6 +675,11 @@ const InputForms: React.FC = () => {
     }
   }
 
+  // Replace ## token in question text with the 1-based loop number
+  const replaceLoopToken = (text: string, instanceIndex: number): string => {
+    return text.replace(/##/g, String(instanceIndex + 1))
+  }
+
   // Helper functions for repeatable questions
   const getRepeatableAnswerArray = (questionId: number): string[] => {
     const value = answers[questionId] || ''
@@ -657,24 +731,22 @@ const InputForms: React.FC = () => {
     handleAnswerChange(questionId, jsonValue)
   }
 
-  const isLastInRepeatableSet = (questionIndex: number): boolean => {
-    if (!sessionData) return false
+  // Find ALL questions with the same repeatable_group_id (not just consecutive ones)
+  // This handles nested questions inside conditionals that aren't adjacent in the flat array
+  const getRepeatableSetQuestionIds = (questionIndex: number): number[] => {
+    if (!sessionData) return []
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
-    if (!currentQuestion?.repeatable) return false
+    const currentGroupId = currentQuestion?.repeatable_group_id
+    if (!currentGroupId) return [currentQuestion.id]
 
-    const currentGroupId = currentQuestion.repeatable_group_id
-    const currentDepth = currentQuestion.depth ?? 0
-
-    // Check if the next question is in the same repeatable group and depth
-    const nextQuestion = questions[questionIndex + 1]
-    if (nextQuestion?.repeatable &&
-        nextQuestion.repeatable_group_id === currentGroupId &&
-        (nextQuestion.depth ?? 0) === currentDepth) {
-      return false
+    const ids: number[] = []
+    for (const q of questions) {
+      if (q.repeatable && q.repeatable_group_id === currentGroupId) {
+        ids.push(q.id)
+      }
     }
-
-    return true
+    return ids
   }
 
   const getRepeatableSetStartIndex = (questionIndex: number): number => {
@@ -682,37 +754,34 @@ const InputForms: React.FC = () => {
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
     const currentGroupId = currentQuestion?.repeatable_group_id
-    const currentDepth = currentQuestion?.depth ?? 0
-    let startIndex = questionIndex
+    if (!currentGroupId) return questionIndex
 
-    // Walk backwards to find the start of the repeatable set
-    // Only include questions with the same repeatable_group_id and depth
-    while (startIndex > 0 &&
-           questions[startIndex - 1]?.repeatable &&
-           questions[startIndex - 1]?.repeatable_group_id === currentGroupId &&
-           (questions[startIndex - 1]?.depth ?? 0) === currentDepth) {
-      startIndex--
+    // Find the first question in the array with this group ID
+    for (let i = 0; i < questions.length; i++) {
+      if (questions[i].repeatable && questions[i].repeatable_group_id === currentGroupId) {
+        return i
+      }
     }
-    return startIndex
+    return questionIndex
   }
 
-  const getRepeatableSetQuestionIds = (questionIndex: number): number[] => {
-    if (!sessionData) return []
+  const isLastInRepeatableSet = (questionIndex: number): boolean => {
+    if (!sessionData) return false
     const questions = sessionData.questions
     const currentQuestion = questions[questionIndex]
-    const currentGroupId = currentQuestion?.repeatable_group_id
-    const currentDepth = currentQuestion?.depth ?? 0
-    const startIndex = getRepeatableSetStartIndex(questionIndex)
-    const ids: number[] = []
+    if (!currentQuestion?.repeatable) return false
 
-    // Collect all consecutive repeatable questions with the same group ID and depth
-    for (let i = startIndex; i < questions.length &&
-         questions[i]?.repeatable &&
-         questions[i]?.repeatable_group_id === currentGroupId &&
-         (questions[i]?.depth ?? 0) === currentDepth; i++) {
-      ids.push(questions[i].id)
+    const currentGroupId = currentQuestion.repeatable_group_id
+    if (!currentGroupId) return true
+
+    // Find the last question in the array with this group ID
+    let lastIndex = questionIndex
+    for (let i = 0; i < questions.length; i++) {
+      if (questions[i].repeatable && questions[i].repeatable_group_id === currentGroupId) {
+        lastIndex = i
+      }
     }
-    return ids
+    return questionIndex === lastIndex
   }
 
   const getInstanceCount = (questionIndex: number): number => {
@@ -1962,7 +2031,8 @@ const InputForms: React.FC = () => {
                       ).filter(Boolean)
 
                       const instanceCount = getInstanceCount(qIndex)
-                      const isLastInSet = isLastInRepeatableSet(qIndex + setQuestions.length - 1)
+                      // We render the entire set as one block, so always show "Add Another"
+                      const isLastInSet = true
 
                       return (
                         <div
@@ -2012,41 +2082,313 @@ const InputForms: React.FC = () => {
                                   : answers[setQuestion.id] || ''
 
                                 // Find matching conditional follow-ups for this instance's answer
+                                const fullRawAnswer = answers[setQuestion.id] || ''
                                 const matchingFollowups = setQuestion.conditional_followups?.filter(fu => {
-                                  if (fu.operator === 'equals' || !fu.operator) {
-                                    return instanceAnswer === fu.trigger_value
-                                  } else if (fu.operator === 'not_equals') {
-                                    return instanceAnswer !== fu.trigger_value
-                                  }
-                                  return false
+                                  return evaluateConditional(fu.operator, instanceAnswer, fu.trigger_value, fullRawAnswer)
                                 }) || []
 
                                 return (
                                   <React.Fragment key={setQuestion.id}>
                                     <div className="question-item" style={{ marginBottom: '0.75rem' }}>
                                       <label className="question-label">
-                                        {setQuestion.question_text}
+                                        {replaceLoopToken(setQuestion.question_text, instanceIdx)}
                                         {setQuestion.is_required && <span className="required-indicator">*</span>}
                                       </label>
                                       {setQuestion.help_text && (
-                                        <p className="question-help">{setQuestion.help_text}</p>
+                                        <p className="question-help">{replaceLoopToken(setQuestion.help_text, instanceIdx)}</p>
                                       )}
                                       {renderQuestion(setQuestion, instanceIdx)}
                                     </div>
-                                    {matchingFollowups.map(fu =>
-                                      fu.questions.map(fq => (
-                                        <div key={`fu-${fq.id}-${instanceIdx}`} className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
-                                          <label className="question-label">
-                                            {fq.question_text}
-                                            {fq.is_required && <span className="required-indicator">*</span>}
-                                          </label>
-                                          {fq.help_text && (
-                                            <p className="question-help">{fq.help_text}</p>
-                                          )}
-                                          {renderQuestion(fq as unknown as QuestionToDisplay, instanceIdx)}
-                                        </div>
-                                      ))
-                                    )}
+                                    {(() => {
+                                      // Recursive renderer for nested conditional followups to arbitrary depth
+                                      // Handles both repeatable and non-repeatable nested questions
+                                      const renderNestedFollowups = (question: any, parentInstanceIdx: number, depth: number, keyPrefix: string): React.ReactNode[] => {
+                                        const qAnswer = answers[question.id] || ''
+                                        const matchedFollowups = (question as any).conditional_followups?.filter((cfu: any) => {
+                                          return evaluateConditional(cfu.operator, qAnswer, cfu.trigger_value, qAnswer)
+                                        }) || []
+                                        if (matchedFollowups.length === 0) return []
+
+                                        const allNestedQs = matchedFollowups.flatMap((nfu: any) => nfu.questions)
+                                        const renderedRepeatableGroups = new Set<string>()
+
+                                        return allNestedQs.map((nfq: any, nfqIdx: number) => {
+                                          const nfqKey = `${keyPrefix}-nfq-${nfq.id}-${parentInstanceIdx}-d${depth}-${nfqIdx}`
+
+                                          if (nfq.repeatable) {
+                                            // Repeatable nested follow-up: render with Add Another pattern
+                                            const rGroupId = nfq.repeatable_group_id || String(nfq.id)
+                                            const rGroupKey = `${rGroupId}-${parentInstanceIdx}-d${depth}`
+                                            if (renderedRepeatableGroups.has(rGroupKey)) return null
+                                            renderedRepeatableGroups.add(rGroupKey)
+
+                                            // Collect all repeatable questions in this group from allNestedQs
+                                            const rSetQs = allNestedQs.filter((q: any) =>
+                                              q.repeatable && (q.repeatable_group_id || String(q.id)) === rGroupId
+                                            )
+                                            const rSyntheticIds = rSetQs.map((q: any) => q.id * 100000 + parentInstanceIdx)
+
+                                            // Get instance count
+                                            let rInstanceCount = 1
+                                            for (const sid of rSyntheticIds) {
+                                              const arr = getRepeatableAnswerArray(sid)
+                                              if (arr.length > rInstanceCount) rInstanceCount = arr.length
+                                            }
+
+                                            return (
+                                              <div key={nfqKey} style={{
+                                                marginBottom: '0.75rem', marginLeft: `${depth}rem`,
+                                                borderLeft: '2px solid #d1d5db', paddingLeft: '1rem',
+                                                border: '1px solid #e5e7eb', borderRadius: '0.5rem',
+                                                backgroundColor: '#fafafa'
+                                              }}>
+                                                {Array.from({ length: rInstanceCount }).map((_, rIdx) => (
+                                                  <div key={`${nfqKey}-ri-${rIdx}`} style={{
+                                                    padding: '0.75rem',
+                                                    borderBottom: rIdx < rInstanceCount - 1 ? '1px solid #e5e7eb' : 'none',
+                                                    position: 'relative'
+                                                  }}>
+                                                    {rInstanceCount > 1 && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          for (const sid of rSyntheticIds) {
+                                                            const arr = getRepeatableAnswerArray(sid)
+                                                            if (arr.length > 1) {
+                                                              setRepeatableAnswerArray(sid, arr.filter((_, i) => i !== rIdx))
+                                                            }
+                                                          }
+                                                        }}
+                                                        style={{
+                                                          position: 'absolute', top: '0.25rem', right: '0.25rem',
+                                                          background: 'none', border: 'none', color: '#dc2626',
+                                                          cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                        }}
+                                                        title="Remove this entry"
+                                                      >×</button>
+                                                    )}
+                                                    {rSetQs.map((rQ: any, rQIdx: number) => {
+                                                      const rSid = rSyntheticIds[rQIdx]
+                                                      const rVirtualQ = { ...rQ, id: rSid } as unknown as QuestionToDisplay
+                                                      return (
+                                                        <React.Fragment key={`${nfqKey}-rq-${rQ.id}-${rIdx}`}>
+                                                          <div className="question-item" style={{ marginBottom: '0.75rem' }}>
+                                                            <label className="question-label">
+                                                              {replaceLoopToken(rQ.question_text, rIdx)}
+                                                              {rQ.is_required && <span className="required-indicator">*</span>}
+                                                            </label>
+                                                            {rQ.help_text && (
+                                                              <p className="question-help">{replaceLoopToken(rQ.help_text, rIdx)}</p>
+                                                            )}
+                                                            {renderQuestion(rVirtualQ, rIdx)}
+                                                          </div>
+                                                          {renderNestedFollowups(rQ, rIdx, depth + 1, `${nfqKey}-rq-${rQ.id}-${rIdx}`)}
+                                                        </React.Fragment>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                ))}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    for (const sid of rSyntheticIds) {
+                                                      const arr = getRepeatableAnswerArray(sid)
+                                                      setRepeatableAnswerArray(sid, [...arr, ''])
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                    width: '100%', padding: '0.5rem 1rem',
+                                                    backgroundColor: '#f3f4f6', border: 'none',
+                                                    borderTop: '1px dashed #9ca3af',
+                                                    borderRadius: '0 0 0.5rem 0.5rem',
+                                                    color: '#4b5563', cursor: 'pointer', fontSize: '0.875rem'
+                                                  }}
+                                                >
+                                                  <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
+                                                  Add Another
+                                                </button>
+                                              </div>
+                                            )
+                                          }
+
+                                          // Non-repeatable nested follow-up: render with recursive nesting
+                                          return (
+                                            <React.Fragment key={nfqKey}>
+                                              <div className="question-item" style={{
+                                                marginBottom: '0.75rem', marginLeft: `${depth}rem`,
+                                                borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
+                                              }}>
+                                                <label className="question-label">
+                                                  {replaceLoopToken(nfq.question_text, parentInstanceIdx)}
+                                                  {nfq.is_required && <span className="required-indicator">*</span>}
+                                                </label>
+                                                {nfq.help_text && (
+                                                  <p className="question-help">{replaceLoopToken(nfq.help_text, parentInstanceIdx)}</p>
+                                                )}
+                                                {renderQuestion(nfq as unknown as QuestionToDisplay, parentInstanceIdx)}
+                                              </div>
+                                              {renderNestedFollowups(nfq, parentInstanceIdx, depth + 1, nfqKey)}
+                                            </React.Fragment>
+                                          )
+                                        })
+                                      }
+
+                                      // Collect all follow-up questions, grouping repeatable ones by group ID
+                                      const allFuQuestions = matchingFollowups.flatMap(fu => fu.questions)
+                                      const renderedFuGroups = new Set<string>()
+                                      return allFuQuestions.map(fq => {
+                                        if (!fq.repeatable) {
+                                          // Non-repeatable follow-up: render normally with recursive nested conditionals
+                                          return (
+                                            <React.Fragment key={`fu-${fq.id}-${instanceIdx}`}>
+                                              <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
+                                                <label className="question-label">
+                                                  {replaceLoopToken(fq.question_text, instanceIdx)}
+                                                  {fq.is_required && <span className="required-indicator">*</span>}
+                                                </label>
+                                                {fq.help_text && (
+                                                  <p className="question-help">{replaceLoopToken(fq.help_text, instanceIdx)}</p>
+                                                )}
+                                                {renderQuestion(fq as unknown as QuestionToDisplay, instanceIdx)}
+                                              </div>
+                                              {renderNestedFollowups(fq, instanceIdx, 2, `fu-${fq.id}`)}
+                                            </React.Fragment>
+                                          )
+                                        }
+
+                                        // Repeatable follow-up: group by repeatable_group_id
+                                        const fuGroupId = fq.repeatable_group_id || String(fq.id)
+                                        const fuGroupKey = `${fuGroupId}-${instanceIdx}`
+                                        if (renderedFuGroups.has(fuGroupKey)) return null
+                                        renderedFuGroups.add(fuGroupKey)
+
+                                        // Collect all follow-up questions in this repeatable group
+                                        const fuSetQuestions = allFuQuestions.filter(q =>
+                                          q.repeatable && (q.repeatable_group_id || String(q.id)) === fuGroupId
+                                        )
+
+                                        // Build synthetic IDs for each question in the set (per parent instance)
+                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + instanceIdx)
+
+                                        // Get instance count from the max answer array length across the set
+                                        let fuInstanceCount = 1
+                                        for (const sid of fuSyntheticIds) {
+                                          const arr = getRepeatableAnswerArray(sid)
+                                          if (arr.length > fuInstanceCount) fuInstanceCount = arr.length
+                                        }
+
+                                        return (
+                                          <div key={`fu-set-${fuGroupId}-${instanceIdx}`} style={{
+                                            marginBottom: '0.75rem',
+                                            marginLeft: '1rem',
+                                            borderLeft: '2px solid #d1d5db',
+                                            paddingLeft: '1rem',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '0.5rem',
+                                            backgroundColor: '#fafafa'
+                                          }}>
+                                            {Array.from({ length: fuInstanceCount }).map((_, fuIdx) => (
+                                              <div key={`fu-set-${fuGroupId}-${instanceIdx}-${fuIdx}`} style={{
+                                                padding: '0.75rem',
+                                                borderBottom: fuIdx < fuInstanceCount - 1 ? '1px solid #e5e7eb' : 'none',
+                                                position: 'relative'
+                                              }}>
+                                                {fuInstanceCount > 1 && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      for (const sid of fuSyntheticIds) {
+                                                        const arr = getRepeatableAnswerArray(sid)
+                                                        if (arr.length > 1) {
+                                                          setRepeatableAnswerArray(sid, arr.filter((_, i) => i !== fuIdx))
+                                                        }
+                                                      }
+                                                    }}
+                                                    style={{
+                                                      position: 'absolute', top: '0.25rem', right: '0.25rem',
+                                                      background: 'none', border: 'none', color: '#dc2626',
+                                                      cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                    }}
+                                                    title="Remove this entry"
+                                                  >×</button>
+                                                )}
+                                                {fuSetQuestions.map((fuQ, fuQIdx) => {
+                                                  const sid = fuSyntheticIds[fuQIdx]
+                                                  const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
+
+                                                  // Get the current answer for this follow-up question instance
+                                                  const fuAnswer = getRepeatableAnswerArray(sid)[fuIdx] || ''
+
+                                                  // Evaluate conditional_followups on this follow-up question
+                                                  const nestedFollowups = (fuQ as any).conditional_followups?.filter((cfu: any) => {
+                                                    return evaluateConditional(cfu.operator, fuAnswer, cfu.trigger_value, fuAnswer)
+                                                  }) || []
+
+                                                  return (
+                                                    <React.Fragment key={`fuq-${fuQ.id}-${fuIdx}`}>
+                                                      <div className="question-item" style={{ marginBottom: fuQIdx < fuSetQuestions.length - 1 && nestedFollowups.length === 0 ? '0.75rem' : 0 }}>
+                                                        <label className="question-label">
+                                                          {replaceLoopToken(fuQ.question_text, fuIdx)}
+                                                          {fuQ.is_required && <span className="required-indicator">*</span>}
+                                                        </label>
+                                                        {fuQ.help_text && (
+                                                          <p className="question-help">{replaceLoopToken(fuQ.help_text, fuIdx)}</p>
+                                                        )}
+                                                        {renderQuestion(virtualQ, fuIdx)}
+                                                      </div>
+                                                      {nestedFollowups.length > 0 && nestedFollowups.flatMap((nfu: any) =>
+                                                        nfu.questions.map((nfq: any, nfqIdx: number) => {
+                                                          const nfqKey = `rfuq-${nfq.id}-${instanceIdx}-${fuIdx}`
+                                                          return (
+                                                            <React.Fragment key={nfqKey}>
+                                                              <div className="question-item" style={{
+                                                                marginBottom: '0.75rem', marginLeft: '1rem',
+                                                                borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
+                                                              }}>
+                                                                <label className="question-label">
+                                                                  {replaceLoopToken(nfq.question_text, fuIdx)}
+                                                                  {nfq.is_required && <span className="required-indicator">*</span>}
+                                                                </label>
+                                                                {nfq.help_text && (
+                                                                  <p className="question-help">{replaceLoopToken(nfq.help_text, fuIdx)}</p>
+                                                                )}
+                                                                {renderQuestion({ ...nfq, id: nfq.id * 100000 + instanceIdx } as unknown as QuestionToDisplay, fuIdx)}
+                                                              </div>
+                                                              {renderNestedFollowups(nfq, fuIdx, 2, nfqKey)}
+                                                            </React.Fragment>
+                                                          )
+                                                        })
+                                                      )}
+                                                    </React.Fragment>
+                                                  )
+                                                })}
+                                              </div>
+                                            ))}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                for (const sid of fuSyntheticIds) {
+                                                  const arr = getRepeatableAnswerArray(sid)
+                                                  setRepeatableAnswerArray(sid, [...arr, ''])
+                                                }
+                                              }}
+                                              style={{
+                                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                                width: '100%', padding: '0.5rem 1rem',
+                                                backgroundColor: '#f3f4f6', border: 'none',
+                                                borderTop: '1px dashed #9ca3af',
+                                                borderRadius: '0 0 0.5rem 0.5rem',
+                                                color: '#4b5563', cursor: 'pointer', fontSize: '0.875rem'
+                                              }}
+                                            >
+                                              <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
+                                              Add Another
+                                            </button>
+                                          </div>
+                                        )
+                                      })
+                                    })()}
                                   </React.Fragment>
                                 )
                               })}

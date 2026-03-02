@@ -87,6 +87,7 @@ async function globalTeardown(config: FullConfig) {
       /^Metadata_/,
       /^Complex_/,
       /^Test Group /,
+      /^NestedCondRepeat_/,
     ];
 
     const testGroups = allGroups.filter(g =>

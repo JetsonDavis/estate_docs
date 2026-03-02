@@ -2222,8 +2222,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         const q = getQuestionFromLogicItem(logicItem)
         return !!(q?.repeatable && q.repeatable_group_id === groupId)
       }
-      if (logicItem.type === 'conditional' && logicItem.conditional?.nestedItems) {
-        return logicItem.conditional.nestedItems.some(ni => itemContainsGroupMember(ni, groupId))
+      if (logicItem.type === 'conditional' && logicItem.conditional) {
+        // Check if this conditional is triggered by a question in the group
+        const triggerIdentifier = logicItem.conditional.ifIdentifier
+        if (triggerIdentifier) {
+          const triggerQ = questions.find(q => q.identifier === triggerIdentifier)
+          if (triggerQ?.repeatable && triggerQ.repeatable_group_id === groupId) return true
+        }
+        // Also check nested items
+        if (logicItem.conditional.nestedItems) {
+          return logicItem.conditional.nestedItems.some(ni => itemContainsGroupMember(ni, groupId))
+        }
       }
       return false
     }
@@ -2608,11 +2617,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
                   {(() => {
-                    // Find the previous repeatable question within this nested context
+                    // Find the previous repeatable question within this nested context (same nesting level only)
                     let prevRepeatableNestedQuestion: QuestionFormData | null = null
+                    let hasPrevSiblingQuestion = false
                     for (let i = itemIndex - 1; i >= 0; i--) {
                       const prevItem = nestedItems[i]
                       if (prevItem.type === 'question') {
+                        hasPrevSiblingQuestion = true
                         const q = getQuestionFromLogicItem(prevItem)
                         if (q?.repeatable) {
                           prevRepeatableNestedQuestion = q
@@ -2620,12 +2631,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         break // Stop at the first question we find
                       }
                     }
-                    // Also check the parent question if no previous sibling found
-                    if (!prevRepeatableNestedQuestion && parentQuestion?.repeatable) {
-                      prevRepeatableNestedQuestion = parentQuestion
-                    }
 
-                    if (prevRepeatableNestedQuestion) {
+                    // Only show Join/Not Repeatable/Start New radio buttons if there's a
+                    // previous sibling question at this nesting level to join with.
+                    // If this is the first question in a conditional (no siblings), only show checkbox.
+                    if (hasPrevSiblingQuestion && prevRepeatableNestedQuestion) {
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#374151' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
@@ -2664,6 +2674,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </div>
                       )
                     } else {
+                      // First/only question in a conditional — show checkbox to start its own repeatable group
                       return (
                         <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', position: 'relative', top: '-2px' }}>
                           <input
@@ -2671,13 +2682,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                             checked={nestedQuestion.repeatable}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                updateQuestionFields(nestedQuestion.id, { repeatable: true, repeatable_group_id: nestedQuestion.id })
+                                updateQuestionFields(nestedQuestion.id, {
+                                  repeatable: true,
+                                  repeatable_group_id: nestedQuestion.id
+                                })
                               } else {
                                 updateQuestionFields(nestedQuestion.id, { repeatable: false, repeatable_group_id: undefined })
                               }
                             }}
                           />
-                          Repeatable
+                          Start New Repeatable Group
                         </label>
                       )
                     }

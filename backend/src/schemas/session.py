@@ -88,6 +88,7 @@ class ConditionalFollowupQuestion(BaseModel):
     person_display_mode: Optional[str]
     include_time: Optional[bool]
     validation_rules: Optional[dict]
+    conditional_followups: Optional[List['ConditionalFollowup']] = None
 
 
 class ConditionalFollowup(BaseModel):
@@ -95,6 +96,10 @@ class ConditionalFollowup(BaseModel):
     trigger_value: str
     operator: str = "equals"
     questions: List[ConditionalFollowupQuestion]
+
+
+# Resolve forward reference for the circular dependency
+ConditionalFollowupQuestion.model_rebuild()
 
 
 class QuestionToDisplay(BaseModel):

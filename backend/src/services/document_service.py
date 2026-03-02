@@ -195,6 +195,14 @@ class DocumentService:
         - {{ IF <<identifier>> }} ... {{ END }} - Include content if identifier is NOT empty
         - {{ IF NOT <<identifier>> }} ... {{ END }} - Include content if identifier IS empty
 
+        Supports loop syntax for repeatable groups:
+        - {{ FOREACH identifier }} ... {{ END FOREACH }}
+          Repeats the body once per element in the identifier's array.
+          Inside the body, <<identifier>> resolves to the Nth element,
+          and ## becomes the 1-based loop index.
+          All other array-valued identifiers also resolve to their Nth element
+          (parallel iteration for repeatable group members).
+
         Args:
             template_content: Template markdown content
             answer_map: Dictionary mapping identifiers to answer values
@@ -204,6 +212,113 @@ class DocumentService:
         """
         merged_content = template_content
 
+        # ── FOREACH loops ──────────────────────────────────────────────
+        # Process {{ FOREACH identifier }} ... {{ END FOREACH }} blocks
+        # Must run before all other directives so the expanded output can
+        # be further processed by IF / conditional / identifier passes.
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        foreach_pattern = r'\{\{\s*FOREACH\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s+FOREACH\s*\}\}'
+
+        def _parse_array(raw: str):
+            """Try to parse a string as a JSON array; return list or None."""
+            if not raw:
+                return None
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+            return None
+
+        def _format_item(item, field: str = None) -> str:
+            """Format a single array element for output."""
+            if isinstance(item, dict):
+                if field:
+                    return str(item.get(field, ''))
+                return item.get('name', str(item))
+            if isinstance(item, str):
+                # Item might be a JSON string (person data)
+                try:
+                    obj = json.loads(item)
+                    if isinstance(obj, dict):
+                        if field:
+                            return str(obj.get(field, ''))
+                        return obj.get('name', str(obj))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                if field:
+                    return item if field == 'name' else ''
+                return item
+            return str(item)
+
+        def process_foreach_block(match):
+            loop_identifier = match.group(1)
+            body_template = match.group(2)
+
+            # Get the array for the loop identifier
+            raw_value = answer_map.get(loop_identifier, '')
+            loop_array = _parse_array(raw_value)
+
+            if not loop_array or len(loop_array) == 0:
+                _logger.info(f"FOREACH: identifier '{loop_identifier}' has no array data, removing block")
+                return ''
+
+            instance_count = len(loop_array)
+            _logger.info(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
+
+            # Find all identifiers referenced in the body
+            body_identifiers = re.findall(r'<<([^>]+)>>', body_template)
+
+            # Pre-parse arrays for all referenced identifiers
+            identifier_arrays = {}
+            for ident in body_identifiers:
+                # Handle dot notation (e.g., person_ident.field)
+                base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+                if base_ident not in identifier_arrays:
+                    raw = answer_map.get(base_ident, '')
+                    arr = _parse_array(raw)
+                    identifier_arrays[base_ident] = arr
+
+            # Build output for each instance
+            output_parts = []
+            for idx in range(instance_count):
+                instance_body = body_template
+
+                # Replace ## with 1-based loop index
+                instance_body = instance_body.replace('##', str(idx + 1))
+
+                # Replace each <<identifier>> with the Nth element
+                for ident in body_identifiers:
+                    has_dot = '.' in ident
+                    if has_dot:
+                        base_ident, field_name = ident.split('.', 1)
+                    else:
+                        base_ident = ident
+                        field_name = None
+
+                    arr = identifier_arrays.get(base_ident)
+                    if arr is not None and idx < len(arr):
+                        replacement = _format_item(arr[idx], field_name)
+                    elif arr is not None:
+                        replacement = ''  # Index out of range
+                    else:
+                        # Not an array — use scalar value as-is
+                        scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
+                        replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
+
+                    instance_body = instance_body.replace(f'<<{ident}>>', replacement)
+
+                output_parts.append(instance_body)
+
+            return ''.join(output_parts)
+
+        # Process FOREACH blocks (may be nested in future, but for now single-level)
+        merged_content = re.sub(foreach_pattern, process_foreach_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+
+        # ── Conditional / IF directives ────────────────────────────────
         # First, process {{ IF <<identifier>> = "value" }} ... {{ END }} blocks (equality check)
         # Include content only if the identifier equals the specified value
         # Supports both single and double quotes around the value

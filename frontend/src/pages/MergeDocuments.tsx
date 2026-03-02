@@ -60,8 +60,10 @@ const MergeDocuments: React.FC = () => {
     try {
       setLoadingIdentifiers(true)
       const identifiers = await sessionService.getSessionIdentifiers(sessionId)
+      // Strip namespace prefix (e.g., "bene_test_20.Special_bene" -> "Special_bene")
+      const stripped = identifiers.map(id => id.includes('.') ? id.split('.').slice(1).join('.') : id)
       // Sort alphabetically
-      setSessionIdentifiers([...identifiers].sort((a, b) => a.localeCompare(b)))
+      setSessionIdentifiers([...stripped].sort((a, b) => a.localeCompare(b)))
     } catch (err: any) {
       console.error('Failed to load session identifiers:', err)
       setSessionIdentifiers([])

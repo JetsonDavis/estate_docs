@@ -444,6 +444,37 @@ class SessionService:
 
         # Convert to response format
         from src.schemas.session import ConditionalFollowup, ConditionalFollowupQuestion
+
+        def build_followup_question(fq_tuple) -> ConditionalFollowupQuestion:
+            """Build a ConditionalFollowupQuestion from a (question, sub_followups) tuple."""
+            fq, sub_followups = fq_tuple
+            # Recursively build conditional_followups for this follow-up question
+            fq_cond_followups = None
+            if sub_followups:
+                fq_cond_followups = []
+                for sfu in sub_followups:
+                    sfu_questions = [build_followup_question(sq_tuple) for sq_tuple in sfu['questions']]
+                    fq_cond_followups.append(ConditionalFollowup(
+                        trigger_value=sfu['trigger_value'],
+                        operator=sfu['operator'],
+                        questions=sfu_questions
+                    ))
+            return ConditionalFollowupQuestion(
+                id=fq.id,
+                identifier=fq.identifier,
+                question_text=fq.question_text,
+                question_type=fq.question_type,
+                is_required=fq.is_required,
+                repeatable=fq.repeatable,
+                repeatable_group_id=fq.repeatable_group_id,
+                help_text=fq.help_text,
+                options=fq.options,
+                person_display_mode=fq.person_display_mode,
+                include_time=fq.include_time,
+                validation_rules=fq.validation_rules,
+                conditional_followups=fq_cond_followups,
+            )
+
         question_responses = []
         for q, depth in paginated_questions:
             # Build conditional_followups if this repeatable question has them
@@ -451,23 +482,7 @@ class SessionService:
             if q.id in repeatable_followups:
                 cond_followups = []
                 for fu in repeatable_followups[q.id]:
-                    fu_questions = [
-                        ConditionalFollowupQuestion(
-                            id=fq.id,
-                            identifier=fq.identifier,
-                            question_text=fq.question_text,
-                            question_type=fq.question_type,
-                            is_required=fq.is_required,
-                            repeatable=fq.repeatable,
-                            repeatable_group_id=fq.repeatable_group_id,
-                            help_text=fq.help_text,
-                            options=fq.options,
-                            person_display_mode=fq.person_display_mode,
-                            include_time=fq.include_time,
-                            validation_rules=fq.validation_rules,
-                        )
-                        for fq in fu['questions']
-                    ]
+                    fu_questions = [build_followup_question(fq_tuple) for fq_tuple in fu['questions']]
                     cond_followups.append(ConditionalFollowup(
                         trigger_value=fu['trigger_value'],
                         operator=fu['operator'],
@@ -664,15 +679,55 @@ class SessionService:
         logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
 
         def collect_nested_questions(items: List[Dict]) -> list:
-            """Collect all question objects from nested logic items (non-recursive for now)."""
+            """Collect question objects from nested logic items, including nested conditionals as metadata.
+            
+            Returns a list of (question, sub_followups) tuples where sub_followups is a list of
+            {trigger_value, operator, questions} dicts for conditionals that depend on the question.
+            """
             collected = []
+            # First pass: collect all questions and build an identifier->question map
+            question_map = {}  # identifier -> question object
             for item in items:
                 if item.get('type') == 'question':
                     qid = item.get('questionId')
                     if qid:
                         q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
                         if q:
-                            collected.append(q)
+                            question_map[q.identifier] = q
+                            # Also map stripped identifier
+                            if '.' in q.identifier:
+                                stripped = q.identifier.split('.', 1)[1]
+                                question_map[stripped] = q
+            
+            # Second pass: find conditionals and associate them with their parent questions
+            sub_followups_map = {}  # question_id -> list of {trigger_value, operator, questions}
+            for item in items:
+                if item.get('type') == 'conditional' and item.get('conditional'):
+                    cond = item['conditional']
+                    cond_identifier = cond.get('ifIdentifier')
+                    if cond_identifier and cond_identifier in question_map:
+                        parent_q = question_map[cond_identifier]
+                        nested_items = cond.get('nestedItems', [])
+                        # Recursively collect nested questions (supports deeper nesting)
+                        nested_results = collect_nested_questions(nested_items)
+                        nested_qs = [nr[0] for nr in nested_results]
+                        if nested_qs:
+                            if parent_q.id not in sub_followups_map:
+                                sub_followups_map[parent_q.id] = []
+                            sub_followups_map[parent_q.id].append({
+                                'trigger_value': cond.get('value', ''),
+                                'operator': cond.get('operator', 'equals'),
+                                'questions': nested_results  # list of (question, sub_followups) tuples
+                            })
+            
+            # Build final list: (question, sub_followups)
+            for item in items:
+                if item.get('type') == 'question':
+                    qid = item.get('questionId')
+                    if qid:
+                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        if q:
+                            collected.append((q, sub_followups_map.get(q.id)))
             return collected
 
         def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
