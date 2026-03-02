@@ -116,6 +116,36 @@ const InputForms: React.FC = () => {
         }
       })
 
+      // Seed synthetic IDs for non-repeatable followups inside repeatable groups
+      // so that instances > 0 have their own answer keys pre-populated on reload
+      const seedFollowupSyntheticIds = (cfus: any[] | undefined, instanceCount: number) => {
+        if (!cfus) return
+        for (const cfu of cfus) {
+          for (const fq of (cfu.questions || [])) {
+            if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
+              for (let i = 1; i < instanceCount; i++) {
+                const synId = fq.id * 100000 + i
+                if (initialAnswers[synId] === undefined) {
+                  initialAnswers[synId] = initialAnswers[fq.id]
+                }
+              }
+            }
+            // Recurse into deeper conditional followups
+            seedFollowupSyntheticIds(fq.conditional_followups, instanceCount)
+          }
+        }
+      }
+      data.questions.forEach(q => {
+        if (q.repeatable && initialAnswers[q.id]) {
+          try {
+            const parsed = JSON.parse(initialAnswers[q.id])
+            if (Array.isArray(parsed) && parsed.length > 1) {
+              seedFollowupSyntheticIds(q.conditional_followups || undefined, parsed.length)
+            }
+          } catch { /* not a JSON array */ }
+        }
+      })
+
       setAnswers(initialAnswers)
       setPersonAnswers(initialPersonAnswers)
       setPersonConjunctions(initialPersonConjunctions)
@@ -875,13 +905,7 @@ const InputForms: React.FC = () => {
       const arr = getRepeatableAnswerArray(question.id)
       value = arr[instanceIndex] || ''
     } else {
-      // For synthetic IDs (non-repeatable followups inside repeatable groups),
-      // fall back to real ID answer if synthetic has no value yet (e.g., after page reload)
       value = answers[question.id] || ''
-      if (!value && question.id >= 100000) {
-        const realId = Math.floor(question.id / 100000)
-        value = answers[realId] || ''
-      }
     }
 
     // Handler for value changes - uses repeatable-aware update if needed
