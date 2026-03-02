@@ -69,6 +69,8 @@ export interface ConditionalFollowupQuestion {
   person_display_mode: string | null
   include_time: boolean | null
   validation_rules: Record<string, any> | null
+  conditional_followups?: ConditionalFollowup[] | null
+  hierarchical_number?: string | null  // Hierarchical numbering like "1-1-1-2"
 }
 
 export interface ConditionalFollowup {

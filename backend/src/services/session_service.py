@@ -448,8 +448,8 @@ class SessionService:
         existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
 
         # Get questions to display based on question_logic
-        # Returns tuple of (questions_with_data, repeatable_followups)
-        questions_with_data, repeatable_followups = SessionService._get_questions_from_logic(
+        # Returns tuple of (questions_with_data, repeatable_followups, question_numbers)
+        questions_with_data, repeatable_followups, question_numbers = SessionService._get_questions_from_logic(
             db, current_group, existing_answers
         )
 
@@ -493,6 +493,7 @@ class SessionService:
                 include_time=fq.include_time,
                 validation_rules=fq.validation_rules,
                 conditional_followups=fq_cond_followups,
+                hierarchical_number=question_numbers.get(fq.id)
             )
 
         question_responses = []
@@ -635,10 +636,11 @@ class SessionService:
         Evaluates conditionals and respects stop flags.
 
         Returns:
-            Tuple of (questions_with_data, repeatable_followups)
+            Tuple of (questions_with_data, repeatable_followups, question_numbers)
             - questions_with_data: List of (question, depth, hierarchical_number) tuples
             - repeatable_followups: Dict mapping question_id -> list of {trigger_value, operator, questions}
               for repeatable questions that have conditional follow-ups
+            - question_numbers: Dict mapping question_id -> hierarchical_number string
         """
         import logging
         import json
@@ -655,7 +657,8 @@ class SessionService:
                 Question.question_group_id == group.id,
                 Question.is_active == True
             ).order_by(Question.display_order).all()
-            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}
+            simple_numbers = {q.id: str(i + 1) for i, q in enumerate(questions)}
+            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}, simple_numbers
 
         questions_with_data = []  # List of (question, depth, hierarchical_number) tuples
         question_ids_added = set()  # Track which question IDs have been added
@@ -698,6 +701,36 @@ class SessionService:
         
         find_repeatable_identifiers(group.question_logic)
         logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
+
+        # PASS 1: Assign hierarchical numbers to ALL questions in the tree
+        # This ensures numbering matches the admin view exactly
+        question_numbers = {}  # Maps question_id -> hierarchical_number
+
+        def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
+            """Traverse entire tree and assign numbers to all questions."""
+            question_counter = 0
+            last_question_number = number_prefix
+
+            for item in items:
+                if item.get('type') == 'question':
+                    question_id = item.get('questionId')
+                    if question_id:
+                        question_counter += 1
+                        hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
+                        question_numbers[question_id] = hierarchical_number
+                        last_question_number = hierarchical_number
+                        logger.info(f"Assigned number {hierarchical_number} to question_id {question_id}")
+
+                elif item.get('type') == 'conditional' and item.get('conditional'):
+                    cond = item['conditional']
+                    nested_items = cond.get('nestedItems', [])
+                    if nested_items:
+                        # Use last question's number as prefix for nested items
+                        nested_prefix = last_question_number
+                        assign_hierarchical_numbers(nested_items, nested_prefix)
+
+        assign_hierarchical_numbers(group.question_logic)
+        logger.info(f"Question numbers assigned: {question_numbers}")
 
         def collect_nested_questions(items: List[Dict]) -> list:
             """Collect question objects from nested logic items, including nested conditionals as metadata.
@@ -751,25 +784,21 @@ class SessionService:
                             collected.append((q, sub_followups_map.get(q.id)))
             return collected
 
-        def process_logic_items(items: List[Dict], depth: int = 0, number_prefix: str = "") -> bool:
-            """Process logic items. Returns False if stop flag encountered."""
+        def process_logic_items(items: List[Dict], depth: int = 0) -> bool:
+            """Process logic items. Returns False if stop flag encountered.
+            Uses pre-assigned hierarchical numbers from question_numbers dict."""
             indent = "  " * depth
             logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
-
-            question_counter = 0  # Counter for ALL questions at this level (logical position)
-            last_question_number = number_prefix  # Track the last question's number for nested items
 
             for idx, item in enumerate(items):
                 logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
 
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
-                    # Always increment counter to maintain logical position numbering (matches admin view)
-                    question_counter += 1
-                    hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
-                    last_question_number = hierarchical_number  # Remember this for conditionals
-
                     if question_id:
+                        # Use pre-assigned hierarchical number
+                        hierarchical_number = question_numbers.get(question_id, "?")
+
                         question = db.query(Question).filter(
                             Question.id == question_id,
                             Question.is_active == True
@@ -780,7 +809,7 @@ class SessionService:
                             questions_with_data.append((question, depth, hierarchical_number))
                             question_ids_added.add(question.id)
                         elif not question:
-                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive (but counted as position {hierarchical_number})")
+                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive (assigned number={hierarchical_number})")
                     else:
                         logger.warning(f"{indent}  Question item has no questionId")
 
@@ -891,10 +920,8 @@ class SessionService:
                             else:
                                 nested_items = cond.get('nestedItems', [])
                                 if nested_items:
-                                    # Use the last question number at this level as prefix for nested questions
-                                    # This matches the admin view's numbering logic
-                                    nested_prefix = last_question_number
-                                    should_continue = process_logic_items(nested_items, depth + 1, nested_prefix)
+                                    # Process nested items (numbers already assigned in pass 1)
+                                    should_continue = process_logic_items(nested_items, depth + 1)
                                     if not should_continue:
                                         return False
 
@@ -912,7 +939,7 @@ class SessionService:
         process_logic_items(group.question_logic)
         logger.info(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
         logger.info(f"Repeatable followups: {repeatable_followups}")
-        return questions_with_data, repeatable_followups
+        return questions_with_data, repeatable_followups, question_numbers
     
     @staticmethod
     def save_answers(

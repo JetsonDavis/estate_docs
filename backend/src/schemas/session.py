@@ -89,6 +89,7 @@ class ConditionalFollowupQuestion(BaseModel):
     include_time: Optional[bool]
     validation_rules: Optional[dict]
     conditional_followups: Optional[List['ConditionalFollowup']] = None
+    hierarchical_number: Optional[str] = None  # e.g., "1-1-1-2"
 
 
 class ConditionalFollowup(BaseModel):

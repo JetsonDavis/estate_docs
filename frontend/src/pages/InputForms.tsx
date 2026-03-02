@@ -91,38 +91,74 @@ const InputForms: React.FC = () => {
         initialAnswers[qId] = answerValue as string
       }
 
+      // Helper to parse person answers from an answer value
+      const parsePersonAnswer = (qId: number, answerValue: string) => {
+        try {
+          const parsed = JSON.parse(answerValue)
+          if (Array.isArray(parsed)) {
+            if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+              initialPersonAnswers[qId] = parsed.map((p: any) => p.name)
+              initialPersonConjunctions[qId] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
+            } else {
+              initialPersonAnswers[qId] = parsed
+            }
+          }
+        } catch {
+          // Not an array, it's the new JSON object format - already in initialAnswers
+        }
+      }
+
+      // Process person answers for top-level questions
       data.questions.forEach(q => {
         if (data.existing_answers[q.id]) {
           if (q.question_type === 'person' || q.question_type === 'person_backup') {
-            // Also handle legacy format for backwards compatibility
-            try {
-              const parsed = JSON.parse(data.existing_answers[q.id])
-              if (Array.isArray(parsed)) {
-                // Check if it's the old format with objects containing name and conjunction
-                if (parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
-                  initialPersonAnswers[q.id] = parsed.map((p: any) => p.name)
-                  initialPersonConjunctions[q.id] = parsed.map((p: any) => p.conjunction).filter((c: any) => c)
-                } else {
-                  // Old format - just an array of strings
-                  initialPersonAnswers[q.id] = parsed
-                }
-              }
-            } catch {
-              // Not an array, it's the new JSON object format - already in initialAnswers
-            }
+            parsePersonAnswer(q.id, data.existing_answers[q.id])
           }
         } else if (q.question_type === 'person' || q.question_type === 'person_backup') {
           initialPersonAnswers[q.id] = ['']
         }
       })
 
-      // Seed synthetic IDs for non-repeatable followups inside repeatable groups
-      // so that instances > 0 have their own answer keys pre-populated on reload
+      // Also process person answers for conditional followup questions (nested)
+      const processFollowupPersonAnswers = (cfus: any[] | undefined) => {
+        if (!cfus) return
+        for (const cfu of cfus) {
+          for (const fq of (cfu.questions || [])) {
+            if ((fq.question_type === 'person' || fq.question_type === 'person_backup') && data.existing_answers[fq.id]) {
+              parsePersonAnswer(fq.id, data.existing_answers[fq.id])
+            }
+            processFollowupPersonAnswers(fq.conditional_followups)
+          }
+        }
+      }
+      data.questions.forEach(q => {
+        processFollowupPersonAnswers(q.conditional_followups || undefined)
+      })
+
+      // Seed synthetic IDs for followups inside repeatable groups
+      // so that answers are available under the synthetic keys used during rendering
       const seedFollowupSyntheticIds = (cfus: any[] | undefined, instanceCount: number) => {
         if (!cfus) return
         for (const cfu of cfus) {
           for (const fq of (cfu.questions || [])) {
-            if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
+            if (fq.repeatable && initialAnswers[fq.id] !== undefined) {
+              // Repeatable followups use synthetic IDs for ALL instances (including 0)
+              // Copy the real ID answer to synthetic ID 0 so rendering can find it
+              for (let i = 0; i < instanceCount; i++) {
+                const synId = fq.id * 100000 + i
+                if (initialAnswers[synId] === undefined) {
+                  initialAnswers[synId] = initialAnswers[fq.id]
+                }
+                // Also seed personAnswers/personConjunctions for person-type questions
+                if ((fq.question_type === 'person' || fq.question_type === 'person_backup') && initialPersonAnswers[fq.id] && !initialPersonAnswers[synId]) {
+                  initialPersonAnswers[synId] = [...initialPersonAnswers[fq.id]]
+                  if (initialPersonConjunctions[fq.id]) {
+                    initialPersonConjunctions[synId] = [...initialPersonConjunctions[fq.id]]
+                  }
+                }
+              }
+            } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
+              // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
               for (let i = 1; i < instanceCount; i++) {
                 const synId = fq.id * 100000 + i
                 if (initialAnswers[synId] === undefined) {
@@ -139,7 +175,7 @@ const InputForms: React.FC = () => {
         if (q.repeatable && initialAnswers[q.id]) {
           try {
             const parsed = JSON.parse(initialAnswers[q.id])
-            if (Array.isArray(parsed) && parsed.length > 1) {
+            if (Array.isArray(parsed) && parsed.length >= 1) {
               seedFollowupSyntheticIds(q.conditional_followups || undefined, parsed.length)
             }
           } catch { /* not a JSON array */ }
@@ -185,13 +221,13 @@ const InputForms: React.FC = () => {
   // Also handles synthetic IDs (realId * 100000 + instanceIdx) used by repeatable followups
   const findQuestionById = (questionId: number): any | undefined => {
     if (!sessionData) return undefined
-    // Recursively search conditional_followups
-    const searchFollowups = (cfus: any[] | null | undefined): any | undefined => {
+    // Recursively search conditional_followups for a specific target ID
+    const searchFollowups = (cfus: any[] | null | undefined, targetId: number): any | undefined => {
       if (!cfus) return undefined
       for (const cfu of cfus) {
         for (const q of (cfu.questions || [])) {
-          if (q.id === questionId) return q
-          const deeper = searchFollowups(q.conditional_followups)
+          if (q.id === targetId) return q
+          const deeper = searchFollowups(q.conditional_followups, targetId)
           if (deeper) return deeper
         }
       }
@@ -201,7 +237,7 @@ const InputForms: React.FC = () => {
       const topLevel = sessionData.questions.find(q => q.id === targetId)
       if (topLevel) return topLevel
       for (const q of sessionData.questions) {
-        const found = searchFollowups(q.conditional_followups)
+        const found = searchFollowups(q.conditional_followups, targetId)
         if (found) return found
       }
       return undefined
@@ -2214,7 +2250,7 @@ const InputForms: React.FC = () => {
                                         return allNestedQs.map((nfq: any, nfqIdx: number) => {
                                           const nfqKey = `${keyPrefix}-nfq-${nfq.id}-${parentInstanceIdx}-d${depth}-${nfqIdx}`
                                           nestedQCounter++
-                                          const nfqLabel = `${parentLabel}.${nestedQCounter}`
+                                          const nfqLabel = nfq.hierarchical_number || `${parentLabel}-${nestedQCounter}`
 
                                           if (nfq.repeatable) {
                                             // Repeatable nested follow-up: render with Add Another pattern
@@ -2348,7 +2384,7 @@ const InputForms: React.FC = () => {
                                       return allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
                                           fuQCounter++
-                                          const fuLabel = `${setQLabel}.${fuQCounter}`
+                                          const fuLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
                                           // Non-repeatable follow-up: use synthetic ID for instances > 0
                                           // Instance 0 uses real ID (preserves backend persistence)
                                           const fqEffectiveId = instanceIdx > 0 ? fq.id * 100000 + instanceIdx : fq.id
@@ -2373,7 +2409,7 @@ const InputForms: React.FC = () => {
                                         }
 
                                         fuQCounter++
-                                        const fuRepLabel = `${setQLabel}.${fuQCounter}`
+                                        const fuRepLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
                                         // Repeatable follow-up: group by repeatable_group_id
                                         const fuGroupId = fq.repeatable_group_id || String(fq.id)
                                         const fuGroupKey = `${fuGroupId}-${instanceIdx}`
@@ -2458,6 +2494,7 @@ const InputForms: React.FC = () => {
                                                       {nestedFollowups.length > 0 && nestedFollowups.flatMap((nfu: any) =>
                                                         nfu.questions.map((nfq: any, nfqIdx: number) => {
                                                           const nfqKey = `rfuq-${nfq.id}-${instanceIdx}-${fuIdx}`
+                                                          const nfqNestedLabel = nfq.hierarchical_number || `${fuRepLabel}.${nfqIdx + 1}`
                                                           return (
                                                             <React.Fragment key={nfqKey}>
                                                               <div className="question-item" style={{
@@ -2465,7 +2502,7 @@ const InputForms: React.FC = () => {
                                                                 borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
                                                               }}>
                                                                 <label className="question-label">
-                                                                  <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuRepLabel}.{nfqIdx + 1}.</span>
+                                                                  <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
                                                                   {replaceLoopToken(nfq.question_text, fuIdx)}
                                                                   {nfq.is_required && <span className="required-indicator">*</span>}
                                                                 </label>
@@ -2474,7 +2511,7 @@ const InputForms: React.FC = () => {
                                                                 )}
                                                                 {renderQuestion({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
                                                               </div>
-                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey, `${fuRepLabel}.${nfqIdx + 1}`)}
+                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey, nfqNestedLabel)}
                                                             </React.Fragment>
                                                           )
                                                         })
