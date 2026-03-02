@@ -2276,9 +2276,7 @@ const InputForms: React.FC = () => {
                               {setQuestions.map((setQuestion, setQIdx) => {
                                 // Use hierarchical number from backend, fallback to simple counter
                                 const baseNumber = setQuestion.hierarchical_number || '1'
-                                const setQLabel = setQuestions.length > 1
-                                  ? `${baseNumber}${String.fromCharCode(97 + setQIdx)}`
-                                  : baseNumber
+                                const setQLabel = baseNumber
                                 // Get this instance's answer for determining follow-ups
                                 const instanceAnswer = setQuestion.repeatable
                                   ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
@@ -2745,7 +2743,7 @@ const InputForms: React.FC = () => {
                               }}
                             >
                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                              Add Another ({setQuestions.length > 1 ? `${setQuestions[0].hierarchical_number || '1'}a–${String.fromCharCode(97 + setQuestions.length - 1)}` : `${setQuestions[0].hierarchical_number || '1'}`})
+                              Add Another ({setQuestions.length > 1 ? `${setQuestions[0].hierarchical_number || '1'}–${setQuestions[setQuestions.length - 1].hierarchical_number || String(setQuestions.length)}` : `${setQuestions[0].hierarchical_number || '1'}`})
                             </button>
                           )}
                         </div>
