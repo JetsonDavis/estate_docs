@@ -1121,7 +1121,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const updateQuestion = (id: string, field: keyof QuestionFormData, value: any) => {
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
-        const updated = { ...q, [field]: value }
+        // Normalize identifiers: lowercase, replace spaces with underscores
+        const normalizedValue = field === 'identifier' && typeof value === 'string'
+          ? value.toLowerCase().replace(/\s+/g, '_')
+          : value
+        const updated = { ...q, [field]: normalizedValue }
         // Trigger identifier uniqueness check if identifier field changed
         if (field === 'identifier') {
           checkIdentifierUniqueness(updated)
@@ -1137,7 +1141,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const updateQuestionFields = (id: string, fields: Partial<QuestionFormData>) => {
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
-        const updated = { ...q, ...fields }
+        // Normalize identifier if present
+        const normalizedFields = 'identifier' in fields && typeof fields.identifier === 'string'
+          ? { ...fields, identifier: fields.identifier.toLowerCase().replace(/\s+/g, '_') }
+          : fields
+        const updated = { ...q, ...normalizedFields }
         if ('identifier' in fields) {
           checkIdentifierUniqueness(updated)
         }
