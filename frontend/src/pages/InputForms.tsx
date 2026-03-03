@@ -524,6 +524,42 @@ const InputForms: React.FC = () => {
       || false
     if (!isConditionalDependency) return
 
+    // Delete answers from ALL conditional branches that don't match the current value.
+    // This mirrors the logic in handleRadioChange.
+    const allFollowupIds = collectFollowupQuestionIds(question)
+    const newMatchIds = new Set(collectFollowupQuestionIds(question, currentValue))
+    const idsToDelete = allFollowupIds.filter(id => !newMatchIds.has(id))
+
+    if (idsToDelete.length > 0) {
+      console.log('handleAnswerBlur: Deleting outgoing conditional followup answers:', idsToDelete)
+      try {
+        await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
+      } catch (err) {
+        console.error('Failed to delete outgoing answers:', err)
+      }
+      setAnswers(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+      setPersonAnswers(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+      setPersonConjunctions(prev => {
+        const updated = { ...prev }
+        for (const id of idsToDelete) {
+          delete updated[id]
+        }
+        return updated
+      })
+    }
+
     // Trigger conditional refresh
     try {
       setConditionalLoading(true)
@@ -544,10 +580,18 @@ const InputForms: React.FC = () => {
         const value = currentAnswers[questionId] || ''
         const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: value }
 
+        // Remove deleted IDs that may have been re-added from existing_answers
+        for (const id of idsToDelete) {
+          delete newAnswers[id]
+        }
+
         data.questions.forEach(q => {
           // Only set from existing_answers if we don't have a local answer
+          // and this question wasn't just deleted
           if (!(q.id in newAnswers) && data.existing_answers[q.id] && q.question_type !== 'person') {
-            newAnswers[q.id] = data.existing_answers[q.id]
+            if (!idsToDelete.includes(q.id)) {
+              newAnswers[q.id] = data.existing_answers[q.id]
+            }
           }
         })
 
@@ -557,20 +601,27 @@ const InputForms: React.FC = () => {
       setPersonAnswers(currentPersonAnswers => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
+        // Remove deleted IDs
+        for (const id of idsToDelete) {
+          delete newPersonAnswers[id]
+        }
+
         data.questions.forEach(q => {
           if (q.question_type === 'person' || q.question_type === 'person_backup') {
             if (!(q.id in newPersonAnswers) && data.existing_answers[q.id]) {
-              try {
-                const parsed = JSON.parse(data.existing_answers[q.id])
-                if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
-                  newPersonAnswers[q.id] = parsed.map((p: any) => p.name || '')
-                } else if (Array.isArray(parsed)) {
-                  newPersonAnswers[q.id] = parsed
-                } else {
+              if (!idsToDelete.includes(q.id)) {
+                try {
+                  const parsed = JSON.parse(data.existing_answers[q.id])
+                  if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'name' in parsed[0]) {
+                    newPersonAnswers[q.id] = parsed.map((p: any) => p.name || '')
+                  } else if (Array.isArray(parsed)) {
+                    newPersonAnswers[q.id] = parsed
+                  } else {
+                    newPersonAnswers[q.id] = [data.existing_answers[q.id]]
+                  }
+                } catch {
                   newPersonAnswers[q.id] = [data.existing_answers[q.id]]
                 }
-              } catch {
-                newPersonAnswers[q.id] = [data.existing_answers[q.id]]
               }
             } else if (!(q.id in newPersonAnswers)) {
               newPersonAnswers[q.id] = ['']
@@ -586,13 +637,15 @@ const InputForms: React.FC = () => {
 
         data.questions.forEach(q => {
           if ((q.question_type === 'person' || q.question_type === 'person_backup') && data.existing_answers[q.id]) {
-            try {
-              const parsed = JSON.parse(data.existing_answers[q.id])
-              if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'conjunction' in parsed[0]) {
-                newConjunctions[q.id] = parsed.slice(0, -1).map((p: any) => p.conjunction || 'and')
+            if (!idsToDelete.includes(q.id)) {
+              try {
+                const parsed = JSON.parse(data.existing_answers[q.id])
+                if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && 'conjunction' in parsed[0]) {
+                  newConjunctions[q.id] = parsed.slice(0, -1).map((p: any) => p.conjunction || 'and')
+                }
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
             }
           }
         })
