@@ -794,10 +794,8 @@ class DocumentService:
         content = template.markdown_content or ""
         merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map)
         
-        # Debug: log all identifiers and their values
-        print(f"DEBUG: raw_answer_map keys: {list(raw_answer_map.keys())}")
-        for k, v in raw_answer_map.items():
-            print(f"DEBUG: raw_answer_map['{k}'] = {v[:100] if v else 'None'}...")
+        # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
+        identifier_pattern = r'<<([^>]+)>>'
         
         def replace_person_fields(match):
             identifier = match.group(1).strip()
