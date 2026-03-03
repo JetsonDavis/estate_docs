@@ -1121,11 +1121,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const updateQuestion = (id: string, field: keyof QuestionFormData, value: any) => {
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
-        // Normalize identifiers: lowercase, replace spaces with underscores
-        const normalizedValue = field === 'identifier' && typeof value === 'string'
-          ? value.toLowerCase().replace(/\s+/g, '_')
-          : value
-        const updated = { ...q, [field]: normalizedValue }
+        const updated = { ...q, [field]: value }
         // Trigger identifier uniqueness check if identifier field changed
         if (field === 'identifier') {
           checkIdentifierUniqueness(updated)
@@ -1141,11 +1137,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const updateQuestionFields = (id: string, fields: Partial<QuestionFormData>) => {
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
-        // Normalize identifier if present
-        const normalizedFields = 'identifier' in fields && typeof fields.identifier === 'string'
-          ? { ...fields, identifier: fields.identifier.toLowerCase().replace(/\s+/g, '_') }
-          : fields
-        const updated = { ...q, ...normalizedFields }
+        const updated = { ...q, ...fields }
         if ('identifier' in fields) {
           checkIdentifierUniqueness(updated)
         }
@@ -2802,6 +2794,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   type="text"
                   value={nestedQuestion.identifier}
                   onChange={(e) => updateQuestion(nestedQuestion.id, 'identifier', e.target.value)}
+                  onBlur={(e) => updateQuestion(nestedQuestion.id, 'identifier', e.target.value.toLowerCase().replace(/\s+/g, '_'))}
                   className="form-input"
                   placeholder="e.g., nested_field"
                 />
@@ -3915,6 +3908,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     type="text"
                     value={question.identifier}
                     onChange={(e) => updateQuestion(question.id, 'identifier', e.target.value)}
+                    onBlur={(e) => updateQuestion(question.id, 'identifier', e.target.value.toLowerCase().replace(/\s+/g, '_'))}
                     className="form-input"
                     style={{ borderColor: question.isDuplicateIdentifier ? '#dc2626' : undefined }}
                     placeholder="e.g., full_name"
