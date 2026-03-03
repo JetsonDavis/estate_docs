@@ -1117,7 +1117,7 @@ const InputForms: React.FC = () => {
             className="question-textarea"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={() => handleAnswerBlur(question.id)}
+            onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
             placeholder="Enter your answer..."
           />
         )
@@ -1129,7 +1129,7 @@ const InputForms: React.FC = () => {
             className="question-input"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={() => handleAnswerBlur(question.id)}
+            onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
           />
         )
 
@@ -2007,8 +2007,10 @@ const InputForms: React.FC = () => {
           <select
             className="question-select"
             value={value}
-            onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={() => handleAnswerBlur(question.id)}
+            onChange={(e) => {
+              handleValueChange(e.target.value)
+              handleRadioChange(question.id, e.target.value, instanceIndex)
+            }}
           >
             <option value="">Select an option...</option>
             {question.options?.map((option, index) => (
@@ -2024,7 +2026,7 @@ const InputForms: React.FC = () => {
             className="question-input"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={() => handleAnswerBlur(question.id)}
+            onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
             placeholder="Enter your answer..."
           />
         )
