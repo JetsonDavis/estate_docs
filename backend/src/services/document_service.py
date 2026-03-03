@@ -121,7 +121,15 @@ class DocumentService:
                     answer.answer_value,
                     question.question_type
                 )
+                # Store under full namespaced identifier (e.g., "group.PoA_Sign_date")
                 answer_map[question.identifier] = formatted_value
+                # Also store under stripped identifier (e.g., "PoA_Sign_date")
+                # so templates can reference identifiers without namespace prefix
+                if '.' in question.identifier:
+                    stripped = question.identifier.split('.', 1)[1]
+                    # Only set stripped key if not already taken (first writer wins)
+                    if stripped not in answer_map:
+                        answer_map[stripped] = formatted_value
 
         return answer_map
 
