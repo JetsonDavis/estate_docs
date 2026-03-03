@@ -384,34 +384,64 @@ const InputForms: React.FC = () => {
     const idsToDelete = allFollowupIds.filter(id => !newMatchIds.has(id))
 
     if (idsToDelete.length > 0) {
-      console.log('Deleting outgoing conditional followup answers:', idsToDelete)
-      try {
-        await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
-      } catch (err) {
-        console.error('Failed to delete outgoing answers:', err)
+      if (question.repeatable) {
+        // For repeatable parents, followup answer rows are shared across instances.
+        // Only clear local state for THIS instance's synthetic IDs — don't delete
+        // backend rows, which would wipe other instances' followup answers.
+        console.log('Repeatable parent: clearing local followup state for instance', instanceIndex, 'ids:', idsToDelete)
+        const syntheticIdsToDelete = idsToDelete.map(id => instanceIndex > 0 ? id * 100000 + instanceIndex : id)
+        setAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonConjunctions(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+      } else {
+        // Non-repeatable: delete from backend and clear local state
+        console.log('Deleting outgoing conditional followup answers:', idsToDelete)
+        try {
+          await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
+        } catch (err) {
+          console.error('Failed to delete outgoing answers:', err)
+        }
+        // Clear from local state
+        setAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonConjunctions(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
       }
-      // Clear from local state
-      setAnswers(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
-      setPersonAnswers(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
-      setPersonConjunctions(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
     }
 
     // Trigger conditional refresh
@@ -530,34 +560,66 @@ const InputForms: React.FC = () => {
     const newMatchIds = new Set(collectFollowupQuestionIds(question, currentValue))
     const idsToDelete = allFollowupIds.filter(id => !newMatchIds.has(id))
 
+    // Derive instance index from synthetic ID
+    const blurInstanceIndex = questionId >= 100000 ? questionId % 100000 : 0
+
     if (idsToDelete.length > 0) {
-      console.log('handleAnswerBlur: Deleting outgoing conditional followup answers:', idsToDelete)
-      try {
-        await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
-      } catch (err) {
-        console.error('Failed to delete outgoing answers:', err)
+      if (question.repeatable) {
+        // For repeatable parents, followup answer rows are shared across instances.
+        // Only clear local state for THIS instance's synthetic IDs.
+        console.log('handleAnswerBlur: Repeatable parent, clearing local followup state for instance', blurInstanceIndex, 'ids:', idsToDelete)
+        const syntheticIdsToDelete = idsToDelete.map(id => blurInstanceIndex > 0 ? id * 100000 + blurInstanceIndex : id)
+        setAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonConjunctions(prev => {
+          const updated = { ...prev }
+          for (const id of syntheticIdsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+      } else {
+        // Non-repeatable: delete from backend and clear local state
+        console.log('handleAnswerBlur: Deleting outgoing conditional followup answers:', idsToDelete)
+        try {
+          await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
+        } catch (err) {
+          console.error('Failed to delete outgoing answers:', err)
+        }
+        setAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonAnswers(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
+        setPersonConjunctions(prev => {
+          const updated = { ...prev }
+          for (const id of idsToDelete) {
+            delete updated[id]
+          }
+          return updated
+        })
       }
-      setAnswers(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
-      setPersonAnswers(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
-      setPersonConjunctions(prev => {
-        const updated = { ...prev }
-        for (const id of idsToDelete) {
-          delete updated[id]
-        }
-        return updated
-      })
     }
 
     // Trigger conditional refresh
