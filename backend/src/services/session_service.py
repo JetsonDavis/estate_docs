@@ -931,29 +931,12 @@ class SessionService:
                         
                         if condition_met:
                             logger.info(f"{indent}  Condition MET - processing nested items")
-                            nested_items = cond.get('nestedItems', [])
+                            # Skip adding to flat list if this is a repeatable follow-up
+                            # (frontend will render per-instance using conditional_followups)
                             if identifier in repeatable_identifier_to_question_id:
-                                # Parent trigger is repeatable. Only skip nested questions
-                                # that are themselves repeatable (part of the group).
-                                # Non-repeatable questions should still be added to the flat list.
-                                has_non_repeatable = False
-                                for ni in nested_items:
-                                    if ni.get('type') == 'question':
-                                        nq_id = ni.get('questionId')
-                                        if nq_id:
-                                            nq = db.query(Question).filter(Question.id == nq_id, Question.is_active == True).first()
-                                            if nq and not nq.repeatable:
-                                                has_non_repeatable = True
-                                                break
-                                if has_non_repeatable:
-                                    logger.info(f"{indent}  Repeatable parent with non-repeatable children - adding to flat list")
-                                    if nested_items:
-                                        should_continue = process_logic_items(nested_items, depth + 1)
-                                        if not should_continue:
-                                            return False
-                                else:
-                                    logger.info(f"{indent}  Skipping flat list addition (all children are repeatable follow-ups)")
+                                logger.info(f"{indent}  Skipping flat list addition (repeatable follow-up)")
                             else:
+                                nested_items = cond.get('nestedItems', [])
                                 if nested_items:
                                     # Process nested items (numbers already assigned in pass 1)
                                     should_continue = process_logic_items(nested_items, depth + 1)
