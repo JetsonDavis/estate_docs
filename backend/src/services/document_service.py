@@ -70,18 +70,22 @@ class DocumentService:
         # Build answer map: identifier -> answer_value
         answer_map = DocumentService._build_answer_map(db, answers)
 
-        import logging
-        _log = logging.getLogger(__name__)
-        _log.info(f"MERGE DEBUG: answer_map keys = {list(answer_map.keys())}")
-        _log.info(f"MERGE DEBUG: template identifiers = {re.findall(r'<<([^>]+)>>', template.markdown_content)}")
-        _log.info(f"MERGE DEBUG: answer count = {len(answers)}, map size = {len(answer_map)}")
-        for k, v in answer_map.items():
-            _log.info(f"MERGE DEBUG:   '{k}' -> '{v[:80] if v else '(empty)'}...'")
+        # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
+        raw_answer_map = {}
+        for answer in answers:
+            question = db.query(Question).filter(Question.id == answer.question_id).first()
+            if question:
+                raw_answer_map[question.identifier] = answer.answer_value
+                if '.' in question.identifier:
+                    stripped = question.identifier.split('.', 1)[1]
+                    if stripped not in raw_answer_map:
+                        raw_answer_map[stripped] = answer.answer_value
 
         # Merge template with answers
         merged_content = DocumentService._merge_template(
             template.markdown_content,
-            answer_map
+            answer_map,
+            raw_answer_map
         )
 
         # Generate document name if not provided
@@ -200,7 +204,7 @@ class DocumentService:
         return False
 
     @staticmethod
-    def _merge_template(template_content: str, answer_map: dict) -> str:
+    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None) -> str:
         """
         Merge template content with answer values.
 
@@ -270,12 +274,15 @@ class DocumentService:
                 return item
             return str(item)
 
+        # For FOREACH loops, prefer raw (unformatted) values so JSON arrays are still parseable
+        _raw_map = raw_answer_map if raw_answer_map else answer_map
+
         def process_foreach_block(match):
             loop_identifier = match.group(1)
             body_template = match.group(2)
 
-            # Get the array for the loop identifier
-            raw_value = answer_map.get(loop_identifier, '')
+            # Get the array for the loop identifier — use raw values so person arrays aren't pre-formatted
+            raw_value = _raw_map.get(loop_identifier, '') or answer_map.get(loop_identifier, '')
             loop_array = _parse_array(raw_value)
 
             if not loop_array or len(loop_array) == 0:
@@ -288,13 +295,13 @@ class DocumentService:
             # Find all identifiers referenced in the body
             body_identifiers = re.findall(r'<<([^>]+)>>', body_template)
 
-            # Pre-parse arrays for all referenced identifiers
+            # Pre-parse arrays for all referenced identifiers (use raw values for JSON arrays)
             identifier_arrays = {}
             for ident in body_identifiers:
                 # Handle dot notation (e.g., person_ident.field)
                 base_ident = ident.split('.', 1)[0] if '.' in ident else ident
                 if base_ident not in identifier_arrays:
-                    raw = answer_map.get(base_ident, '')
+                    raw = _raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
                     arr = _parse_array(raw)
                     identifier_arrays[base_ident] = arr
 
@@ -758,6 +765,16 @@ class DocumentService:
             SessionAnswer.session_id == session_id
         ).all()
         
+        # Build a raw answer map (before formatting) for FOREACH and person JSON data
+        raw_answer_map = {}
+        for answer, question in answers_query:
+            raw_answer_map[question.identifier] = answer.answer_value
+            # Also store under stripped identifier (without namespace prefix)
+            if '.' in question.identifier:
+                stripped = question.identifier.split('.', 1)[1]
+                if stripped not in raw_answer_map:
+                    raw_answer_map[stripped] = answer.answer_value
+
         # Build a mapping of identifier -> answer value (with formatting for person types)
         answer_map = {}
         for answer, question in answers_query:
@@ -775,20 +792,7 @@ class DocumentService:
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
-        merged_content = DocumentService._merge_template(content, answer_map)
-        
-        # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
-        identifier_pattern = r'<<([^>]+)>>'
-        
-        # Build a raw answer map (before formatting) for person JSON data
-        raw_answer_map = {}
-        for answer, question in answers_query:
-            raw_answer_map[question.identifier] = answer.answer_value
-            # Also store under stripped identifier (without namespace prefix)
-            if '.' in question.identifier:
-                stripped = question.identifier.split('.', 1)[1]
-                if stripped not in raw_answer_map:
-                    raw_answer_map[stripped] = answer.answer_value
+        merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map)
         
         # Debug: log all identifiers and their values
         print(f"DEBUG: raw_answer_map keys: {list(raw_answer_map.keys())}")
