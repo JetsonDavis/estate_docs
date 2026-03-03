@@ -70,6 +70,14 @@ class DocumentService:
         # Build answer map: identifier -> answer_value
         answer_map = DocumentService._build_answer_map(db, answers)
 
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.info(f"MERGE DEBUG: answer_map keys = {list(answer_map.keys())}")
+        _log.info(f"MERGE DEBUG: template identifiers = {re.findall(r'<<([^>]+)>>', template.markdown_content)}")
+        _log.info(f"MERGE DEBUG: answer count = {len(answers)}, map size = {len(answer_map)}")
+        for k, v in answer_map.items():
+            _log.info(f"MERGE DEBUG:   '{k}' -> '{v[:80] if v else '(empty)'}...'")
+
         # Merge template with answers
         merged_content = DocumentService._merge_template(
             template.markdown_content,
@@ -758,6 +766,11 @@ class DocumentService:
                 question.question_type
             )
             answer_map[question.identifier] = formatted_value
+            # Also store under stripped identifier (without namespace prefix)
+            if '.' in question.identifier:
+                stripped = question.identifier.split('.', 1)[1]
+                if stripped not in answer_map:
+                    answer_map[stripped] = formatted_value
         
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
@@ -771,6 +784,11 @@ class DocumentService:
         raw_answer_map = {}
         for answer, question in answers_query:
             raw_answer_map[question.identifier] = answer.answer_value
+            # Also store under stripped identifier (without namespace prefix)
+            if '.' in question.identifier:
+                stripped = question.identifier.split('.', 1)[1]
+                if stripped not in raw_answer_map:
+                    raw_answer_map[stripped] = answer.answer_value
         
         # Debug: log all identifiers and their values
         print(f"DEBUG: raw_answer_map keys: {list(raw_answer_map.keys())}")
