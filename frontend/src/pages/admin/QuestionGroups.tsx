@@ -2067,18 +2067,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const removeLogicItem = (itemId: string) => {
     
-    // Helper to collect all question IDs from logic items (for deletion)
-    const collectQuestionIds = (items: QuestionLogicItem[]): string[] => {
-      const ids: string[] = []
+    // Helper to collect all question IDs (both local and DB) from logic items for deletion
+    const collectQuestionIds = (items: QuestionLogicItem[]): { localIds: Set<string>, dbIds: Set<number> } => {
+      const localIds = new Set<string>()
+      const dbIds = new Set<number>()
       for (const item of items) {
-        if (item.type === 'question' && item.questionId) {
-          ids.push(item.questionId.toString())
+        if (item.type === 'question') {
+          if (item.questionId) dbIds.add(item.questionId)
+          const localId = (item as any).localQuestionId
+          if (localId) localIds.add(localId)
         }
         if (item.type === 'conditional' && item.conditional?.nestedItems) {
-          ids.push(...collectQuestionIds(item.conditional.nestedItems))
+          const nested = collectQuestionIds(item.conditional.nestedItems)
+          nested.localIds.forEach(id => localIds.add(id))
+          nested.dbIds.forEach(id => dbIds.add(id))
         }
       }
-      return ids
+      return { localIds, dbIds }
     }
     
     const removeItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
@@ -2088,11 +2093,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         if (item.id === itemId) {
           // If this is a conditional being removed, delete all nested questions
           if (item.type === 'conditional' && item.conditional?.nestedItems) {
-            const nestedQuestionIds = collectQuestionIds(item.conditional.nestedItems)
+            const { localIds, dbIds } = collectQuestionIds(item.conditional.nestedItems)
             // Remove nested questions from the questions state
+            // Match by local ID (q.id) or DB ID (q.dbId)
             setQuestions(prevQuestions => 
-              prevQuestions.filter(q => !nestedQuestionIds.includes(q.id))
+              prevQuestions.filter(q => !localIds.has(q.id) && !(q.dbId && dbIds.has(q.dbId)))
             )
+            // Also delete from database
+            for (const dbId of dbIds) {
+              incrementPendingRequests()
+              questionGroupService.deleteQuestion(dbId)
+                .catch(err => console.error('Failed to delete nested question from database:', err))
+                .finally(() => decrementPendingRequests())
+            }
           }
           // Skip adding the removed item itself (deletes the conditional and all nested content)
           continue
