@@ -1736,6 +1736,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // Create a new nested question to go inside the conditional
     const nestedQuestion = addQuestion()
+    // Mark as nested IMMEDIATELY so mainLevelQuestions filters it out
+    nestedQuestionIdsRef.current.add(nestedQuestion.id)
     const conditionalDepth = parentPath ? parentPath.length : 0
     const nestedQuestionLogicItem: QuestionLogicItem = {
       id: Date.now().toString() + '_nested_q',
@@ -1964,6 +1966,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
     // Create a new nested question to go inside the conditional
     const nestedQuestion = addQuestion()
+    // Mark as nested IMMEDIATELY so mainLevelQuestions filters it out
+    nestedQuestionIdsRef.current.add(nestedQuestion.id)
     const nestedQuestionId = nestedQuestion.id
     
     const nestedQuestionLogicItem: QuestionLogicItem = {
