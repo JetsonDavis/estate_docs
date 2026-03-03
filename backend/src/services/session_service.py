@@ -660,7 +660,7 @@ class SessionService:
                 Question.is_active == True
             ).order_by(Question.display_order).all()
             simple_numbers = {q.id: str(i + 1) for i, q in enumerate(questions)}
-            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}, simple_numbers
+            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}, simple_numbers, {}
 
         questions_with_data = []  # List of (question, depth, hierarchical_number) tuples
         question_ids_added = set()  # Track which question IDs have been added
