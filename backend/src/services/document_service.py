@@ -342,87 +342,141 @@ class DocumentService:
         merged_content = re.sub(foreach_pattern, process_foreach_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
 
         # ── Conditional / IF directives ────────────────────────────────
-        # First, process {{ IF <<identifier>> = "value" }} ... {{ END }} blocks (equality check)
-        # Include content only if the identifier equals the specified value
-        # Supports both single and double quotes around the value
-        # Supports identifiers with or without << >> brackets
-        if_equals_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=\s]+)(?:>>)?\s*=\s*["\']([^"\']*)["\']?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+        # Uses a recursive parser instead of regex to support nested IF blocks.
+        # Supported forms:
+        #   {{ IF <<ident>> }}              — include if ident has a value
+        #   {{ IF NOT <<ident>> }}          — include if ident is empty
+        #   {{ IF <<ident>> = "value" }}    — include if ident equals value
+        #   {{ IF <<ident>> != "value" }}   — include if ident does not equal value
+        # All closed by {{ END }}. Nesting is fully supported.
 
-        def process_if_equals_block(match):
-            identifier = match.group(1)
-            expected_value = match.group(2)
-            section_content = match.group(3)
-            actual_value = answer_map.get(identifier, '')
+        # Regex for any {{ IF ... }} opening tag (captures the full condition text)
+        _if_open_re = re.compile(
+            r'\{\{\s*IF\s+(.*?)\s*\}\}',
+            re.IGNORECASE
+        )
+        _end_re = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
 
-            # Case-insensitive comparison
-            if actual_value.lower() == expected_value.lower():
-                # Values match - include the content
-                return section_content
-            else:
-                # Values don't match - remove the section
-                return ''
+        def _evaluate_if_condition(condition_text: str) -> bool:
+            """Evaluate the condition inside {{ IF <condition> }}.
 
-        merged_content = re.sub(if_equals_pattern, process_if_equals_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+            Returns True if the content should be included.
+            """
+            cond = condition_text.strip()
 
-        # Process {{ IF <<identifier>> != "value" }} ... {{ END }} blocks (inequality check)
-        # Include content only if the identifier does NOT equal the specified value
-        # Supports both single and double quotes around the value
-        # Supports identifiers with or without << >> brackets
-        if_not_equals_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=!\s]+)(?:>>)?\s*!=\s*["\']([^"\']*)["\']?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+            # --- IF NOT <<ident>> ---
+            not_match = re.match(
+                r'NOT\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
+            )
+            if not_match:
+                identifier = not_match.group(1)
+                value = answer_map.get(identifier, '')
+                return DocumentService._is_value_empty(value)
 
-        def process_if_not_equals_block(match):
-            identifier = match.group(1)
-            expected_value = match.group(2)
-            section_content = match.group(3)
-            actual_value = answer_map.get(identifier, '')
+            # --- IF <<ident>> != "value" ---
+            neq_match = re.match(
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*["\']([^"\']*)["\']?',
+                cond, re.IGNORECASE
+            )
+            if neq_match:
+                identifier = neq_match.group(1)
+                expected = neq_match.group(2)
+                actual = answer_map.get(identifier, '')
+                return actual.lower() != expected.lower()
 
-            # Case-insensitive comparison
-            if actual_value.lower() != expected_value.lower():
-                # Values don't match - include the content
-                return section_content
-            else:
-                # Values match - remove the section
-                return ''
+            # --- IF <<ident>> = "value" ---
+            eq_match = re.match(
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*["\']([^"\']*)["\']?',
+                cond, re.IGNORECASE
+            )
+            if eq_match:
+                identifier = eq_match.group(1)
+                expected = eq_match.group(2)
+                actual = answer_map.get(identifier, '')
+                return actual.lower() == expected.lower()
 
-        merged_content = re.sub(if_not_equals_pattern, process_if_not_equals_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+            # --- IF <<ident>> (has value) ---
+            plain_match = re.match(
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
+            )
+            if plain_match:
+                identifier = plain_match.group(1)
+                value = answer_map.get(identifier, '')
+                return not DocumentService._is_value_empty(value)
 
-        # Process {{ IF <<identifier>> }} ... {{ END }} blocks
-        # Include content only if the identifier is NOT empty
-        # Supports identifiers with or without << >> brackets
-        if_pattern = r'\{\{\s*IF\s+(?:<<)?([^>=!\s\}]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+            # Unknown form — leave content in place
+            return True
 
-        def process_if_block(match):
-            identifier = match.group(1)
-            section_content = match.group(2)
-            value = answer_map.get(identifier, '')
+        def _process_if_blocks(text: str) -> str:
+            """Recursively process nested {{ IF }} ... {{ END }} blocks.
 
-            if not DocumentService._is_value_empty(value):
-                # Identifier has a value - include the content
-                return section_content
-            else:
-                # Identifier is empty - remove the section
-                return ''
+            Scans *text* left-to-right.  When an {{ IF ... }} tag is found the
+            parser counts nesting depth to locate the matching {{ END }}.  The
+            body between the two tags is recursively processed first, then the
+            condition is evaluated to decide whether to keep or discard the body.
+            """
+            result = []
+            pos = 0
 
-        merged_content = re.sub(if_pattern, process_if_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+            while pos < len(text):
+                # Find the next {{ IF ... }} tag
+                open_match = _if_open_re.search(text, pos)
+                if not open_match:
+                    # No more IF tags — append remainder
+                    result.append(text[pos:])
+                    break
 
-        # Process {{ IF NOT <<identifier>> }} ... {{ END }} blocks
-        # Include content only if the identifier IS empty
-        # Supports identifiers with or without << >> brackets
-        if_not_pattern = r'\{\{\s*IF\s+NOT\s+(?:<<)?([^>=!\s\}]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s*\}\}'
+                # Append text before this IF tag
+                result.append(text[pos:open_match.start()])
 
-        def process_if_not_block(match):
-            identifier = match.group(1)
-            section_content = match.group(2)
-            value = answer_map.get(identifier, '')
+                condition_text = open_match.group(1)
+                body_start = open_match.end()
 
-            if DocumentService._is_value_empty(value):
-                # Identifier is empty - include the content
-                return section_content
-            else:
-                # Identifier has a value - remove the section
-                return ''
+                # Walk forward to find the matching {{ END }}, respecting nesting
+                depth = 1
+                scan = body_start
+                body_end = body_start  # default; overwritten when matching END found
+                while depth > 0 and scan < len(text):
+                    next_open = _if_open_re.search(text, scan)
+                    next_end = _end_re.search(text, scan)
 
-        merged_content = re.sub(if_not_pattern, process_if_not_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+                    if next_end is None:
+                        # No matching END — treat rest of text as body (malformed)
+                        scan = len(text)
+                        break
+
+                    # Determine which comes first: another IF or an END
+                    if next_open and next_open.start() < next_end.start():
+                        depth += 1
+                        scan = next_open.end()
+                    else:
+                        depth -= 1
+                        if depth == 0:
+                            body_end = next_end.start()
+                            scan = next_end.end()
+                        else:
+                            scan = next_end.end()
+
+                if depth != 0:
+                    # Malformed template — no matching END; include as-is
+                    result.append(text[open_match.start():])
+                    break
+
+                body = text[body_start:body_end]
+
+                # Recursively process nested IF blocks inside the body first
+                processed_body = _process_if_blocks(body)
+
+                # Evaluate the condition
+                if _evaluate_if_condition(condition_text):
+                    result.append(processed_body)
+                # else: discard the body
+
+                pos = scan
+
+            return ''.join(result)
+
+        merged_content = _process_if_blocks(merged_content)
 
         # Process conditional sections [[ ... ]]
         # If all identifiers inside are empty, remove the entire section

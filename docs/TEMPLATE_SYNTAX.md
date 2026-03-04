@@ -113,6 +113,34 @@ This text appears only if the identifier does NOT equal "no".
 
 Note: Comparisons are case-insensitive.
 
+### Nested IF Blocks
+
+IF blocks can be nested inside other IF blocks to any depth. Each `{{ IF ... }}` must have a matching `{{ END }}`.
+
+```
+{{ IF <<has_spouse>> }}
+Spouse: <<spouse_name>>
+
+{{ IF <<marital_status>> = "married" }}
+The Trustor and Spouse are currently married.
+
+{{ IF <<has_prenup>> }}
+A prenuptial agreement is in effect.
+{{ END }}
+
+{{ IF NOT <<has_prenup>> }}
+No prenuptial agreement exists.
+{{ END }}
+
+{{ END }}
+{{ END }}
+```
+
+In this example:
+- The entire block is removed if `has_spouse` is empty
+- The "currently married" section only appears if `marital_status` equals `"married"`
+- The prenup clauses are controlled by a third level of nesting
+
 ---
 
 ## Inline Conditional Brackets
