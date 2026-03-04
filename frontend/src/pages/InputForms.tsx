@@ -1152,7 +1152,23 @@ const InputForms: React.FC = () => {
             className="question-textarea"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
+            onBlur={(e) => {
+              // For repeatable questions, save the entire array to avoid overwriting other instances
+              if (question.repeatable) {
+                // Get current array and update THIS instance with the fresh value from the input
+                const currentArray = getRepeatableAnswerArray(question.id)
+                const updated = [...currentArray]
+                // Ensure array is long enough
+                while (updated.length <= instanceIndex) {
+                  updated.push('')
+                }
+                // Use the fresh value from e.target.value to avoid stale state
+                updated[instanceIndex] = e.target.value
+                handleAnswerBlur(question.id, JSON.stringify(updated))
+              } else {
+                handleAnswerBlur(question.id, e.target.value)
+              }
+            }}
             placeholder="Enter your answer..."
           />
         )
@@ -1164,7 +1180,23 @@ const InputForms: React.FC = () => {
             className="question-input"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
+            onBlur={(e) => {
+              // For repeatable questions, save the entire array to avoid overwriting other instances
+              if (question.repeatable) {
+                // Get current array and update THIS instance with the fresh value from the input
+                const currentArray = getRepeatableAnswerArray(question.id)
+                const updated = [...currentArray]
+                // Ensure array is long enough
+                while (updated.length <= instanceIndex) {
+                  updated.push('')
+                }
+                // Use the fresh value from e.target.value to avoid stale state
+                updated[instanceIndex] = e.target.value
+                handleAnswerBlur(question.id, JSON.stringify(updated))
+              } else {
+                handleAnswerBlur(question.id, e.target.value)
+              }
+            }}
           />
         )
 
