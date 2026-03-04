@@ -44,16 +44,13 @@ export const sessionService = {
   },
 
   /**
-   * Get questions to display for a session with pagination
+   * Get questions to display for a session
    */
   getSessionQuestions: async (
-    sessionId: number,
-    page: number = 1,
-    questionsPerPage: number = 5
+    sessionId: number
   ): Promise<SessionQuestionsResponse> => {
     const response = await apiClient.get<SessionQuestionsResponse>(
-      `/sessions/${sessionId}/questions`,
-      { params: { page, questions_per_page: questionsPerPage } }
+      `/sessions/${sessionId}/questions`
     )
     return response.data
   },
@@ -118,6 +115,14 @@ export const sessionService = {
    */
   copySession: async (sessionId: number): Promise<InputForm> => {
     const response = await apiClient.post<InputForm>(`/sessions/${sessionId}/copy`)
+    return response.data
+  },
+
+  /**
+   * Mark a session as completed
+   */
+  markSessionComplete: async (sessionId: number): Promise<InputForm> => {
+    const response = await apiClient.patch<InputForm>(`/sessions/${sessionId}/complete`)
     return response.data
   }
 }

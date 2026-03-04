@@ -7,8 +7,6 @@ import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
 import './InputForms.css'
 
-const QUESTIONS_PER_PAGE = 10
-
 const InputForms: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
@@ -22,7 +20,6 @@ const InputForms: React.FC = () => {
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [personAnswers, setPersonAnswers] = useState<Record<number, string[]>>({}) // For multiple person fields
   const [personConjunctions, setPersonConjunctions] = useState<Record<number, Array<'and' | 'then'>>>({}) // Conjunction between each person
-  const [currentPage, setCurrentPage] = useState(1)
 
   // UI state
   const [loading, setLoading] = useState(true)
@@ -49,9 +46,7 @@ const InputForms: React.FC = () => {
 
   useEffect(() => {
     if (sessionId) {
-      const pageParam = searchParams.get('page')
-      const initialPage = pageParam ? parseInt(pageParam, 10) : 1
-      loadSessionQuestions(parseInt(sessionId), initialPage > 0 ? initialPage : 1)
+      loadSessionQuestions(parseInt(sessionId))
     } else {
       loadSessions()
     }
@@ -70,13 +65,12 @@ const InputForms: React.FC = () => {
     }
   }
 
-  const loadSessionQuestions = async (id: number, page: number) => {
+  const loadSessionQuestions = async (id: number) => {
     try {
       setLoading(true)
       setError(null)
-      const data = await sessionService.getSessionQuestions(id, page, QUESTIONS_PER_PAGE)
+      const data = await sessionService.getSessionQuestions(id)
       setSessionData(data)
-      setCurrentPage(page)
       setIsCompleted(data.is_completed)
 
       // Pre-fill answers from existing_answers
@@ -202,7 +196,7 @@ const InputForms: React.FC = () => {
           questions: [],
           current_page: 1,
           total_pages: 1,
-          questions_per_page: QUESTIONS_PER_PAGE,
+          questions_per_page: 0,
           is_completed: true,
           is_last_group: true,
           can_go_back: false,
@@ -451,9 +445,7 @@ const InputForms: React.FC = () => {
 
       // Refresh questions to re-evaluate conditionals
       const data = await sessionService.getSessionQuestions(
-        sessionData.session_id,
-        currentPage,
-        QUESTIONS_PER_PAGE
+        sessionData.session_id
       )
 
       // Update session data with new questions
@@ -629,9 +621,7 @@ const InputForms: React.FC = () => {
 
       // Refresh questions to re-evaluate conditionals
       const data = await sessionService.getSessionQuestions(
-        sessionData.session_id,
-        currentPage,
-        QUESTIONS_PER_PAGE
+        sessionData.session_id
       )
 
       // Update session data with new questions
@@ -894,44 +884,29 @@ const InputForms: React.FC = () => {
         }
       })
 
-      // Check if we're navigating within pages or between groups
-      if (direction === 'forward' && currentPage < sessionData.total_pages) {
-        // Save and go to next page within same group
-        await saveCurrentAnswers()
-        const nextPage = currentPage + 1
-        await loadSessionQuestions(sessionData.session_id, nextPage)
-        setSearchParams({ session: String(sessionData.session_id), page: String(nextPage) }, { replace: true })
-      } else if (direction === 'backward' && currentPage > 1) {
-        // Save and go to previous page within same group
-        await saveCurrentAnswers()
-        const prevPage = currentPage - 1
-        await loadSessionQuestions(sessionData.session_id, prevPage)
-        setSearchParams({ session: String(sessionData.session_id), page: String(prevPage) }, { replace: true })
+      // Check if this is an Exit (no changes) on the last group
+      const isLastGroup = sessionData.is_last_group
+
+      if (direction === 'forward' && isLastGroup && !hasChanges) {
+        // No changes - just navigate directly to menu without saving
+        navigate('/document')
+        return
+      }
+
+      // Navigate between groups (with saving)
+      const result = await sessionService.navigate(sessionData.session_id, {
+        direction,
+        answers: answerArray
+      })
+
+      if (result.is_completed) {
+        // Navigate back to document sessions list
+        navigate('/document')
       } else {
-        // Check if this is an Exit (no changes) on the last group/page
-        const isLastGroupAndPage = sessionData.is_last_group && currentPage >= sessionData.total_pages
-
-        if (direction === 'forward' && isLastGroupAndPage && !hasChanges) {
-          // No changes - just navigate directly to menu without saving
-          navigate('/document')
-          return
-        }
-
-        // Navigate between groups (with saving)
-        const result = await sessionService.navigate(sessionData.session_id, {
-          direction,
-          answers: answerArray
-        })
-
-        if (result.is_completed) {
-          // Navigate back to document sessions list
-          navigate('/document')
-        } else {
-          // Reload questions for new group
-          await loadSessionQuestions(sessionData.session_id, 1)
-          // Reset hasChanges for new group
-          setHasChanges(false)
-        }
+        // Reload questions for new group
+        await loadSessionQuestions(sessionData.session_id)
+        // Reset hasChanges for new group
+        setHasChanges(false)
       }
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Failed to navigate')
@@ -1101,9 +1076,7 @@ const InputForms: React.FC = () => {
           // Trigger conditional refresh
           setConditionalLoading(true)
           const data = await sessionService.getSessionQuestions(
-            sessionData.session_id,
-            currentPage,
-            QUESTIONS_PER_PAGE
+            sessionData.session_id
           )
           setSessionData(data)
           setConditionalLoading(false)
@@ -2167,7 +2140,29 @@ const InputForms: React.FC = () => {
                         )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}>
+                        <span
+                          className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}
+                          onClick={async (e) => {
+                            if (!session.is_completed) {
+                              e.stopPropagation()
+                              try {
+                                await sessionService.markSessionComplete(session.id)
+                                // Update the local state to reflect the change
+                                setSessions(prev => prev.map(s =>
+                                  s.id === session.id
+                                    ? { ...s, is_completed: true }
+                                    : s
+                                ))
+                              } catch (err: any) {
+                                alert('Failed to mark session as complete: ' + (err.response?.data?.detail || err.message))
+                              }
+                            }
+                          }}
+                          style={{
+                            cursor: session.is_completed ? 'default' : 'pointer'
+                          }}
+                          title={session.is_completed ? '' : 'Click to mark as Finished'}
+                        >
                           {session.is_completed ? 'Completed' : 'In Progress'}
                         </span>
                         <button
@@ -2306,9 +2301,6 @@ const InputForms: React.FC = () => {
                 <h2 className="group-name">{sessionData.current_group_name}</h2>
                 <div className="progress-info">
                   <span>Group {sessionData.current_group_index + 1} of {sessionData.total_groups}</span>
-                  {sessionData.total_pages > 1 && (
-                    <span> • Page {sessionData.current_page} of {sessionData.total_pages}</span>
-                  )}
                 </div>
               </div>
 
@@ -2944,7 +2936,7 @@ const InputForms: React.FC = () => {
                     className="btn btn-primary"
                   >
                     {submitting ? 'Saving...' : (
-                      sessionData.is_last_group && currentPage >= sessionData.total_pages
+                      sessionData.is_last_group
                         ? 'Exit'
                         : 'Next →'
                     )}

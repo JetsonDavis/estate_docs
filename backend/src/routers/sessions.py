@@ -196,26 +196,20 @@ async def delete_session(
 @router.get("/{session_id}/questions", response_model=SessionQuestionsResponse)
 async def get_session_questions(
     session_id: int,
-    page: int = 1,
-    questions_per_page: int = 5,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
 ) -> SessionQuestionsResponse:
     """
     Get questions to display for a session based on flow_logic and question_logic.
-    
+
     - **session_id**: Session ID
-    - **page**: Current page number (1-indexed, default: 1)
-    - **questions_per_page**: Number of questions per page (default: 5)
-    
-    Returns paginated questions with navigation info.
+
+    Returns all questions for the current group.
     """
     return SessionService.get_session_questions(
         db,
         session_id,
-        int(current_user["sub"]),
-        page,
-        questions_per_page
+        int(current_user["sub"])
     )
 
 
@@ -320,6 +314,29 @@ async def copy_session(
     - **session_id**: Session ID to copy
     """
     session = SessionService.copy_session(db, session_id, int(current_user["sub"]))
+
+    # Get the question group name if there's a current_group_id
+    response = InputFormResponse.model_validate(session)
+    if session.current_group_id:
+        group = QuestionGroupService.get_question_group_by_id(db, session.current_group_id)
+        if group:
+            response.current_group_name = group.name
+
+    return response
+
+
+@router.patch("/{session_id}/complete", response_model=InputFormResponse)
+async def mark_session_complete(
+    session_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+) -> InputFormResponse:
+    """
+    Mark a session as completed.
+
+    - **session_id**: Session ID to mark as complete
+    """
+    session = SessionService.mark_session_complete(db, session_id, int(current_user["sub"]))
 
     # Get the question group name if there's a current_group_id
     response = InputFormResponse.model_validate(session)

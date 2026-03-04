@@ -368,9 +368,7 @@ class SessionService:
     def get_session_questions(
         db: Session,
         session_id: int,
-        user_id: int,
-        page: int = 1,
-        questions_per_page: int = 5
+        user_id: int
     ) -> SessionQuestionsResponse:
         """
         Get questions to display for a session based on flow_logic and question_logic.
@@ -379,11 +377,9 @@ class SessionService:
             db: Database session
             session_id: Session ID
             user_id: User ID
-            page: Current page number (1-indexed)
-            questions_per_page: Number of questions per page
 
         Returns:
-            SessionQuestionsResponse with questions and navigation info
+            SessionQuestionsResponse with all questions for the current group
         """
         session = SessionService.get_session(db, session_id, user_id)
         if not session:
@@ -453,14 +449,9 @@ class SessionService:
             db, current_group, existing_answers
         )
 
-        # Paginate questions
+        # Return all questions without pagination
         total_questions = len(questions_with_data)
-        total_pages = max(1, math.ceil(total_questions / questions_per_page))
-        page = max(1, min(page, total_pages))
-
-        start_idx = (page - 1) * questions_per_page
-        end_idx = start_idx + questions_per_page
-        paginated_questions = questions_with_data[start_idx:end_idx]
+        paginated_questions = questions_with_data
 
         # Convert to response format
         from src.schemas.session import ConditionalFollowup, ConditionalFollowupQuestion
@@ -560,12 +551,12 @@ class SessionService:
             current_group_index=current_group_index,
             total_groups=len(ordered_groups),
             questions=question_responses,
-            current_page=page,
-            total_pages=total_pages,
-            questions_per_page=questions_per_page,
+            current_page=1,
+            total_pages=1,
+            questions_per_page=0,
             is_completed=session.is_completed,
             is_last_group=is_last_group,
-            can_go_back=current_group_index > 0 or page > 1,
+            can_go_back=current_group_index > 0,
             existing_answers=existing_answers,
             conditional_identifiers=conditional_identifiers
         )
@@ -1200,3 +1191,35 @@ class SessionService:
         db.refresh(new_session)
 
         return new_session
+
+    @staticmethod
+    def mark_session_complete(
+        db: Session,
+        session_id: int,
+        user_id: int
+    ) -> InputForm:
+        """
+        Mark a session as completed.
+
+        Args:
+            db: Database session
+            session_id: Session ID to mark as complete
+            user_id: User ID
+
+        Returns:
+            Updated InputForm
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+
+        session.is_completed = True
+        session.completed_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(session)
+
+        return session
