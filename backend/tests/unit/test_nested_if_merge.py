@@ -473,3 +473,235 @@ Footer"""
         assert "Subsection A.1 Content" not in result
         assert "End of Section A" in result
         assert "Footer" in result
+
+    # ── ELSE support ─────────────────────────────────────────────────
+
+    def test_else_condition_true(self):
+        """When IF condition is true, IF body included, ELSE body removed."""
+        template = "{{ IF <<name>> }}Hello <<name>>{{ ELSE }}No name{{ END }}"
+        answer_map = {"name": "Alice"}
+        result = DocumentService._merge_template(template, answer_map)
+        assert "Hello Alice" in result
+        assert "No name" not in result
+
+    def test_else_condition_false(self):
+        """When IF condition is false, ELSE body included."""
+        template = "{{ IF <<name>> }}Hello <<name>>{{ ELSE }}No name provided{{ END }}"
+        answer_map = {"name": ""}
+        result = DocumentService._merge_template(template, answer_map)
+        assert "Hello" not in result
+        assert "No name provided" in result
+
+    def test_else_with_if_not(self):
+        """ELSE with IF NOT: condition true (empty) → IF body; false (has value) → ELSE body."""
+        template = "{{ IF NOT <<name>> }}Anonymous{{ ELSE }}Known: <<name>>{{ END }}"
+        # name is empty → IF NOT is true → IF body
+        result = DocumentService._merge_template(template, {"name": ""})
+        assert "Anonymous" in result
+        assert "Known" not in result
+        # name has value → IF NOT is false → ELSE body
+        result = DocumentService._merge_template(template, {"name": "Alice"})
+        assert "Anonymous" not in result
+        assert "Known: Alice" in result
+
+    def test_else_with_equality(self):
+        """ELSE with value comparison."""
+        template = '{{ IF <<status>> = "active" }}Active account{{ ELSE }}Inactive account{{ END }}'
+        result = DocumentService._merge_template(template, {"status": "active"})
+        assert "Active account" in result
+        assert "Inactive account" not in result
+        result = DocumentService._merge_template(template, {"status": "suspended"})
+        assert "Active account" not in result
+        assert "Inactive account" in result
+
+    def test_else_with_inequality(self):
+        """ELSE with != comparison."""
+        template = '{{ IF <<role>> != "admin" }}Regular user{{ ELSE }}Admin user{{ END }}'
+        result = DocumentService._merge_template(template, {"role": "viewer"})
+        assert "Regular user" in result
+        assert "Admin user" not in result
+        result = DocumentService._merge_template(template, {"role": "admin"})
+        assert "Regular user" not in result
+        assert "Admin user" in result
+
+    def test_else_with_surrounding_text(self):
+        """ELSE preserves text before and after the block."""
+        template = "Before {{ IF <<x>> }}YES{{ ELSE }}NO{{ END }} After"
+        result = DocumentService._merge_template(template, {"x": "1"})
+        assert "Before" in result
+        assert "YES" in result
+        assert "NO" not in result
+        assert "After" in result
+        result = DocumentService._merge_template(template, {"x": ""})
+        assert "Before" in result
+        assert "YES" not in result
+        assert "NO" in result
+        assert "After" in result
+
+    # ── Nested ELSE ──────────────────────────────────────────────────
+
+    def test_nested_if_else_inside_if(self):
+        """IF/ELSE nested inside an outer IF block."""
+        template = (
+            "{{ IF <<has_spouse>> }}"
+            "Spouse: "
+            "{{ IF <<spouse_name>> }}<<spouse_name>>{{ ELSE }}Name unknown{{ END }}"
+            "{{ END }}"
+        )
+        result = DocumentService._merge_template(template, {"has_spouse": "yes", "spouse_name": "Jane"})
+        assert "Spouse:" in result
+        assert "Jane" in result
+        assert "unknown" not in result
+
+        result = DocumentService._merge_template(template, {"has_spouse": "yes", "spouse_name": ""})
+        assert "Spouse:" in result
+        assert "Name unknown" in result
+
+        result = DocumentService._merge_template(template, {"has_spouse": "", "spouse_name": "Jane"})
+        assert "Spouse" not in result
+        assert "Jane" not in result
+
+    def test_nested_if_else_inside_else(self):
+        """IF/ELSE nested inside an ELSE branch."""
+        template = (
+            "{{ IF <<has_trust>> }}"
+            "Trust exists."
+            "{{ ELSE }}"
+            "No trust. "
+            "{{ IF <<needs_probate>> }}Probate required.{{ ELSE }}No probate needed.{{ END }}"
+            "{{ END }}"
+        )
+        result = DocumentService._merge_template(template, {"has_trust": "yes", "needs_probate": "yes"})
+        assert "Trust exists." in result
+        assert "No trust" not in result
+
+        result = DocumentService._merge_template(template, {"has_trust": "", "needs_probate": "yes"})
+        assert "Trust exists" not in result
+        assert "No trust." in result
+        assert "Probate required." in result
+
+        result = DocumentService._merge_template(template, {"has_trust": "", "needs_probate": ""})
+        assert "No trust." in result
+        assert "No probate needed." in result
+
+    def test_else_with_nested_inner_else(self):
+        """Both outer and inner IF blocks have ELSE branches."""
+        template = (
+            "{{ IF <<a>> }}"
+            "A-true "
+            "{{ IF <<b>> }}B-true{{ ELSE }}B-false{{ END }}"
+            "{{ ELSE }}"
+            "A-false "
+            "{{ IF <<c>> }}C-true{{ ELSE }}C-false{{ END }}"
+            "{{ END }}"
+        )
+        result = DocumentService._merge_template(template, {"a": "1", "b": "1", "c": "1"})
+        assert "A-true" in result
+        assert "B-true" in result
+        assert "A-false" not in result
+
+        result = DocumentService._merge_template(template, {"a": "1", "b": "", "c": ""})
+        assert "A-true" in result
+        assert "B-false" in result
+        assert "A-false" not in result
+
+        result = DocumentService._merge_template(template, {"a": "", "b": "", "c": "1"})
+        assert "A-false" in result
+        assert "C-true" in result
+        assert "A-true" not in result
+
+        result = DocumentService._merge_template(template, {"a": "", "b": "", "c": ""})
+        assert "A-false" in result
+        assert "C-false" in result
+
+    def test_sibling_if_else_blocks(self):
+        """Two sibling IF/ELSE blocks at the same level."""
+        template = (
+            "{{ IF <<a>> }}A-yes{{ ELSE }}A-no{{ END }} "
+            "{{ IF <<b>> }}B-yes{{ ELSE }}B-no{{ END }}"
+        )
+        result = DocumentService._merge_template(template, {"a": "1", "b": ""})
+        assert "A-yes" in result
+        assert "A-no" not in result
+        assert "B-yes" not in result
+        assert "B-no" in result
+
+    # ── Real-world estate scenario with ELSE ─────────────────────────
+
+    def test_estate_doc_else_scenario(self):
+        """Realistic estate document using IF/ELSE for marital provisions."""
+        template = (
+            "TRUST AGREEMENT\n\n"
+            "Trustor: <<trustor_name>>\n\n"
+            "{{ IF <<has_spouse>> }}"
+            "MARITAL PROVISIONS\n"
+            "Spouse: <<spouse_name>>\n"
+            "{{ IF <<has_prenup>> }}"
+            "A prenuptial agreement is in effect.\n"
+            "{{ ELSE }}"
+            "No prenuptial agreement exists between the parties.\n"
+            "{{ END }}"
+            "{{ ELSE }}"
+            "The Trustor is unmarried.\n"
+            "{{ END }}"
+            "\nGENERAL PROVISIONS"
+        )
+        # Married with prenup
+        result = DocumentService._merge_template(template, {
+            "trustor_name": "John Doe",
+            "has_spouse": "yes",
+            "spouse_name": "Jane Doe",
+            "has_prenup": "yes",
+        })
+        assert "Trustor: John Doe" in result
+        assert "MARITAL PROVISIONS" in result
+        assert "Spouse: Jane Doe" in result
+        assert "prenuptial agreement is in effect" in result
+        assert "unmarried" not in result
+
+        # Married without prenup
+        result = DocumentService._merge_template(template, {
+            "trustor_name": "John Doe",
+            "has_spouse": "yes",
+            "spouse_name": "Jane Doe",
+            "has_prenup": "",
+        })
+        assert "No prenuptial agreement exists" in result
+        assert "prenuptial agreement is in effect" not in result
+        assert "unmarried" not in result
+
+        # Unmarried
+        result = DocumentService._merge_template(template, {
+            "trustor_name": "John Doe",
+            "has_spouse": "",
+            "spouse_name": "",
+            "has_prenup": "",
+        })
+        assert "unmarried" in result
+        assert "MARITAL PROVISIONS" not in result
+        assert "GENERAL PROVISIONS" in result
+
+    def test_multiline_else(self):
+        """Multiline IF/ELSE block."""
+        template = """DOCUMENT
+
+{{ IF <<section_a>> }}
+Section A is included.
+More A content.
+{{ ELSE }}
+Section A is NOT available.
+Fallback content here.
+{{ END }}
+
+Footer"""
+        result = DocumentService._merge_template(template, {"section_a": "yes"})
+        assert "Section A is included." in result
+        assert "More A content." in result
+        assert "NOT available" not in result
+        assert "Footer" in result
+
+        result = DocumentService._merge_template(template, {"section_a": ""})
+        assert "Section A is included" not in result
+        assert "NOT available" in result
+        assert "Fallback content" in result
+        assert "Footer" in result

@@ -113,33 +113,41 @@ This text appears only if the identifier does NOT equal "no".
 
 Note: Comparisons are case-insensitive.
 
+### ELSE — Alternate content when condition is false
+
+```
+{{ IF <<identifier>> }}
+Content when identifier has a value.
+{{ ELSE }}
+Content when identifier is empty.
+{{ END }}
+```
+
+`{{ ELSE }}` works with all IF variants (`IF`, `IF NOT`, `IF =`, `IF !=`). When the condition is true, the IF body is included and the ELSE body is removed; when false, the ELSE body is included instead.
+
 ### Nested IF Blocks
 
-IF blocks can be nested inside other IF blocks to any depth. Each `{{ IF ... }}` must have a matching `{{ END }}`.
+IF blocks (with or without ELSE) can be nested inside other IF blocks to any depth. Each `{{ IF ... }}` must have a matching `{{ END }}`.
 
 ```
 {{ IF <<has_spouse>> }}
 Spouse: <<spouse_name>>
 
-{{ IF <<marital_status>> = "married" }}
-The Trustor and Spouse are currently married.
-
 {{ IF <<has_prenup>> }}
 A prenuptial agreement is in effect.
-{{ END }}
-
-{{ IF NOT <<has_prenup>> }}
+{{ ELSE }}
 No prenuptial agreement exists.
 {{ END }}
 
-{{ END }}
+{{ ELSE }}
+The Trustor is unmarried.
 {{ END }}
 ```
 
 In this example:
-- The entire block is removed if `has_spouse` is empty
-- The "currently married" section only appears if `marital_status` equals `"married"`
-- The prenup clauses are controlled by a third level of nesting
+- If `has_spouse` is empty, only "The Trustor is unmarried." appears
+- If `has_spouse` has a value, the spouse section appears with the prenup clause controlled by the inner IF/ELSE
+- The prenup inner block uses ELSE to guarantee one of the two clauses always appears
 
 ---
 
@@ -178,6 +186,7 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 | `{{ IF NOT <<ident>> }} ... {{ END }}` | Include if empty |
 | `{{ IF <<ident>> = "val" }} ... {{ END }}` | Include if equals value |
 | `{{ IF <<ident>> != "val" }} ... {{ END }}` | Include if not equals value |
+| `{{ IF ... }} ... {{ ELSE }} ... {{ END }}` | Alternate content when condition is false |
 | `[[ ... ]]` | Remove section if any identifier inside is empty |
 | `##` (outside FOREACH) | Auto-incrementing counter |
 | `#^.` | Current counter (no increment) |

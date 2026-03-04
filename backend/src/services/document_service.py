@@ -348,6 +348,7 @@ class DocumentService:
         #   {{ IF NOT <<ident>> }}          — include if ident is empty
         #   {{ IF <<ident>> = "value" }}    — include if ident equals value
         #   {{ IF <<ident>> != "value" }}   — include if ident does not equal value
+        # Optional {{ ELSE }} between {{ IF ... }} and {{ END }}.
         # All closed by {{ END }}. Nesting is fully supported.
 
         # Regex for any {{ IF ... }} opening tag (captures the full condition text)
@@ -356,6 +357,7 @@ class DocumentService:
             re.IGNORECASE
         )
         _end_re = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
+        _else_re = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
 
         def _evaluate_if_condition(condition_text: str) -> bool:
             """Evaluate the condition inside {{ IF <condition> }}.
@@ -408,12 +410,13 @@ class DocumentService:
             return True
 
         def _process_if_blocks(text: str) -> str:
-            """Recursively process nested {{ IF }} ... {{ END }} blocks.
+            """Recursively process nested {{ IF }} ... {{ ELSE }} ... {{ END }} blocks.
 
             Scans *text* left-to-right.  When an {{ IF ... }} tag is found the
-            parser counts nesting depth to locate the matching {{ END }}.  The
-            body between the two tags is recursively processed first, then the
-            condition is evaluated to decide whether to keep or discard the body.
+            parser counts nesting depth to locate the matching {{ END }} and an
+            optional {{ ELSE }} at the same depth.  The if-body (and else-body,
+            if present) are recursively processed, then the condition decides
+            which branch to keep.
             """
             result = []
             pos = 0
@@ -432,45 +435,72 @@ class DocumentService:
                 condition_text = open_match.group(1)
                 body_start = open_match.end()
 
-                # Walk forward to find the matching {{ END }}, respecting nesting
+                # Walk forward to find the matching {{ END }}, respecting nesting.
+                # Also track the position of a {{ ELSE }} at depth 1 (top level
+                # of this IF block) so we can split into if-body / else-body.
                 depth = 1
                 scan = body_start
                 body_end = body_start  # default; overwritten when matching END found
+                else_start = None      # start of {{ ELSE }} tag text (if found)
+                else_end = None        # end of {{ ELSE }} tag text (if found)
                 while depth > 0 and scan < len(text):
                     next_open = _if_open_re.search(text, scan)
                     next_end = _end_re.search(text, scan)
+                    next_else = _else_re.search(text, scan)
 
                     if next_end is None:
                         # No matching END — treat rest of text as body (malformed)
                         scan = len(text)
                         break
 
-                    # Determine which comes first: another IF or an END
-                    if next_open and next_open.start() < next_end.start():
+                    # Collect all candidate tags and pick the earliest one
+                    candidates = [('end', next_end)]
+                    if next_open:
+                        candidates.append(('open', next_open))
+                    if next_else:
+                        candidates.append(('else', next_else))
+                    candidates.sort(key=lambda c: c[1].start())
+
+                    tag_type, tag_match = candidates[0]
+
+                    if tag_type == 'open':
                         depth += 1
-                        scan = next_open.end()
-                    else:
+                        scan = tag_match.end()
+                    elif tag_type == 'else' and depth == 1:
+                        # {{ ELSE }} at the current IF's depth — record position
+                        else_start = tag_match.start()
+                        else_end = tag_match.end()
+                        scan = tag_match.end()
+                    elif tag_type == 'else':
+                        # {{ ELSE }} inside a nested IF — skip it
+                        scan = tag_match.end()
+                    else:  # 'end'
                         depth -= 1
                         if depth == 0:
-                            body_end = next_end.start()
-                            scan = next_end.end()
+                            body_end = tag_match.start()
+                            scan = tag_match.end()
                         else:
-                            scan = next_end.end()
+                            scan = tag_match.end()
 
                 if depth != 0:
                     # Malformed template — no matching END; include as-is
                     result.append(text[open_match.start():])
                     break
 
-                body = text[body_start:body_end]
+                # Split into if-body and optional else-body
+                if else_start is not None:
+                    if_body = text[body_start:else_start]
+                    else_body = text[else_end:body_end]
+                else:
+                    if_body = text[body_start:body_end]
+                    else_body = None
 
-                # Recursively process nested IF blocks inside the body first
-                processed_body = _process_if_blocks(body)
-
-                # Evaluate the condition
+                # Evaluate the condition and pick the correct branch
                 if _evaluate_if_condition(condition_text):
-                    result.append(processed_body)
-                # else: discard the body
+                    result.append(_process_if_blocks(if_body))
+                elif else_body is not None:
+                    result.append(_process_if_blocks(else_body))
+                # else: no ELSE branch and condition is false — discard
 
                 pos = scan
 
