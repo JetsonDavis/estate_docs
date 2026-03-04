@@ -94,6 +94,9 @@ async function deleteQuestion(page: Page, index: number) {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(500);
   
+  // Count questions before deletion
+  const beforeCount = await page.locator('input[placeholder="e.g., full_name"]').count();
+  
   // Get the question builder and its remove button
   const questionBuilders = page.locator('.question-builder');
   const targetQuestion = questionBuilders.nth(index);
@@ -103,8 +106,11 @@ async function deleteQuestion(page: Page, index: number) {
   await removeButton.waitFor({ state: 'visible' });
   await removeButton.click();
   
-  // Wait for the deletion to process
-  await page.waitForTimeout(2000);
+  // Wait for the question count to actually decrease (handles 400ms animation + async state updates)
+  await expect(async () => {
+    const currentCount = await page.locator('input[placeholder="e.g., full_name"]').count();
+    expect(currentCount).toBe(beforeCount - 1);
+  }).toPass({ timeout: 10000 });
 }
 
 // Helper to get question count

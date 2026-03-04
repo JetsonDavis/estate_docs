@@ -12,6 +12,8 @@ async function login(page: Page) {
   await page.fill('input[id="password"]', TEST_CONFIG.adminPassword);
   await page.click('button[type="submit"]');
   await page.waitForLoadState('networkidle');
+  // Wait for redirect away from login page to confirm auth succeeded
+  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(1000);
 }
 
@@ -357,11 +359,14 @@ test.describe('Question Group Reordering & Insertion', () => {
     await addBtn.click();
     await page.waitForTimeout(1000);
 
-    identifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
-    const count = await identifiers.count();
-    await identifiers.nth(count - 1).fill(q2);
-    textareas = page.locator('.question-builder textarea');
-    await textareas.nth(count - 1).fill('Question 2');
+    identifiers = page.locator('input[placeholder*="full_name"]');
+    const rootCount = await identifiers.count();
+    const lastRootId = identifiers.nth(rootCount - 1);
+    await lastRootId.scrollIntoViewIfNeeded();
+    await lastRootId.fill(q2);
+    const q2Builder = lastRootId.locator('xpath=ancestor::div[contains(@class, "question-builder")]').first();
+    await q2Builder.locator('textarea').first().scrollIntoViewIfNeeded();
+    await q2Builder.locator('textarea').first().fill('Question 2');
     await page.waitForTimeout(2000);
 
     // Verify both questions exist

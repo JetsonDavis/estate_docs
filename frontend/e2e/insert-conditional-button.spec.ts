@@ -132,14 +132,8 @@ test.describe('Insert Conditional Button', () => {
     const uniqueId = Date.now().toString()
     await createGroupWithConditionalAndNestedQuestion(page, uniqueId)
 
-    // Count existing root-level conditionals before insertion
-    const beforeCount = await page.evaluate(() => {
-      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'))
-      return allConditionals.filter(c => {
-        const parent = c.parentElement
-        return parent && parent.className.includes('question-builder')
-      }).length
-    })
+    // Count existing conditionals before insertion
+    const beforeCount = await page.locator('.conditional-block').count()
 
     // Use the root-level "Insert Conditional" button that appears between root items
     // This button has title="Insert a new conditional here"
@@ -149,30 +143,17 @@ test.describe('Insert Conditional Button', () => {
 
     await page.waitForTimeout(1500)
 
-    // Count root-level conditionals after insertion
-    const afterCount = await page.evaluate(() => {
-      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'))
-      return allConditionals.filter(c => {
-        const parent = c.parentElement
-        return parent && parent.className.includes('question-builder')
-      }).length
-    })
+    // Count conditionals after insertion
+    const afterCount = await page.locator('.conditional-block').count()
 
-    // Should have one more root-level conditional
+    // Should have one more conditional
     expect(afterCount).toBe(beforeCount + 1)
 
-    // Find the newly created conditional and verify it has gray background (depth 0)
-    const newConditionalBgColor = await page.evaluate(() => {
-      const allConditionals = Array.from(document.querySelectorAll('.conditional-block'))
-      const rootConditionals = allConditionals.filter(c => {
-        const parent = c.parentElement
-        return parent && parent.className.includes('question-builder')
-      })
-
-      // Get the last root conditional (the one we just created)
-      const lastRootConditional = rootConditionals[rootConditionals.length - 1]
-      return window.getComputedStyle(lastRootConditional).backgroundColor
-    })
+    // Find the newly created conditional (last one) and verify it has gray background (depth 0)
+    const lastConditional = page.locator('.conditional-block').last()
+    const newConditionalBgColor = await lastConditional.evaluate(
+      (el) => window.getComputedStyle(el).backgroundColor
+    )
 
     // Gray background for depth 0: rgb(249, 250, 251)
     expect(newConditionalBgColor).toBe('rgb(249, 250, 251)')

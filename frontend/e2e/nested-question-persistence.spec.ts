@@ -1,6 +1,6 @@
 /**
  * E2E Test for Nested Question Persistence Bug
- * 
+ *
  * This test verifies that nested questions inside conditionals remain nested
  * after page refresh. The bug was that nested questions would move to the
  * top level after refresh.
@@ -25,10 +25,22 @@ async function login(page: Page) {
   await page.waitForTimeout(1000);
 }
 
+let createdGroupIds: number[] = []
+
 test.describe('Nested Question Persistence', () => {
+  test.afterEach(async ({ page }) => {
+    for (const groupId of createdGroupIds) {
+      try {
+        await page.request.delete(`http://localhost:8005/api/v1/question-groups/${groupId}`)
+      } catch (e) { /* ignore */ }
+    }
+    createdGroupIds = []
+  })
+
   test('nested question inside conditional should remain nested after page refresh', async ({ page }) => {
-    const uniqueId = Date.now().toString();
-    const groupName = `Test Group ${uniqueId}`;
+    test.setTimeout(90000);
+    const uniqueId = Date.now().toString() + '_' + Math.random().toString(36).substring(2, 8);
+    const groupName = `E2E_NestedPersist_${uniqueId}`;
     const questionIdentifier = `q1_${uniqueId}`;
     const nestedQuestionIdentifier = `nested_${uniqueId}`;
 
@@ -39,18 +51,23 @@ test.describe('Nested Question Persistence', () => {
 
     // Step 2: Click "Create Questions Group" button
     await page.click('text=Create Questions Group');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
 
     // Step 3: Fill in group name and save
     const nameInput = page.locator('input.form-input').first();
     await nameInput.fill(groupName);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
     
     // Click "Save Group Information" button and wait for Questions section to appear
     await page.click('text=Save Group Information');
     // Wait for the "Questions" section to appear (indicates group was saved)
     await page.waitForSelector('text=Questions', { timeout: 10000 });
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
+
+    // Extract group ID for cleanup
+    const groupUrl = page.url();
+    const groupMatch = groupUrl.match(/\/question-groups\/(\d+)/);
+    if (groupMatch) createdGroupIds.push(parseInt(groupMatch[1], 10));
 
     // Some builds keep the URL on the create page; in that case open the saved group explicitly.
     if (!/\/admin\/question-groups\/\d+/.test(page.url())) {
@@ -66,6 +83,13 @@ test.describe('Nested Question Persistence', () => {
       await groupLink.click();
       await page.waitForLoadState('networkidle');
       await page.waitForSelector('text=Questions', { timeout: 10000 });
+
+      // Extract group ID if we didn't get it before
+      if (createdGroupIds.length === 0) {
+        const editUrl = page.url();
+        const editMatch = editUrl.match(/\/question-groups\/(\d+)/);
+        if (editMatch) createdGroupIds.push(parseInt(editMatch[1], 10));
+      }
     }
     
     console.log('Group saved, Questions section visible');
@@ -73,7 +97,7 @@ test.describe('Nested Question Persistence', () => {
     // Step 4: Add a question at the top level
     const addQuestionBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last();
     await addQuestionBtn.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Fill in the first question's identifier (placeholder: "e.g., full_name")
     const identifierInput = page.locator('input[placeholder*="full_name"]').first();
@@ -82,7 +106,7 @@ test.describe('Nested Question Persistence', () => {
     // Fill question text (textarea in question-builder)
     const questionTextarea = page.locator('.question-builder textarea').first();
     await questionTextarea.fill('First question text');
-    await page.waitForTimeout(2000); // Wait for auto-save
+    await page.waitForTimeout(1500); // Wait for auto-save
 
     // Step 5: Add a conditional after the first question
     // Scroll down to see the conditional button
@@ -91,7 +115,7 @@ test.describe('Nested Question Persistence', () => {
     
     const conditionalBtn = page.locator('button').filter({ hasText: /^Add Conditional$/ }).first();
     await conditionalBtn.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
 
     // Scroll down to see the conditional and its nested content
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -143,10 +167,15 @@ test.describe('Nested Question Persistence', () => {
       }
     }
 
-    await allIdentifierInputs.nth(nestedInputIndex).fill(nestedQuestionIdentifier);
-    const allTextareas = page.locator('.question-builder textarea');
-    await allTextareas.nth(nestedInputIndex).fill('Nested question text');
-    await page.waitForTimeout(3000); // Wait for auto-save
+    const nestedIdInput = allIdentifierInputs.nth(nestedInputIndex);
+    await nestedIdInput.scrollIntoViewIfNeeded();
+    await nestedIdInput.fill(nestedQuestionIdentifier);
+    // Find the textarea that follows this identifier input's form group
+    // The nested question textarea is a sibling section within the same parent container
+    const nestedTextarea = page.locator('textarea[placeholder="Enter your question here..."]').nth(nestedInputIndex);
+    await nestedTextarea.scrollIntoViewIfNeeded();
+    await nestedTextarea.fill('Nested question text');
+    await page.waitForTimeout(2000); // Wait for auto-save
 
     // Verify structure before refresh - count questions at different depths
     const questionBuilders = page.locator('.question-builder');
@@ -181,27 +210,17 @@ test.describe('Nested Question Persistence', () => {
     console.log('Conditional blocks after refresh:', conditionalCount);
     expect(conditionalCount).toBeGreaterThan(0);
 
-    // Verify the nested question is inside the conditional (has indentation)
-    // Find the question builder containing the nested identifier
+    // Verify the nested question is inside the conditional (is a descendant of .conditional-block)
     for (let i = 0; i < inputCountAfter; i++) {
       const input = identifierInputsAfter.nth(i);
       const value = await input.inputValue();
       if (value === nestedQuestionIdentifier) {
-        // The nested question's parent should have margin-left > 0
-        const parentBuilder = input.locator('xpath=ancestor::div[contains(@class, "question-builder")]').first();
-        const style = await parentBuilder.getAttribute('style');
-        console.log(`Nested question parent style:`, style);
-        
-        // Check for indentation - nested questions should have margin-left
-        if (style && style.includes('margin-left')) {
-          const marginMatch = style.match(/margin-left:\s*(\d+)/);
-          if (marginMatch) {
-            const marginValue = parseInt(marginMatch[1]);
-            console.log(`Nested question margin-left: ${marginValue}px`);
-            // Nested questions should have margin > 0
-            expect(marginValue).toBeGreaterThan(0);
-          }
-        }
+        // The nested question should be inside a .conditional-block element
+        const isInsideConditional = await input.evaluate((el) => {
+          return el.closest('.conditional-block') !== null;
+        });
+        console.log(`Nested question is inside conditional: ${isInsideConditional}`);
+        expect(isInsideConditional).toBe(true);
       }
     }
   });

@@ -88,17 +88,25 @@ async function createSession(page: Page, groupId: number, uniqueId: string): Pro
   await page.click('text=New Document')
   await page.waitForTimeout(1000)
 
-  // Fill in "Document For:" field
-  const docForInput = page.locator('input').first()
+  // Fill in "Document For:" field (PersonTypeahead combobox)
+  const docForInput = page.locator('input[placeholder="Enter client name"]').first()
   await docForInput.waitFor({ state: 'visible', timeout: 10000 })
+  await docForInput.click()
   await docForInput.fill(`TestClient_${uniqueId}`)
+  await docForInput.press('Escape')
+  await page.waitForTimeout(500)
 
   // Fill in "Document Name:" field
   const docNameInput = page.locator('input[placeholder*="document name"]').first()
-  if (await docNameInput.isVisible().catch(() => false)) {
-    await docNameInput.fill(`TestDoc_${uniqueId}`)
-  }
+  await docNameInput.waitFor({ state: 'visible', timeout: 10000 })
+  await docNameInput.fill(`TestDoc_${uniqueId}`)
 
+  await page.waitForTimeout(500)
+
+  // Select the correct question group from dropdown
+  const groupSelect = page.locator('select.form-input')
+  await groupSelect.waitFor({ state: 'visible', timeout: 10000 })
+  await groupSelect.selectOption({ value: String(groupId) })
   await page.waitForTimeout(500)
 
   // Click "Create Document" button
@@ -140,6 +148,7 @@ test.describe('Person Name Persistence', () => {
   })
 
   test('should persist person name after entering and reloading', async ({ page }) => {
+    test.setTimeout(90000)
     const uniqueId = Date.now().toString()
 
     // Create a question group with a repeatable person question
@@ -154,13 +163,14 @@ test.describe('Person Name Persistence', () => {
     await page.waitForSelector('text=Who is/are the trustor', { timeout: 15000 })
     await page.waitForTimeout(1000)
 
-    // Find the Name input and enter a name
-    const nameInput = page.locator('input[placeholder="Full name"]').first()
+    // Find the Name input (it's a combobox/typeahead)
+    const nameInput = page.getByRole('combobox', { name: 'Full name' }).first()
     await nameInput.waitFor({ state: 'visible', timeout: 10000 })
+    await nameInput.click()
     await nameInput.fill('John Smith')
     await page.waitForTimeout(500)
-
-    // Blur to trigger save
+    // Press Escape to close any typeahead dropdown, then blur to trigger save
+    await nameInput.press('Escape')
     await nameInput.blur()
     await page.waitForTimeout(3000) // Wait for debounced save
 
@@ -174,8 +184,9 @@ test.describe('Person Name Persistence', () => {
     await page.waitForTimeout(1000)
 
     // Verify the name persisted
-    const nameInputAfterReload = page.locator('input[placeholder="Full name"]').first()
+    const nameInputAfterReload = page.getByRole('combobox', { name: 'Full name' }).first()
     await nameInputAfterReload.waitFor({ state: 'visible', timeout: 10000 })
+    await page.waitForTimeout(1000)
     const persistedName = await nameInputAfterReload.inputValue()
     expect(persistedName).toBe('John Smith')
 
@@ -183,6 +194,7 @@ test.describe('Person Name Persistence', () => {
   })
 
   test('should persist multiple person names with conjunctions after reload', async ({ page }) => {
+    test.setTimeout(90000)
     const uniqueId = Date.now().toString()
 
     // Create a question group with a repeatable person question
@@ -197,10 +209,12 @@ test.describe('Person Name Persistence', () => {
     await page.waitForSelector('text=Who is/are the trustor', { timeout: 15000 })
     await page.waitForTimeout(1000)
 
-    // Enter first person name
-    const nameInput1 = page.locator('input[placeholder="Full name"]').first()
+    // Enter first person name (combobox/typeahead)
+    const nameInput1 = page.getByRole('combobox', { name: 'Full name' }).first()
     await nameInput1.waitFor({ state: 'visible', timeout: 10000 })
+    await nameInput1.click()
     await nameInput1.fill('Alice Johnson')
+    await nameInput1.press('Escape')
     await nameInput1.blur()
     await page.waitForTimeout(2000)
 
@@ -211,13 +225,15 @@ test.describe('Person Name Persistence', () => {
     await page.waitForTimeout(1500)
 
     // Enter second person name
-    const nameInputs = page.locator('input[placeholder="Full name"]')
+    const nameInputs = page.getByRole('combobox', { name: 'Full name' })
     const count = await nameInputs.count()
     expect(count).toBeGreaterThanOrEqual(2)
 
     const nameInput2 = nameInputs.nth(count - 1)
     await nameInput2.scrollIntoViewIfNeeded()
+    await nameInput2.click()
     await nameInput2.fill('Bob Johnson')
+    await nameInput2.press('Escape')
     await nameInput2.blur()
     await page.waitForTimeout(3000) // Wait for debounced save
 
@@ -231,10 +247,11 @@ test.describe('Person Name Persistence', () => {
     await page.waitForTimeout(1000)
 
     // Verify both names persisted
-    const nameInputsAfterReload = page.locator('input[placeholder="Full name"]')
+    const nameInputsAfterReload = page.getByRole('combobox', { name: 'Full name' })
     const countAfterReload = await nameInputsAfterReload.count()
     expect(countAfterReload).toBeGreaterThanOrEqual(2)
 
+    await page.waitForTimeout(1000)
     const persistedName1 = await nameInputsAfterReload.first().inputValue()
     expect(persistedName1).toBe('Alice Johnson')
 

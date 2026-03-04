@@ -73,12 +73,16 @@ test.describe('Question Group Conditionals', () => {
     await addQuestionBtn2.click();
     await page.waitForTimeout(1000);
 
-    const allIdentifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
-    const count = await allIdentifiers.count();
-    await allIdentifiers.nth(count - 1).fill(`q2_${uniqueId}`);
+    // Fill the last root-level identifier input (Q2)
+    const rootIdentifiers = page.locator('input[placeholder*="full_name"]');
+    const rootCount = await rootIdentifiers.count();
+    await rootIdentifiers.nth(rootCount - 1).scrollIntoViewIfNeeded();
+    await rootIdentifiers.nth(rootCount - 1).fill(`q2_${uniqueId}`);
     
-    const allTextareas = page.locator('.question-builder textarea');
-    await allTextareas.nth(count - 1).fill('Question 2');
+    // Fill Q2's textarea by finding it relative to its identifier input's parent question-builder
+    const q2Builder = rootIdentifiers.nth(rootCount - 1).locator('xpath=ancestor::div[contains(@class, "question-builder")]').first();
+    await q2Builder.locator('textarea').first().scrollIntoViewIfNeeded();
+    await q2Builder.locator('textarea').first().fill('Question 2');
     await page.waitForTimeout(2000);
 
     // Add conditional after second question
@@ -261,9 +265,12 @@ test.describe('Question Group Conditionals', () => {
 
     const allIdentifiers = page.locator('input[placeholder*="full_name"], input[placeholder*="nested_field"]');
     const count1 = await allIdentifiers.count();
-    await allIdentifiers.nth(count1 - 1).fill(`level1_${uniqueId}`);
-    const allTextareas = page.locator('.question-builder textarea');
-    await allTextareas.nth(count1 - 1).fill('Level 1 Nested');
+    const lastIdInput = allIdentifiers.nth(count1 - 1);
+    await lastIdInput.scrollIntoViewIfNeeded();
+    await lastIdInput.fill(`level1_${uniqueId}`);
+    const parentBuilder = lastIdInput.locator('xpath=ancestor::div[contains(@class, "question-builder")]').first();
+    await parentBuilder.locator('textarea').first().scrollIntoViewIfNeeded();
+    await parentBuilder.locator('textarea').first().fill('Level 1 Nested');
     await page.waitForTimeout(2000);
 
     // Add second level conditional (nested inside first)
