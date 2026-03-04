@@ -615,6 +615,17 @@ class DocumentService:
         ).all()
         
         answer_map = DocumentService._build_answer_map(db, answers)
+
+        # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
+        raw_answer_map = {}
+        for answer in answers:
+            question = db.query(Question).filter(Question.id == answer.question_id).first()
+            if question:
+                raw_answer_map[question.identifier] = answer.answer_value
+                if '.' in question.identifier:
+                    stripped = question.identifier.split('.', 1)[1]
+                    if stripped not in raw_answer_map:
+                        raw_answer_map[stripped] = answer.answer_value
         
         # Get template identifiers
         template_identifiers = template.extract_identifiers()
@@ -628,7 +639,8 @@ class DocumentService:
         # Merge content
         merged_content = DocumentService._merge_template(
             template.markdown_content,
-            answer_map
+            answer_map,
+            raw_answer_map
         )
         
         return {
