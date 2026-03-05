@@ -60,6 +60,12 @@ async function createMultiRepeatableGroup(page: Page, uniqueId: string): Promise
   await identifiers.nth(0).fill(`beneficiaries_${uniqueId}`)
   let textareas = page.locator('.question-builder textarea')
   await textareas.nth(0).fill('List beneficiaries')
+  await page.waitForTimeout(500)
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await page.waitForTimeout(500)
+  let textRadio = page.locator('text=Text Input Field').nth(0)
+  await textRadio.click()
   await page.waitForTimeout(1000)
 
   let repeatableCheckboxes = page.locator('input[type="checkbox"]')
@@ -78,14 +84,19 @@ async function createMultiRepeatableGroup(page: Page, uniqueId: string): Promise
   await identifiers.nth(1).fill(`assets_${uniqueId}`)
   textareas = page.locator('.question-builder textarea')
   await textareas.nth(1).fill('List assets')
+  await page.waitForTimeout(500)
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await page.waitForTimeout(500)
+  textRadio = page.locator('text=Text Input Field').nth(1)
+  await textRadio.click()
   await page.waitForTimeout(1000)
 
-  repeatableCheckboxes = page.locator('input[type="checkbox"]')
-  await repeatableCheckboxes.nth(1).scrollIntoViewIfNeeded()
-  if (!(await repeatableCheckboxes.nth(1).isChecked())) {
-    await repeatableCheckboxes.nth(1).click()
-    await page.waitForTimeout(1000)
-  }
+  // Second question shows radio buttons instead of checkbox since a repeatable group exists
+  const startNewRadio2 = page.locator('text=Start New Repeatable Group').last()
+  await startNewRadio2.scrollIntoViewIfNeeded()
+  await startNewRadio2.click()
+  await page.waitForTimeout(1000)
 
   // Add third repeatable date question (important dates)
   addBtn = page.locator('button').filter({ hasText: /^Add Question$/ }).last()
@@ -100,16 +111,15 @@ async function createMultiRepeatableGroup(page: Page, uniqueId: string): Promise
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   await page.waitForTimeout(500)
-  const dateRadio = page.locator('text=Date').nth(2)
+  const dateRadio = page.locator('.radio-group .radio-option').filter({ hasText: 'Date' }).nth(2)
   await dateRadio.click()
   await page.waitForTimeout(1000)
 
-  repeatableCheckboxes = page.locator('input[type="checkbox"]')
-  await repeatableCheckboxes.nth(2).scrollIntoViewIfNeeded()
-  if (!(await repeatableCheckboxes.nth(2).isChecked())) {
-    await repeatableCheckboxes.nth(2).click()
-    await page.waitForTimeout(1000)
-  }
+  // Third question also shows radio buttons for repeatable
+  const startNewRadio3 = page.locator('text=Start New Repeatable Group').last()
+  await startNewRadio3.scrollIntoViewIfNeeded()
+  await startNewRadio3.click()
+  await page.waitForTimeout(1000)
 
   return groupId
 }
@@ -181,7 +191,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     // Fill beneficiaries (3 instances)
     const beneficiaries = ['Ben 1', 'Ben 2', 'Ben 3']
     for (let i = 0; i < beneficiaries.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       await textInputs.nth(i).scrollIntoViewIfNeeded()
       await textInputs.nth(i).fill(beneficiaries[i])
       await textInputs.nth(i).blur()
@@ -202,7 +212,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     // Fill assets (4 instances)
     const assets = ['House', 'Car', 'Stocks', 'Savings']
     for (let i = 0; i < assets.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       const assetInput = textInputs.nth(beneficiaries.length + i)
       await assetInput.scrollIntoViewIfNeeded()
       await assetInput.fill(assets[i])
@@ -247,7 +257,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForTimeout(2000)
 
     // Verify beneficiaries
-    const textInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterReload = page.locator('textarea.question-textarea')
     for (let i = 0; i < beneficiaries.length; i++) {
       const value = await textInputsAfterReload.nth(i).inputValue()
       expect(value).toBe(beneficiaries[i])
@@ -281,7 +291,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     // Fill beneficiaries (3 instances)
     const beneficiaries = ['Alice', 'Bob', 'Charlie']
     for (let i = 0; i < beneficiaries.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       await textInputs.nth(i).fill(beneficiaries[i])
       await textInputs.nth(i).blur()
       await page.waitForTimeout(2000)
@@ -299,7 +309,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
 
     const assets = ['Asset A', 'Asset B', 'Asset C']
     for (let i = 0; i < assets.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       const assetInput = textInputs.nth(beneficiaries.length + i)
       await assetInput.fill(assets[i])
       await assetInput.blur()
@@ -321,7 +331,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForTimeout(2000)
 
     // Verify beneficiaries changed but assets didn't
-    const textInputsAfterDelete = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterDelete = page.locator('textarea.question-textarea')
     const beneficiaryCount = 2 // Alice and Charlie remain
 
     const beneficiaryValues = []
@@ -341,7 +351,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
 
-    const textInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterReload = page.locator('textarea.question-textarea')
 
     const beneficiaryValuesAfterReload = []
     for (let i = 0; i < beneficiaryCount; i++) {
@@ -370,7 +380,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     // Fill beneficiaries (4 instances)
     const beneficiaries = ['B1', 'B2', 'B3', 'B4']
     for (let i = 0; i < beneficiaries.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       await textInputs.nth(i).fill(beneficiaries[i])
       await textInputs.nth(i).blur()
       await page.waitForTimeout(2000)
@@ -388,7 +398,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
 
     const assets = ['A1', 'A2', 'A3']
     for (let i = 0; i < assets.length; i++) {
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const textInputs = page.locator('textarea.question-textarea')
       await textInputs.nth(beneficiaries.length + i).fill(assets[i])
       await textInputs.nth(beneficiaries.length + i).blur()
       await page.waitForTimeout(2000)
@@ -422,7 +432,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await addBtns.first().click()
     await page.waitForTimeout(1500)
 
-    const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputs = page.locator('textarea.question-textarea')
     const newBenInput = textInputs.nth(3) // B2, B3, B4, and new one
     await newBenInput.fill('B5')
     await newBenInput.blur()
@@ -433,7 +443,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
 
-    const textInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterReload = page.locator('textarea.question-textarea')
 
     // Should have: B2, B3, B4, B5 (4 beneficiaries)
     const beneficiaryCount = 4
@@ -463,7 +473,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForTimeout(2000)
 
     // Fill 1 beneficiary
-    const textInputs1 = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputs1 = page.locator('textarea.question-textarea')
     await textInputs1.nth(0).fill('Initial Ben')
     await textInputs1.nth(0).blur()
     await page.waitForTimeout(2000)
@@ -473,19 +483,22 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await addBtns1.first().click()
     await page.waitForTimeout(1500)
 
-    // Fill 1 asset
-    await page.evaluate(() => window.scrollBy(0, 300))
-    await page.waitForTimeout(500)
+    // After adding another beneficiary, textareas are:
+    // [0] = beneficiary 1 ("Initial Ben"), [1] = beneficiary 2 (empty), [2] = assets 1 (empty)
 
-    const textInputs2 = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
-    await textInputs2.nth(1).fill('Initial Asset')
+    // Fill second beneficiary (index 1)
+    const textInputs2 = page.locator('textarea.question-textarea')
+    await textInputs2.nth(1).fill('Second Ben')
     await textInputs2.nth(1).blur()
     await page.waitForTimeout(2000)
 
-    // Fill second beneficiary
-    const textInputs3 = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
-    await textInputs3.nth(1).fill('Second Ben')
-    await textInputs3.nth(1).blur()
+    // Fill 1 asset (index 2)
+    await page.evaluate(() => window.scrollBy(0, 300))
+    await page.waitForTimeout(500)
+
+    const textInputs3 = page.locator('textarea.question-textarea')
+    await textInputs3.nth(2).fill('Initial Asset')
+    await textInputs3.nth(2).blur()
     await page.waitForTimeout(2000)
 
     // Add another asset
@@ -493,8 +506,9 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await addBtns2.nth(1).click()
     await page.waitForTimeout(1500)
 
-    // Fill second asset
-    const textInputs4 = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    // After adding another asset, textareas are:
+    // [0] = ben 1, [1] = ben 2, [2] = asset 1 ("Initial Asset"), [3] = asset 2 (empty)
+    const textInputs4 = page.locator('textarea.question-textarea')
     await textInputs4.nth(3).fill('Second Asset')
     await textInputs4.nth(3).blur()
     await page.waitForTimeout(3000)
@@ -504,7 +518,7 @@ test.describe('Multiple Repeatable Groups Tests', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
 
-    const textInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterReload = page.locator('textarea.question-textarea')
 
     expect(await textInputsAfterReload.nth(0).inputValue()).toBe('Initial Ben')
     expect(await textInputsAfterReload.nth(1).inputValue()).toBe('Second Ben')

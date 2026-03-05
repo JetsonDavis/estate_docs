@@ -2406,13 +2406,16 @@ const InputForms: React.FC = () => {
                                     border: 'none',
                                     color: '#dc2626',
                                     cursor: 'pointer',
-                                    fontSize: '1.25rem',
+                                    fontSize: '0.85rem',
                                     lineHeight: 1,
-                                    padding: '0.25rem'
+                                    padding: '0.25rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
                                   }}
                                   title="Remove this entry"
                                 >
-                                  ×
+                                  <span aria-hidden="true">×</span> Remove
                                 </button>
                               )}
                               {setQuestions.map((setQuestion, setQIdx) => {
@@ -2514,10 +2517,11 @@ const InputForms: React.FC = () => {
                                                         style={{
                                                           position: 'absolute', top: '0.25rem', right: '0.25rem',
                                                           background: 'none', border: 'none', color: '#dc2626',
-                                                          cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                          cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '0.25rem',
+                                                          display: 'flex', alignItems: 'center', gap: '0.25rem'
                                                         }}
                                                         title="Remove this entry"
-                                                      >×</button>
+                                                      ><span aria-hidden="true">×</span> Remove</button>
                                                     )}
                                                     {rSetQs.map((rQ: any, rQIdx: number) => {
                                                       const rSid = rSyntheticIds[rQIdx]
@@ -2676,10 +2680,11 @@ const InputForms: React.FC = () => {
                                                     style={{
                                                       position: 'absolute', top: '0.25rem', right: '0.25rem',
                                                       background: 'none', border: 'none', color: '#dc2626',
-                                                      cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                      cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '0.25rem',
+                                                      display: 'flex', alignItems: 'center', gap: '0.25rem'
                                                     }}
                                                     title="Remove this entry"
-                                                  >×</button>
+                                                  ><span aria-hidden="true">×</span> Remove</button>
                                                 )}
                                                 {fuSetQuestions.map((fuQ, fuQIdx) => {
                                                   const sid = fuSyntheticIds[fuQIdx]
@@ -2758,10 +2763,11 @@ const InputForms: React.FC = () => {
                                                                         style={{
                                                                           position: 'absolute', top: '0.25rem', right: '0.25rem',
                                                                           background: 'none', border: 'none', color: '#dc2626',
-                                                                          cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem'
+                                                                          cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '0.25rem',
+                                                                          display: 'flex', alignItems: 'center', gap: '0.25rem'
                                                                         }}
                                                                         title="Remove this entry"
-                                                                      >×</button>
+                                                                      ><span aria-hidden="true">×</span> Remove</button>
                                                                     )}
                                                                     {nfqSetQs.map((nfqQ: any, nfqQIdx: number) => {
                                                                       const nfqSid = nfqSynIds[nfqQIdx]

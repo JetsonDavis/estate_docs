@@ -64,6 +64,13 @@ async function createRepeatableTextGroup(page: Page, uniqueId: string): Promise<
   await questionTextarea.fill('List your items')
   await page.waitForTimeout(500)
 
+  // Select "Text Input Field" answer type
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await page.waitForTimeout(500)
+  const textRadio = page.locator('text=Text Input Field').first()
+  await textRadio.click()
+  await page.waitForTimeout(1000)
+
   // Make it repeatable
   const repeatableCheckbox = page.locator('input[type="checkbox"]').first()
   await repeatableCheckbox.scrollIntoViewIfNeeded()
@@ -112,7 +119,7 @@ async function createSession(page: Page, groupId: number, uniqueId: string): Pro
 
 async function fillRepeatableTextInputs(page: Page, values: string[]) {
   for (let i = 0; i < values.length; i++) {
-    const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputs = page.locator('textarea.question-textarea')
     const currentInput = textInputs.nth(i)
     await currentInput.scrollIntoViewIfNeeded()
     await currentInput.fill(values[i])
@@ -130,7 +137,7 @@ async function fillRepeatableTextInputs(page: Page, values: string[]) {
 }
 
 async function getTextInputValues(page: Page): Promise<string[]> {
-  const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+  const textInputs = page.locator('textarea.question-textarea')
   const count = await textInputs.count()
   const values: string[] = []
   for (let i = 0; i < count; i++) {
@@ -383,7 +390,7 @@ test.describe('Repeatable Input Deletion Tests', () => {
     await addAnotherBtn.click()
     await page.waitForTimeout(1500)
 
-    const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputs = page.locator('textarea.question-textarea')
     const newInput = textInputs.last()
     await newInput.fill('D')
     await newInput.blur()

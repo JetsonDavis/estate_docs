@@ -564,6 +564,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const displayModeDropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   const nameCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const autoSaveTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
+  const savingInProgressRefs = useRef<{ [key: string]: boolean }>({})
+  const pendingSaveRefs = useRef<{ [key: string]: boolean }>({})
+  const questionDbIdRefs = useRef<{ [key: string]: number | undefined }>({})
   const identifierCheckTimeoutRefs = useRef<{ [key: string]: NodeJS.Timeout | null }>({})
   const questionLogicSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const groupInfoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -1033,7 +1036,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     nameCheckTimeoutRef.current = setTimeout(async () => {
       try {
         const response = await questionGroupService.listQuestionGroups(1, 100)
-        const duplicate = response.question_groups.some(g => g.name.toLowerCase() === name.toLowerCase())
+        // Exclude the current group (by savedGroupId) to avoid false positives
+        // when the group was just created and the name check re-fires
+        const currentId = savedGroupIdRef.current
+        const duplicate = response.question_groups.some(
+          g => g.name.toLowerCase() === name.toLowerCase() && g.id !== currentId
+        )
         setIsDuplicateName(duplicate)
         setIsCheckingName(false)
       } catch (error: any) {
@@ -1053,7 +1061,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         clearTimeout(nameCheckTimeoutRef.current)
       }
     }
-  }, [name, groupInfoSaved])
+  }, [name, groupInfoSaved, isEditMode])
 
   // Auto-save group name/description when changed (only when already saved)
   useEffect(() => {
@@ -1122,11 +1130,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     setQuestions(prevQuestions => prevQuestions.map(q => {
       if (q.id === id) {
         const updated = { ...q, [field]: value }
+        // When switching to a choice-based type, ensure at least one empty option exists
+        if (field === 'question_type' && ['multiple_choice', 'checkbox_group', 'dropdown'].includes(value as string)) {
+          if (!updated.options || updated.options.length === 0) {
+            updated.options = [{ value: '', label: '' }]
+          }
+        }
         // Trigger identifier uniqueness check if identifier field changed
         if (field === 'identifier') {
           checkIdentifierUniqueness(updated)
         }
-        // Trigger auto-save after a delay
         triggerAutoSave(updated)
         return updated
       }
@@ -1170,6 +1183,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Debounce the check
     identifierCheckTimeoutRefs.current[question.id] = setTimeout(async () => {
       try {
+        // Wait for any in-progress save to complete before checking,
+        // so we have the latest dbId to exclude from the uniqueness check.
+        // Auto-save fires at 300ms, this check at 500ms — the save may still be in flight.
+        const maxWait = 3000
+        const pollInterval = 100
+        let waited = 0
+        while (savingInProgressRefs.current[question.id] && waited < maxWait) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval))
+          waited += pollInterval
+        }
+
         // First check against other questions in the current form
         // Use a promise to get current state since we're in an async callback
         let localDuplicate = false
@@ -1198,10 +1222,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           return
         }
         
+        // Read dbId from ref (synchronous, always up-to-date) to avoid race condition
+        // where auto-save creates the question before this check runs
+        const latestDbId = questionDbIdRefs.current[question.id] ?? question.dbId
+        
         const result = await questionGroupService.checkQuestionIdentifier(
           question.identifier,
           savedGroupId,
-          question.dbId
+          latestDbId
         )
 
         setQuestions(prev => prev.map(q =>
@@ -1241,7 +1269,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           }
           return prev // Don't modify state, just read it
         })
-      }, 1000) // 1 second debounce
+      }, 300) // 300ms debounce
     }
   }
 
@@ -1249,13 +1277,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Use ref to get current value, avoiding stale closure
     const currentGroupId = savedGroupIdRef.current
     
-    if (!currentGroupId) return
+    console.log('[AUTO-SAVE] Called for question:', question.id, 'dbId:', question.dbId, 'repeatable:', question.repeatable, 'identifier:', question.identifier, 'groupId:', currentGroupId)
+    
+    if (!currentGroupId) { console.log('[AUTO-SAVE] No group ID, skipping'); return }
 
     // Don't save if missing identifier (question_text can be empty initially)
-    if (!question.identifier.trim()) return
+    if (!question.identifier.trim()) { console.log('[AUTO-SAVE] No identifier, skipping'); return }
 
     // Don't save if identifier is duplicate
-    if (question.isDuplicateIdentifier) return
+    if (question.isDuplicateIdentifier) { console.log('[AUTO-SAVE] Duplicate identifier, skipping'); return }
+
+    // If a save is already in progress for this question, mark as pending and return
+    if (savingInProgressRefs.current[question.id]) {
+      pendingSaveRefs.current[question.id] = true
+      return
+    }
+    savingInProgressRefs.current[question.id] = true
 
     // Mark as saving
     setQuestions(prev => prev.map(q =>
@@ -1342,6 +1379,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }
         const created = await questionGroupService.createQuestion(currentGroupId, createPayload)
 
+        // Store dbId in ref immediately (synchronous) so identifier check can read it
+        questionDbIdRefs.current[question.id] = created.id
+
         // Update with database ID
         setQuestions(prev => prev.map(q =>
           q.id === question.id ? { ...q, dbId: created.id } : q
@@ -1383,6 +1423,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       ))
     } finally {
       decrementPendingRequests()
+      savingInProgressRefs.current[question.id] = false
+      // If another save was queued while we were saving, trigger it now
+      if (pendingSaveRefs.current[question.id]) {
+        pendingSaveRefs.current[question.id] = false
+        setQuestions(prev => {
+          const latestQuestion = prev.find(q => q.id === question.id)
+          if (latestQuestion) {
+            autoSaveQuestion(latestQuestion)
+          }
+          return prev
+        })
+      }
     }
   }
 

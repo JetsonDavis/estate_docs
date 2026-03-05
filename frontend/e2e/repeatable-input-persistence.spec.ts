@@ -32,7 +32,7 @@ async function createQuestionGroup(
   questionConfig: {
     identifier: string
     questionText: string
-    answerType: 'Text' | 'Date' | 'Person' | 'Radio'
+    answerType: string
     isRepeatable: boolean
     radioOptions?: string[]
   }
@@ -78,14 +78,14 @@ async function createQuestionGroup(
   // Select answer type
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   await page.waitForTimeout(500)
-  const answerTypeRadio = page.locator(`text=${questionConfig.answerType}`).first()
+  const answerTypeRadio = page.locator('.radio-group .radio-option').filter({ hasText: questionConfig.answerType }).first()
   await answerTypeRadio.click()
   await page.waitForTimeout(1000)
 
   // Add radio options if needed
-  if (questionConfig.answerType === 'Radio' && questionConfig.radioOptions) {
+  if (questionConfig.answerType === 'Single Choice (Radio Buttons)' && questionConfig.radioOptions) {
     for (const option of questionConfig.radioOptions) {
-      const optionInput = page.locator('input[placeholder="Option text"]').last()
+      const optionInput = page.locator('input[placeholder^="Option"]').last()
       await optionInput.scrollIntoViewIfNeeded()
       await optionInput.fill(option)
       await page.waitForTimeout(500)
@@ -178,7 +178,7 @@ test.describe('Repeatable Input Persistence Tests', () => {
     const groupId = await createQuestionGroup(page, `E2E_RepeatText_${uniqueId}`, {
       identifier: `child_names_${uniqueId}`,
       questionText: 'What are the names of your children?',
-      answerType: 'Text',
+      answerType: 'Text Input Field',
       isRepeatable: true,
     })
     expect(groupId).toBeGreaterThan(0)
@@ -193,8 +193,8 @@ test.describe('Repeatable Input Persistence Tests', () => {
     const testNames = ['Alice Smith', 'Bob Smith', 'Charlie Smith', 'Diana Smith', 'Eve Smith']
 
     for (let i = 0; i < testNames.length; i++) {
-      // Fill current text input
-      const textInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      // Fill current text input (free_text questions use textarea)
+      const textInputs = page.locator('textarea.question-textarea')
       const currentInput = textInputs.nth(i)
       await currentInput.scrollIntoViewIfNeeded()
       await currentInput.fill(testNames[i])
@@ -221,7 +221,7 @@ test.describe('Repeatable Input Persistence Tests', () => {
     await page.waitForSelector('text=What are the names', { timeout: 15000 })
     await page.waitForTimeout(1000)
 
-    const textInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const textInputsAfterReload = page.locator('textarea.question-textarea')
     const countAfterReload = await textInputsAfterReload.count()
     expect(countAfterReload).toBeGreaterThanOrEqual(5)
 
@@ -358,7 +358,7 @@ test.describe('Repeatable Input Persistence Tests', () => {
     const groupId = await createQuestionGroup(page, `E2E_RepeatRadio_${uniqueId}`, {
       identifier: `asset_types_${uniqueId}`,
       questionText: 'What type of asset is this?',
-      answerType: 'Radio',
+      answerType: 'Single Choice (Radio Buttons)',
       isRepeatable: true,
       radioOptions: ['Real Estate', 'Vehicle', 'Bank Account', 'Investment'],
     })
@@ -482,8 +482,8 @@ test.describe('Repeatable Input Persistence Tests', () => {
 
     await page.waitForTimeout(2000)
 
-    // Fill non-repeatable field
-    const titleInputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    // Fill non-repeatable field (free_text uses textarea)
+    const titleInputs = page.locator('textarea.question-textarea')
     await titleInputs.first().fill('My Estate Plan')
     await titleInputs.first().blur()
     await page.waitForTimeout(2000)
@@ -491,7 +491,7 @@ test.describe('Repeatable Input Persistence Tests', () => {
     // Fill 3 repeatable fields
     const beneficiaryNames = ['Ben One', 'Ben Two', 'Ben Three']
     for (let i = 0; i < beneficiaryNames.length; i++) {
-      const inputs = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+      const inputs = page.locator('textarea.question-textarea')
       const currentInput = inputs.nth(1 + i) // Skip the title field
       await currentInput.scrollIntoViewIfNeeded()
       await currentInput.fill(beneficiaryNames[i])
@@ -513,7 +513,7 @@ test.describe('Repeatable Input Persistence Tests', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
 
-    const allInputsAfterReload = page.locator('input[type="text"]').filter({ hasNotText: 'Enter client name' })
+    const allInputsAfterReload = page.locator('textarea.question-textarea')
     const countAfterReload = await allInputsAfterReload.count()
     expect(countAfterReload).toBeGreaterThanOrEqual(4) // 1 non-repeatable + 3 repeatable
 

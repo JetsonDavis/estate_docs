@@ -171,17 +171,26 @@ class DocumentService:
             if isinstance(parsed, list) and len(parsed) > 0:
                 # Check if it's the new format with objects containing name and conjunction
                 if isinstance(parsed[0], dict) and 'name' in parsed[0]:
-                    parts = []
+                    result_parts = []
                     for i, person in enumerate(parsed):
                         name = person.get('name', '')
                         if name:
-                            parts.append(name)
                             # Add conjunction after this person if it exists and there's a next person
                             if i < len(parsed) - 1:
                                 conjunction = person.get('conjunction', '')
                                 if conjunction:
-                                    parts.append(conjunction)
-                    return ' '.join(parts)
+                                    # If conjunction is "then", add comma after name
+                                    if conjunction.lower() == 'then':
+                                        result_parts.append(name + ',')
+                                        result_parts.append(conjunction)
+                                    else:
+                                        result_parts.append(name)
+                                        result_parts.append(conjunction)
+                                else:
+                                    result_parts.append(name)
+                            else:
+                                result_parts.append(name)
+                    return ' '.join(result_parts)
                 elif isinstance(parsed[0], str):
                     # Old format - just an array of strings
                     return ', '.join(parsed)
