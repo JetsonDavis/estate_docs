@@ -269,7 +269,7 @@ class DocumentService:
         # Shared counter for ##, ###, ##% tokens across FOREACH and outside
         _global_counter = [0]
 
-        foreach_pattern = r'\{\{\s*FOREACH\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s+FOREACH\s*\}\}'
+        foreach_pattern = r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s+FOREACH\s*\}\}'
 
         def _parse_array(raw: str):
             """Try to parse a string as a JSON array; return list or None."""
@@ -319,8 +319,13 @@ class DocumentService:
         _raw_map = raw_answer_map if raw_answer_map else answer_map
 
         def process_foreach_block(match):
-            loop_identifier = match.group(1).lower()
-            body_template = match.group(2)
+            counter_start_str = match.group(1)  # optional (N) start number
+            loop_identifier = match.group(2).lower()
+            body_template = match.group(3)
+
+            # Set global counter to start - 1 so first iteration becomes start
+            if counter_start_str:
+                _global_counter[0] = int(counter_start_str) - 1
 
             # Get the array for the loop identifier — use raw values so person arrays aren't pre-formatted
             raw_value = _raw_map.get(loop_identifier, '') or answer_map.get(loop_identifier, '')
