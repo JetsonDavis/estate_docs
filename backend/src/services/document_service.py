@@ -369,8 +369,25 @@ class DocumentService:
             for idx in range(instance_count):
                 instance_body = body_template
 
-                # Replace ## with 1-based loop index
-                instance_body = instance_body.replace('##', str(idx + 1))
+                # Replace loop index tokens (order matters: ### and ##% before ##)
+                _cardinal_words = [
+                    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
+                    'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
+                    'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
+                    'Nineteen', 'Twenty'
+                ]
+                _ordinal_words = [
+                    '', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth',
+                    'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth',
+                    'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
+                    'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
+                ]
+                num = idx + 1
+                cardinal = _cardinal_words[num] if num < len(_cardinal_words) else str(num)
+                ordinal = _ordinal_words[num] if num < len(_ordinal_words) else f'{num}th'
+                instance_body = instance_body.replace('###', cardinal)
+                instance_body = instance_body.replace('##%', ordinal)
+                instance_body = instance_body.replace('##', str(num))
 
                 # Replace each <<identifier>> with the Nth element
                 for orig_ident in body_identifiers_raw:
