@@ -160,6 +160,14 @@ class DocumentService:
         Returns:
             Formatted answer string
         """
+        # Format date values as "Month Day, Year" (e.g., "March 9, 2026")
+        if question_type == 'date':
+            try:
+                dt = datetime.strptime(answer_value, '%Y-%m-%d')
+                return dt.strftime('%B %-d, %Y')
+            except (ValueError, TypeError):
+                return answer_value
+
         if question_type != 'person':
             return answer_value
 
