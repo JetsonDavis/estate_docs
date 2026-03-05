@@ -383,11 +383,21 @@ class DocumentService:
                     'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
                 ]
                 num = idx + 1
-                cardinal = _cardinal_words[num] if num < len(_cardinal_words) else str(num)
-                ordinal = _ordinal_words[num] if num < len(_ordinal_words) else f'{num}th'
-                instance_body = instance_body.replace('###', cardinal)
-                instance_body = instance_body.replace('##%', ordinal)
-                instance_body = instance_body.replace('##', str(num))
+
+                def _foreach_counter_replace(m):
+                    token = m.group(1)  # ###, ##%, or ##
+                    plus_str = m.group(2)  # e.g. '', '1', '2', None
+                    inc = int(plus_str) if plus_str else 1
+                    n = num + inc - 1  # +1 or + means no extra offset
+                    if token == '###':
+                        return _cardinal_words[n] if n < len(_cardinal_words) else str(n)
+                    elif token == '##%':
+                        return _ordinal_words[n] if n < len(_ordinal_words) else f'{n}th'
+                    else:
+                        return str(n)
+
+                # Match ###, ##%, or ## optionally followed by +N (longest token first)
+                instance_body = re.sub(r'(###|##%|##)(?:\+(\d*))?', _foreach_counter_replace, instance_body)
 
                 # Replace each <<identifier>> with the Nth element
                 for orig_ident in body_identifiers_raw:
@@ -693,6 +703,37 @@ class DocumentService:
             return result
 
         merged_content = re.sub(conditional_pattern, process_conditional_section, merged_content, flags=re.DOTALL)
+
+        # Replace ##, ###, ##% tokens outside FOREACH with a running counter
+        _cardinal_words = [
+            '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
+            'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
+            'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
+            'Nineteen', 'Twenty'
+        ]
+        _ordinal_words = [
+            '', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth',
+            'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth',
+            'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
+            'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
+        ]
+        _counter = [0]  # mutable so the closure can modify it
+
+        def _replace_counter_token(match):
+            token = match.group(1)  # ###, ##%, or ##
+            plus_str = match.group(2)  # e.g. '', '1', '2', None
+            inc = int(plus_str) if plus_str else 1
+            _counter[0] += inc
+            num = _counter[0]
+            if token == '###':
+                return _cardinal_words[num] if num < len(_cardinal_words) else str(num)
+            elif token == '##%':
+                return _ordinal_words[num] if num < len(_ordinal_words) else f'{num}th'
+            else:  # ##
+                return str(num)
+
+        # Match ###, ##%, or ## optionally followed by +N (longest token first)
+        merged_content = re.sub(r'(###|##%|##)(?:\+(\d*))?', _replace_counter_token, merged_content)
 
         # Then, replace all identifiers with their values
         pattern = r'<<([^>]+)>>'
