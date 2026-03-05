@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
@@ -16,6 +16,55 @@ const EditTemplate: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  // Refs for auto-save to avoid stale closures
+  const nameRef = useRef(name)
+  const descriptionRef = useRef(description)
+  const markdownContentRef = useRef(markdownContent)
+  const templateRef = useRef(template)
+  const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
+
+  useEffect(() => { nameRef.current = name }, [name])
+  useEffect(() => { descriptionRef.current = description }, [description])
+  useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
+  useEffect(() => { templateRef.current = template }, [template])
+
+  const autoSave = useCallback(async () => {
+    const t = templateRef.current
+    if (!t) return
+    const currentName = nameRef.current
+    const currentDesc = descriptionRef.current
+    const currentContent = markdownContentRef.current
+    const last = lastSavedRef.current
+
+    // Only save if something changed
+    if (currentName === last.name && currentDesc === last.description && currentContent === last.markdownContent) {
+      return
+    }
+
+    try {
+      setAutoSaveStatus('saving')
+      await templateService.updateTemplate(t.id, {
+        name: currentName,
+        description: currentDesc || undefined,
+        markdown_content: currentContent
+      })
+      lastSavedRef.current = { name: currentName, description: currentDesc, markdownContent: currentContent }
+      setAutoSaveStatus('saved')
+      setTimeout(() => setAutoSaveStatus('idle'), 2000)
+    } catch {
+      setAutoSaveStatus('error')
+      setTimeout(() => setAutoSaveStatus('idle'), 3000)
+    }
+  }, [])
+
+  // Auto-save every 10 seconds
+  useEffect(() => {
+    if (!template) return
+    const interval = setInterval(autoSave, 10000)
+    return () => clearInterval(interval)
+  }, [template, autoSave])
 
   useEffect(() => {
     if (id) {
@@ -32,6 +81,7 @@ const EditTemplate: React.FC = () => {
       setName(data.name)
       setDescription(data.description || '')
       setMarkdownContent(data.markdown_content)
+      lastSavedRef.current = { name: data.name, description: data.description || '', markdownContent: data.markdown_content }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load template')
     } finally {
@@ -97,7 +147,18 @@ const EditTemplate: React.FC = () => {
     <div className="templates-container">
       <div className="templates-wrapper">
         <div className="templates-header">
-          <h1 className="templates-title">Edit Template</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <h1 className="templates-title">Edit Template</h1>
+            {autoSaveStatus === 'saving' && (
+              <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>Saving...</span>
+            )}
+            {autoSaveStatus === 'saved' && (
+              <span style={{ fontSize: '0.8rem', color: '#10b981' }}>Saved</span>
+            )}
+            {autoSaveStatus === 'error' && (
+              <span style={{ fontSize: '0.8rem', color: '#ef4444' }}>Auto-save failed</span>
+            )}
+          </div>
           <button
             onClick={() => navigate('/admin/templates')}
             className="cancel-button"

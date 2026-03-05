@@ -434,6 +434,45 @@ class DocumentService:
         _end_re = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
         _else_re = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
 
+        def _resolve_identifier_value(identifier: str) -> str:
+            """Resolve an identifier to its value, supporting dot notation.
+
+            For simple identifiers, looks up in answer_map.
+            For dot notation (e.g., 'person.relationship'), parses the
+            person JSON from raw_answer_map and extracts the field.
+            """
+            # First try direct lookup
+            direct = answer_map.get(identifier, '')
+            if direct and not DocumentService._is_value_empty(direct):
+                return direct
+
+            # Try dot notation: base_ident.field
+            if '.' in identifier:
+                base, field = identifier.split('.', 1)
+                raw_json = (raw_answer_map or {}).get(base, '') or ''
+                if raw_json:
+                    try:
+                        parsed = json.loads(raw_json)
+                        if isinstance(parsed, dict):
+                            val = parsed.get(field)
+                            if val is not None:
+                                return str(val)
+                        elif isinstance(parsed, list) and len(parsed) > 0:
+                            # For arrays, extract field from first element
+                            first = parsed[0]
+                            if isinstance(first, str):
+                                try:
+                                    first = json.loads(first)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            if isinstance(first, dict):
+                                val = first.get(field)
+                                if val is not None:
+                                    return str(val)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            return ''
+
         def _evaluate_if_condition(condition_text: str) -> bool:
             """Evaluate the condition inside {{ IF <condition> }}.
 
@@ -447,7 +486,7 @@ class DocumentService:
             )
             if not_match:
                 identifier = not_match.group(1).lower()
-                value = answer_map.get(identifier, '')
+                value = _resolve_identifier_value(identifier)
                 return DocumentService._is_value_empty(value)
 
             # --- IF <<ident>> != "value" or EMPTY/NULL ---
@@ -459,7 +498,7 @@ class DocumentService:
             if neq_match:
                 identifier = neq_match.group(1).lower()
                 keyword = neq_match.group(3)
-                actual = answer_map.get(identifier, '')
+                actual = _resolve_identifier_value(identifier)
                 if keyword and keyword.upper() in ('EMPTY', 'NULL'):
                     # != EMPTY / != NULL means "has a value"
                     return not DocumentService._is_value_empty(actual)
@@ -474,7 +513,7 @@ class DocumentService:
             if eq_match:
                 identifier = eq_match.group(1).lower()
                 keyword = eq_match.group(3)
-                actual = answer_map.get(identifier, '')
+                actual = _resolve_identifier_value(identifier)
                 if keyword and keyword.upper() in ('EMPTY', 'NULL'):
                     # = EMPTY / = NULL means "is empty"
                     return DocumentService._is_value_empty(actual)
@@ -487,7 +526,7 @@ class DocumentService:
             )
             if plain_match:
                 identifier = plain_match.group(1).lower()
-                value = answer_map.get(identifier, '')
+                value = _resolve_identifier_value(identifier)
                 return not DocumentService._is_value_empty(value)
 
             # Unknown form — leave content in place
