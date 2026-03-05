@@ -121,6 +121,10 @@ async function createMultiRepeatableGroup(page: Page, uniqueId: string): Promise
   await startNewRadio3.click()
   await page.waitForTimeout(1000)
 
+  // Wait for auto-save to complete so all repeatable flags are persisted
+  await page.waitForSelector('text=✓ Saved', { timeout: 10000 }).catch(() => undefined)
+  await page.waitForTimeout(1000)
+
   return groupId
 }
 

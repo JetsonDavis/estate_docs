@@ -79,6 +79,10 @@ async function createRepeatableTextGroup(page: Page, uniqueId: string): Promise<
     await page.waitForTimeout(1000)
   }
 
+  // Wait for auto-save to complete so repeatable flag is persisted
+  await page.waitForSelector('text=✓ Saved', { timeout: 10000 }).catch(() => undefined)
+  await page.waitForTimeout(1000)
+
   return groupId
 }
 
@@ -468,6 +472,10 @@ test.describe('Repeatable Input Deletion Tests', () => {
       await repeatableCheckbox.click()
       await page.waitForTimeout(1000)
     }
+
+    // Wait for auto-save to complete so repeatable flag is persisted
+    await page.waitForSelector('text=✓ Saved', { timeout: 10000 }).catch(() => undefined)
+    await page.waitForTimeout(1000)
 
     // Create session
     const sessionId = await createSession(page, groupId, uniqueId)

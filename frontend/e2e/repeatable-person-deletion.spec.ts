@@ -79,6 +79,10 @@ async function createQuestionGroupWithPersonQuestion(page: Page, uniqueId: strin
     await page.waitForTimeout(1000)
   }
 
+  // Wait for auto-save to complete so repeatable flag is persisted
+  await page.waitForSelector('text=✓ Saved', { timeout: 10000 }).catch(() => undefined)
+  await page.waitForTimeout(1000)
+
   return groupId
 }
 
