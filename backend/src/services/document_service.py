@@ -266,6 +266,9 @@ class DocumentService:
         import logging
         _logger = logging.getLogger(__name__)
 
+        # Shared counter for ##, ###, ##% tokens across FOREACH and outside
+        _global_counter = [0]
+
         foreach_pattern = r'\{\{\s*FOREACH\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s+FOREACH\s*\}\}'
 
         def _parse_array(raw: str):
@@ -382,13 +385,13 @@ class DocumentService:
                     'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
                     'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
                 ]
-                num = idx + 1
+                _global_counter[0] += 1
 
                 def _foreach_counter_replace(m):
                     token = m.group(1)  # ###, ##%, or ##
                     plus_str = m.group(2)  # e.g. '', '1', '2', None
-                    inc = int(plus_str) if plus_str else 1
-                    n = num + inc - 1  # +1 or + means no extra offset
+                    inc = int(plus_str) if plus_str else 0
+                    n = _global_counter[0] + inc
                     if token == '###':
                         return _cardinal_words[n] if n < len(_cardinal_words) else str(n)
                     elif token == '##%':
@@ -707,14 +710,12 @@ class DocumentService:
             'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
             'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
         ]
-        _counter = [0]  # mutable so the closure can modify it
-
         def _replace_counter_token(match):
             token = match.group(1)  # ###, ##%, or ##
             plus_str = match.group(2)  # e.g. '', '1', '2', None
             inc = int(plus_str) if plus_str else 1
-            _counter[0] += inc
-            num = _counter[0]
+            _global_counter[0] += inc
+            num = _global_counter[0]
             if token == '###':
                 return _cardinal_words[num] if num < len(_cardinal_words) else str(num)
             elif token == '##%':
