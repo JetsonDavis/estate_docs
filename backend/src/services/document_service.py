@@ -451,8 +451,9 @@ class DocumentService:
                 return DocumentService._is_value_empty(value)
 
             # --- IF <<ident>> != "value" or EMPTY/NULL ---
+            _q = r'["\'“”‘’«»]'  # any quote character
             neq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:["\']([^"\']*)["\']?|(EMPTY|NULL))',
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'“”‘’«»]*)' + _q + r'?|(EMPTY|NULL))',
                 cond, re.IGNORECASE
             )
             if neq_match:
@@ -467,7 +468,7 @@ class DocumentService:
 
             # --- IF <<ident>> = "value" or EMPTY/NULL ---
             eq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:["\']([^"\']*)["\']?|(EMPTY|NULL))',
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:' + _q + r'([^"\'“”‘’«»]*)' + _q + r'?|(EMPTY|NULL))',
                 cond, re.IGNORECASE
             )
             if eq_match:
