@@ -75,9 +75,9 @@ class DocumentService:
         for answer in answers:
             question = db.query(Question).filter(Question.id == answer.question_id).first()
             if question:
-                raw_answer_map[question.identifier] = answer.answer_value
+                raw_answer_map[question.identifier.lower()] = answer.answer_value
                 if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1]
+                    stripped = question.identifier.split('.', 1)[1].lower()
                     if stripped not in raw_answer_map:
                         raw_answer_map[stripped] = answer.answer_value
 
@@ -133,12 +133,12 @@ class DocumentService:
                     answer.answer_value,
                     question.question_type
                 )
-                # Store under full namespaced identifier (e.g., "group.PoA_Sign_date")
-                answer_map[question.identifier] = formatted_value
-                # Also store under stripped identifier (e.g., "PoA_Sign_date")
+                # Store under lowercased full namespaced identifier (e.g., "group.poa_sign_date")
+                answer_map[question.identifier.lower()] = formatted_value
+                # Also store under stripped identifier (e.g., "poa_sign_date")
                 # so templates can reference identifiers without namespace prefix
                 if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1]
+                    stripped = question.identifier.split('.', 1)[1].lower()
                     # Only set stripped key if not already taken (first writer wins)
                     if stripped not in answer_map:
                         answer_map[stripped] = formatted_value
@@ -316,7 +316,7 @@ class DocumentService:
         _raw_map = raw_answer_map if raw_answer_map else answer_map
 
         def process_foreach_block(match):
-            loop_identifier = match.group(1)
+            loop_identifier = match.group(1).lower()
             body_template = match.group(2)
 
             # Get the array for the loop identifier — use raw values so person arrays aren't pre-formatted
@@ -331,13 +331,14 @@ class DocumentService:
             _logger.info(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
 
             # Find all identifiers referenced in the body
-            body_identifiers = re.findall(r'<<([^>]+)>>', body_template)
+            # Keep original case for replacement, use lowercased for lookups
+            body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
             # Pre-parse arrays for all referenced identifiers (use raw values for JSON arrays)
             identifier_arrays = {}
-            for ident in body_identifiers:
+            for ident in body_identifiers_raw:
                 # Handle dot notation (e.g., person_ident.field)
-                base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+                base_ident = ident.split('.', 1)[0].lower() if '.' in ident else ident.lower()
                 if base_ident not in identifier_arrays:
                     raw = _raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
                     arr = _parse_array(raw)
@@ -372,7 +373,8 @@ class DocumentService:
                 instance_body = instance_body.replace('##', str(idx + 1))
 
                 # Replace each <<identifier>> with the Nth element
-                for ident in body_identifiers:
+                for orig_ident in body_identifiers_raw:
+                    ident = orig_ident.lower()
                     has_dot = '.' in ident
                     if has_dot:
                         base_ident, field_name = ident.split('.', 1)
@@ -390,7 +392,8 @@ class DocumentService:
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
                         replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
 
-                    instance_body = instance_body.replace(f'<<{ident}>>', replacement)
+                    # Replace using original case from template
+                    instance_body = instance_body.replace(f'<<{orig_ident}>>', replacement)
 
                 # Insert conjunction BEFORE this iteration (from current item's conjunction)
                 # The conjunction on person N connects it to person N-1
@@ -443,7 +446,7 @@ class DocumentService:
                 r'NOT\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
             )
             if not_match:
-                identifier = not_match.group(1)
+                identifier = not_match.group(1).lower()
                 value = answer_map.get(identifier, '')
                 return DocumentService._is_value_empty(value)
 
@@ -453,7 +456,7 @@ class DocumentService:
                 cond, re.IGNORECASE
             )
             if neq_match:
-                identifier = neq_match.group(1)
+                identifier = neq_match.group(1).lower()
                 keyword = neq_match.group(3)
                 actual = answer_map.get(identifier, '')
                 if keyword and keyword.upper() in ('EMPTY', 'NULL'):
@@ -468,7 +471,7 @@ class DocumentService:
                 cond, re.IGNORECASE
             )
             if eq_match:
-                identifier = eq_match.group(1)
+                identifier = eq_match.group(1).lower()
                 keyword = eq_match.group(3)
                 actual = answer_map.get(identifier, '')
                 if keyword and keyword.upper() in ('EMPTY', 'NULL'):
@@ -482,7 +485,7 @@ class DocumentService:
                 r'(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
             )
             if plain_match:
-                identifier = plain_match.group(1)
+                identifier = plain_match.group(1).lower()
                 value = answer_map.get(identifier, '')
                 return not DocumentService._is_value_empty(value)
 
@@ -616,7 +619,7 @@ class DocumentService:
             # Check if ANY identifier in this section is empty/non-existent
             # If any identifier is empty, remove the entire section
             for identifier in identifiers_in_section:
-                value = answer_map.get(identifier, '')
+                value = answer_map.get(identifier.lower(), '')
                 logger.info(f"Checking identifier '{identifier}': value='{value}', is_empty={DocumentService._is_value_empty(value)}")
                 if DocumentService._is_value_empty(value):
                     # At least one identifier is empty - remove the entire section
@@ -627,7 +630,7 @@ class DocumentService:
             # and replace the identifiers with their values
             result = section_content
             for identifier in identifiers_in_section:
-                value = answer_map.get(identifier, '')
+                value = answer_map.get(identifier.lower(), '')
                 result = result.replace(f'<<{identifier}>>', value)
             logger.info(f"All identifiers have values, result: '{result}'")
             return result
@@ -638,7 +641,7 @@ class DocumentService:
         pattern = r'<<([^>]+)>>'
 
         def replace_identifier(match):
-            identifier = match.group(1)
+            identifier = match.group(1).lower()
 
             # Check if this is a person field with dot notation (e.g., person.field)
             if '.' in identifier:
@@ -808,9 +811,9 @@ class DocumentService:
         for answer in answers:
             question = db.query(Question).filter(Question.id == answer.question_id).first()
             if question:
-                raw_answer_map[question.identifier] = answer.answer_value
+                raw_answer_map[question.identifier.lower()] = answer.answer_value
                 if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1]
+                    stripped = question.identifier.split('.', 1)[1].lower()
                     if stripped not in raw_answer_map:
                         raw_answer_map[stripped] = answer.answer_value
         
@@ -820,7 +823,7 @@ class DocumentService:
         # Find missing identifiers
         missing_identifiers = [
             identifier for identifier in template_identifiers
-            if identifier not in answer_map
+            if identifier.lower() not in answer_map
         ]
         
         # Merge content
@@ -967,10 +970,10 @@ class DocumentService:
         # Build a raw answer map (before formatting) for FOREACH and person JSON data
         raw_answer_map = {}
         for answer, question in answers_query:
-            raw_answer_map[question.identifier] = answer.answer_value
+            raw_answer_map[question.identifier.lower()] = answer.answer_value
             # Also store under stripped identifier (without namespace prefix)
             if '.' in question.identifier:
-                stripped = question.identifier.split('.', 1)[1]
+                stripped = question.identifier.split('.', 1)[1].lower()
                 if stripped not in raw_answer_map:
                     raw_answer_map[stripped] = answer.answer_value
 
@@ -981,10 +984,10 @@ class DocumentService:
                 answer.answer_value,
                 question.question_type
             )
-            answer_map[question.identifier] = formatted_value
+            answer_map[question.identifier.lower()] = formatted_value
             # Also store under stripped identifier (without namespace prefix)
             if '.' in question.identifier:
-                stripped = question.identifier.split('.', 1)[1]
+                stripped = question.identifier.split('.', 1)[1].lower()
                 if stripped not in answer_map:
                     answer_map[stripped] = formatted_value
         
@@ -997,7 +1000,7 @@ class DocumentService:
         identifier_pattern = r'<<([^>]+)>>'
         
         def replace_person_fields(match):
-            identifier = match.group(1).strip()
+            identifier = match.group(1).strip().lower()
             print(f"DEBUG: Processing identifier: '{identifier}'")
             
             # Check if this is a person field with dot notation (e.g., person.field)
