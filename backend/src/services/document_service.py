@@ -422,16 +422,6 @@ class DocumentService:
                     # Replace using original case from template
                     instance_body = instance_body.replace(f'<<{orig_ident}>>', replacement)
 
-                # Insert conjunction BEFORE this iteration (from current item's conjunction)
-                # The conjunction on person N connects it to person N-1
-                if idx > 0:
-                    conj = _get_conjunction(loop_array[idx])
-                    if conj:
-                        if conj.lower() == 'then':
-                            output_parts.append(', then ')
-                        else:
-                            output_parts.append(f' {conj} ')
-
                 output_parts.append(instance_body)
 
             return ''.join(output_parts)
