@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
 import { InputForm } from '../types/session'
@@ -6,6 +7,7 @@ import { Template } from '../types/template'
 import './MergeDocuments.css'
 
 const MergeDocuments: React.FC = () => {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState<InputForm[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -236,9 +238,13 @@ const MergeDocuments: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                             />
                           </div>
-                          <div className="item-content" onClick={() => handleSessionRadioChange(session.id)}>
+                          <div className="item-content">
                             <div className="item-header">
-                              <span className="item-name">{session.client_identifier}</span>
+                              <span
+                                className="item-name item-name-link"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/document?session=${session.id}`) }}
+                                title="Open input form"
+                              >{session.client_identifier}</span>
                               {session.is_completed && (
                                 <span className="status-badge completed">Completed</span>
                               )}
@@ -283,9 +289,13 @@ const MergeDocuments: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                             />
                           </div>
-                          <div className="item-content" onClick={() => handleTemplateRadioChange(template.id)}>
+                          <div className="item-content">
                             <div className="item-header">
-                              <span className="item-name">{template.name}</span>
+                              <span
+                                className="item-name item-name-link"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/admin/templates/${template.id}/edit`) }}
+                                title="Open template"
+                              >{template.name}</span>
                               {template.is_active && (
                                 <span className="status-badge completed">Active</span>
                               )}

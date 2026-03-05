@@ -136,6 +136,17 @@
   color: #111827;
 }
 
+.item-name-link {
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.item-name-link:hover {
+  text-decoration: underline;
+  color: #1d4ed8;
+}
+
 .item-meta {
   display: flex;
   gap: 1rem;

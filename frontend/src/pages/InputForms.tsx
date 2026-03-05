@@ -2175,25 +2175,22 @@ const InputForms: React.FC = () => {
                         <span
                           className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}
                           onClick={async (e) => {
-                            if (!session.is_completed) {
-                              e.stopPropagation()
-                              try {
-                                await sessionService.markSessionComplete(session.id)
-                                // Update the local state to reflect the change
-                                setSessions(prev => prev.map(s =>
-                                  s.id === session.id
-                                    ? { ...s, is_completed: true }
-                                    : s
-                                ))
-                              } catch (err: any) {
-                                alert('Failed to mark session as complete: ' + (err.response?.data?.detail || err.message))
-                              }
+                            e.stopPropagation()
+                            try {
+                              const updated = await sessionService.markSessionComplete(session.id)
+                              setSessions(prev => prev.map(s =>
+                                s.id === session.id
+                                  ? { ...s, is_completed: updated.is_completed, completed_at: updated.completed_at }
+                                  : s
+                              ))
+                            } catch (err: any) {
+                              alert('Failed to update session status: ' + (err.response?.data?.detail || err.message))
                             }
                           }}
                           style={{
-                            cursor: session.is_completed ? 'default' : 'pointer'
+                            cursor: 'pointer'
                           }}
-                          title={session.is_completed ? '' : 'Click to mark as Finished'}
+                          title={session.is_completed ? 'Click to mark as In Progress' : 'Click to mark as Finished'}
                         >
                           {session.is_completed ? 'Completed' : 'In Progress'}
                         </span>
@@ -2300,6 +2297,29 @@ const InputForms: React.FC = () => {
             <h1 className="completion-title">Document Complete!</h1>
             <p className="completion-message">
               You have successfully completed the document for {sessionData.client_identifier}.
+            </p>
+            <button
+              onClick={() => navigate('/document')}
+              className="btn btn-primary"
+            >
+              Back to Input Form
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Handle orphaned sessions with no question group and no questions
+  if (sessionData && sessionData.questions.length === 0 && !sessionData.current_group_id) {
+    return (
+      <div className="document-sessions-container">
+        <div className="document-sessions-content">
+          <div className="document-sessions-card completion-card">
+            <div className="completion-icon">⚠️</div>
+            <h1 className="completion-title">No Question Group</h1>
+            <p className="completion-message">
+              This form ({sessionData.client_identifier}) does not have an assigned question group.
             </p>
             <button
               onClick={() => navigate('/document')}

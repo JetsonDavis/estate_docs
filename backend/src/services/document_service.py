@@ -169,31 +169,41 @@ class DocumentService:
             parsed = json.loads(answer_value)
 
             if isinstance(parsed, list) and len(parsed) > 0:
-                # Check if it's the new format with objects containing name and conjunction
-                if isinstance(parsed[0], dict) and 'name' in parsed[0]:
-                    result_parts = []
-                    for i, person in enumerate(parsed):
-                        name = person.get('name', '')
-                        if name:
-                            # Add conjunction after this person if it exists and there's a next person
-                            if i < len(parsed) - 1:
-                                conjunction = person.get('conjunction', '')
-                                if conjunction:
-                                    # If conjunction is "then", add comma after name
-                                    if conjunction.lower() == 'then':
-                                        result_parts.append(name + ',')
-                                        result_parts.append(conjunction)
-                                    else:
-                                        result_parts.append(name)
-                                        result_parts.append(conjunction)
-                                else:
-                                    result_parts.append(name)
+                # Normalise each element: if it's a JSON string, decode it
+                normalised = []
+                for item in parsed:
+                    if isinstance(item, dict):
+                        normalised.append(item)
+                    elif isinstance(item, str):
+                        try:
+                            obj = json.loads(item)
+                            if isinstance(obj, dict):
+                                normalised.append(obj)
                             else:
-                                result_parts.append(name)
+                                normalised.append({'name': item})
+                        except (json.JSONDecodeError, TypeError):
+                            normalised.append({'name': item})
+                    else:
+                        normalised.append({'name': str(item)})
+
+                # Check if it's the format with objects containing name and conjunction
+                if any('name' in p for p in normalised):
+                    result_parts = []
+                    for i, person in enumerate(normalised):
+                        name = person.get('name', '')
+                        if not name:
+                            continue
+                        # The conjunction on THIS person indicates how it connects
+                        # to the PREVIOUS person (e.g., "then Andrea" means
+                        # Andrea follows the previous person with "then")
+                        conjunction = person.get('conjunction', '')
+                        if i > 0 and conjunction:
+                            if conjunction.lower() == 'then':
+                                result_parts.append(', then')
+                            else:
+                                result_parts.append(conjunction)
+                        result_parts.append(name)
                     return ' '.join(result_parts)
-                elif isinstance(parsed[0], str):
-                    # Old format - just an array of strings
-                    return ', '.join(parsed)
 
             return answer_value
         except (json.JSONDecodeError, TypeError):
@@ -263,25 +273,36 @@ class DocumentService:
             return None
 
         def _format_item(item, field: str = None) -> str:
-            """Format a single array element for output."""
-            if isinstance(item, dict):
+            """Format a single array element for output.
+            
+            Handles double-encoded JSON strings where each element may be
+            a JSON string containing a JSON object (e.g. '{"name":"Alice"}').
+            """
+            # Normalise: if item is a string, try to decode it (possibly multiple levels)
+            decoded = item
+            if isinstance(decoded, str):
+                for _ in range(3):  # up to 3 levels of encoding
+                    try:
+                        obj = json.loads(decoded)
+                        if isinstance(obj, dict):
+                            decoded = obj
+                            break
+                        elif isinstance(obj, str):
+                            decoded = obj  # try another level
+                        else:
+                            break
+                    except (json.JSONDecodeError, TypeError):
+                        break
+
+            if isinstance(decoded, dict):
                 if field:
-                    return str(item.get(field, ''))
-                return item.get('name', str(item))
-            if isinstance(item, str):
-                # Item might be a JSON string (person data)
-                try:
-                    obj = json.loads(item)
-                    if isinstance(obj, dict):
-                        if field:
-                            return str(obj.get(field, ''))
-                        return obj.get('name', str(obj))
-                except (json.JSONDecodeError, TypeError):
-                    pass
+                    return str(decoded.get(field, ''))
+                return decoded.get('name', str(decoded))
+            if isinstance(decoded, str):
                 if field:
-                    return item if field == 'name' else ''
-                return item
-            return str(item)
+                    return decoded if field == 'name' else ''
+                return decoded
+            return str(decoded)
 
         # For FOREACH loops, prefer raw (unformatted) values so JSON arrays are still parseable
         _raw_map = raw_answer_map if raw_answer_map else answer_map
@@ -314,6 +335,26 @@ class DocumentService:
                     arr = _parse_array(raw)
                     identifier_arrays[base_ident] = arr
 
+            # Helper: extract conjunction from a (possibly double-encoded) person item
+            def _get_conjunction(item) -> str:
+                decoded = item
+                if isinstance(decoded, str):
+                    for _ in range(3):
+                        try:
+                            obj = json.loads(decoded)
+                            if isinstance(obj, dict):
+                                decoded = obj
+                                break
+                            elif isinstance(obj, str):
+                                decoded = obj
+                            else:
+                                break
+                        except (json.JSONDecodeError, TypeError):
+                            break
+                if isinstance(decoded, dict):
+                    return decoded.get('conjunction', '')
+                return ''
+
             # Build output for each instance
             output_parts = []
             for idx in range(instance_count):
@@ -343,6 +384,16 @@ class DocumentService:
 
                     instance_body = instance_body.replace(f'<<{ident}>>', replacement)
 
+                # Insert conjunction BEFORE this iteration (from current item's conjunction)
+                # The conjunction on person N connects it to person N-1
+                if idx > 0:
+                    conj = _get_conjunction(loop_array[idx])
+                    if conj:
+                        if conj.lower() == 'then':
+                            output_parts.append(', then ')
+                        else:
+                            output_parts.append(f' {conj} ')
+
                 output_parts.append(instance_body)
 
             return ''.join(output_parts)
@@ -357,6 +408,10 @@ class DocumentService:
         #   {{ IF NOT <<ident>> }}          — include if ident is empty
         #   {{ IF <<ident>> = "value" }}    — include if ident equals value
         #   {{ IF <<ident>> != "value" }}   — include if ident does not equal value
+        #   {{ IF <<ident>> = EMPTY }}      — include if ident is empty (same as IF NOT)
+        #   {{ IF <<ident>> = NULL }}       — include if ident is empty (same as IF NOT)
+        #   {{ IF <<ident>> != EMPTY }}     — include if ident has a value (same as IF)
+        #   {{ IF <<ident>> != NULL }}      — include if ident has a value (same as IF)
         # Optional {{ ELSE }} between {{ IF ... }} and {{ END }}.
         # All closed by {{ END }}. Nesting is fully supported.
 
@@ -384,26 +439,34 @@ class DocumentService:
                 value = answer_map.get(identifier, '')
                 return DocumentService._is_value_empty(value)
 
-            # --- IF <<ident>> != "value" ---
+            # --- IF <<ident>> != "value" or EMPTY/NULL ---
             neq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*["\']([^"\']*)["\']?',
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:["\']([^"\']*)["\']?|(EMPTY|NULL))',
                 cond, re.IGNORECASE
             )
             if neq_match:
                 identifier = neq_match.group(1)
-                expected = neq_match.group(2)
+                keyword = neq_match.group(3)
                 actual = answer_map.get(identifier, '')
+                if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+                    # != EMPTY / != NULL means "has a value"
+                    return not DocumentService._is_value_empty(actual)
+                expected = neq_match.group(2) or ''
                 return actual.lower() != expected.lower()
 
-            # --- IF <<ident>> = "value" ---
+            # --- IF <<ident>> = "value" or EMPTY/NULL ---
             eq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*["\']([^"\']*)["\']?',
+                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:["\']([^"\']*)["\']?|(EMPTY|NULL))',
                 cond, re.IGNORECASE
             )
             if eq_match:
                 identifier = eq_match.group(1)
-                expected = eq_match.group(2)
+                keyword = eq_match.group(3)
                 actual = answer_map.get(identifier, '')
+                if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+                    # = EMPTY / = NULL means "is empty"
+                    return DocumentService._is_value_empty(actual)
+                expected = eq_match.group(2) or ''
                 return actual.lower() == expected.lower()
 
             # --- IF <<ident>> (has value) ---
@@ -520,8 +583,7 @@ class DocumentService:
         # Process conditional sections [[ ... ]]
         # If all identifiers inside are empty, remove the entire section
         # After evaluation, the brackets are removed from the output
-        import logging
-        logger = logging.getLogger(__name__)
+        logger = _logger
 
         conditional_pattern = r'\[\[(.*?)\]\]'
 
@@ -576,59 +638,83 @@ class DocumentService:
                 person_identifier = parts[0]
                 field_name = parts[1]
 
-                # Get the person JSON from answers
-                person_json = answer_map.get(person_identifier, '')
+                # First try the raw answer (before formatting) so we can parse JSON
+                raw_json = (raw_answer_map or {}).get(person_identifier, '') or ''
+                # Fall back to the formatted answer_map value
+                formatted = answer_map.get(person_identifier, '')
 
-                if person_json:
+                if raw_json:
                     try:
-                        # Person data is stored as JSON object with all fields
-                        person_data = json.loads(person_json)
+                        person_data = json.loads(raw_json)
 
                         if isinstance(person_data, dict):
-                            # New format: JSON object with person fields
                             field_value = person_data.get(field_name)
                             if field_value is not None:
                                 return str(field_value)
                         elif isinstance(person_data, list) and len(person_data) > 0:
-                            # Legacy format: array of person objects or names
-                            first_person = person_data[0]
-                            if isinstance(first_person, dict):
-                                field_value = first_person.get(field_name)
+                            # Array of person objects (possibly double-encoded)
+                            # If asking for 'name' on an array, return the
+                            # fully formatted name string with conjunctions
+                            if field_name == 'name':
+                                return formatted if formatted else ''
+
+                            # For other fields, decode and extract from first person
+                            first = person_data[0]
+                            if isinstance(first, str):
+                                try:
+                                    first = json.loads(first)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            if isinstance(first, dict):
+                                field_value = first.get(field_name)
                                 if field_value is not None:
                                     return str(field_value)
-                            elif isinstance(first_person, str) and field_name == 'name':
-                                return first_person
                     except (json.JSONDecodeError, TypeError):
-                        # Not JSON, might be a plain string - only return if asking for 'name'
+                        pass
+
+                # If raw parsing failed, try the formatted value
+                if formatted:
+                    try:
+                        person_data = json.loads(formatted)
+                        if isinstance(person_data, dict):
+                            field_value = person_data.get(field_name)
+                            if field_value is not None:
+                                return str(field_value)
+                    except (json.JSONDecodeError, TypeError):
+                        # Already formatted text — if asking for 'name', return it
                         if field_name == 'name':
-                            return person_json
+                            return formatted
 
                 # Person field not found - return empty string
                 return ''
 
             value = answer_map.get(identifier, '')
-            print(f"DEBUG replace_identifier: identifier='{identifier}', value='{value[:100] if value else 'None'}...'")
             # Return answer value if available and not empty, otherwise return empty string
             if not DocumentService._is_value_empty(value):
                 # Check if value is a JSON array (repeatable question)
                 try:
                     parsed = json.loads(value)
-                    print(f"DEBUG: Parsed JSON for '{identifier}': type={type(parsed)}, value={parsed}")
                     if isinstance(parsed, list) and len(parsed) > 0:
-                        # Format as numbered list
+                        # Format as numbered list, handling double-encoded strings
                         numbered_items = []
                         for i, item in enumerate(parsed, 1):
-                            if isinstance(item, dict):
-                                # For person objects, use the name field
-                                item_str = item.get('name', str(item))
+                            decoded = item
+                            # Decode double-encoded JSON strings
+                            if isinstance(decoded, str):
+                                try:
+                                    obj = json.loads(decoded)
+                                    if isinstance(obj, dict):
+                                        decoded = obj
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            if isinstance(decoded, dict):
+                                item_str = decoded.get('name', str(decoded))
                             else:
-                                item_str = str(item)
+                                item_str = str(decoded)
                             numbered_items.append(f"{i}. {item_str}")
                         result = '\n'.join(numbered_items)
-                        print(f"DEBUG: Returning numbered list for '{identifier}': {result}")
                         return result
-                except (json.JSONDecodeError, TypeError) as e:
-                    print(f"DEBUG: JSON parse failed for '{identifier}': {e}")
+                except (json.JSONDecodeError, TypeError):
                     pass  # Not JSON, return as-is
                 return value
             return ''

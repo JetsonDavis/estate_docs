@@ -89,6 +89,12 @@ async function globalTeardown(config: FullConfig) {
       /^Test Group /,
       /^NestedCondRepeat_/,
       /^ncr10_/,
+      /^RapidOps_/,
+      /^Stress Test /,
+      /^Order Test /,
+      /^Rapid Test /,
+      /^Regression Test /,
+      /^repeat_persist$/,
     ];
 
     const testGroups = allGroups.filter(g =>

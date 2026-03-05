@@ -416,10 +416,28 @@ class SessionService:
                 ordered_groups = [group]
 
         if not ordered_groups:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No question groups available"
-            )
+            # For sessions with no group (e.g., completed or orphaned),
+            # return an empty question set instead of an error
+            return {
+                "session_id": session.id,
+                "client_identifier": session.client_identifier,
+                "flow_id": session.flow_id,
+                "flow_name": flow_name,
+                "current_group_id": 0,
+                "current_group_name": "",
+                "current_group_index": 0,
+                "total_groups": 0,
+                "questions": [],
+                "current_page": 1,
+                "total_pages": 1,
+                "questions_per_page": 0,
+                "is_completed": session.is_completed,
+                "is_last_group": True,
+                "is_first_group": True,
+                "can_go_back": False,
+                "existing_answers": {a.question_id: a.answer_value for a in db.query(SessionAnswer).filter(SessionAnswer.session_id == session_id).all()},
+                "conditional_identifiers": [],
+            }
 
         # Find current group index
         current_group_index = 0
@@ -1216,8 +1234,13 @@ class SessionService:
                 detail="Session not found"
             )
 
-        session.is_completed = True
-        session.completed_at = datetime.utcnow()
+        # Toggle completion status
+        if session.is_completed:
+            session.is_completed = False
+            session.completed_at = None
+        else:
+            session.is_completed = True
+            session.completed_at = datetime.utcnow()
 
         db.commit()
         db.refresh(session)
