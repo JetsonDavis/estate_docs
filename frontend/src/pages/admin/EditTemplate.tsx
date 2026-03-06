@@ -7,7 +7,7 @@ import './Templates.css'
 const EditTemplate: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  
+
   const [template, setTemplate] = useState<Template | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -24,6 +24,7 @@ const EditTemplate: React.FC = () => {
   const markdownContentRef = useRef(markdownContent)
   const templateRef = useRef(template)
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
+  const editableRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -214,23 +215,60 @@ const EditTemplate: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', paddingTop: '16px' }}>
                 Text (Use {'<<identifier>>'} for placeholders)
               </label>
-              <textarea
-                value={markdownContent}
-                onChange={(e) => setMarkdownContent(e.target.value)}
-                style={{ 
-                  width: '100%',
-                  height: '600px',
-                  padding: '0.875rem 1rem',
-                  border: '2px solid #d1d5db',
-                  borderRadius: '0.75rem',
-                  fontSize: '1rem',
-                  fontFamily: "'Courier New', monospace",
-                  boxSizing: 'border-box',
-                  overflowY: 'scroll',
-                  resize: 'vertical'
-                }}
-                required
-              />
+              <div style={{ position: 'relative', width: '100%' }}>
+                <div
+                  ref={editableRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={(e) => {
+                    const text = e.currentTarget.innerText
+                    setMarkdownContent(text)
+                  }}
+                  onKeyDown={(e) => {
+                    // Allow all normal typing behavior
+                    if (e.key === 'Tab') {
+                      e.preventDefault()
+                      document.execCommand('insertText', false, '\t')
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    minHeight: '600px',
+                    padding: '0.875rem 1rem',
+                    border: '2px solid #d1d5db',
+                    borderRadius: '0.75rem',
+                    fontSize: '1rem',
+                    fontFamily: "'Courier New', monospace",
+                    boxSizing: 'border-box',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                    backgroundColor: 'white',
+                    outline: 'none'
+                  }}
+                >
+                  {markdownContent.split('').map((char, index) => {
+                    // Track if we're in a special pattern
+                    const beforeText = markdownContent.substring(0, index)
+                    const remainingText = markdownContent.substring(index)
+
+                    // Check if current position is inside {{ }}
+                    const lastDoubleCurlyOpen = beforeText.lastIndexOf('{{')
+                    const lastDoubleCurlyClose = beforeText.lastIndexOf('}}')
+                    const inDoubleCurly = lastDoubleCurlyOpen > lastDoubleCurlyClose && remainingText.includes('}}')
+
+                    // Check if current position is inside << >>
+                    const lastDoubleAngleOpen = beforeText.lastIndexOf('<<')
+                    const lastDoubleAngleClose = beforeText.lastIndexOf('>>')
+                    const inDoubleAngle = lastDoubleAngleOpen > lastDoubleAngleClose && remainingText.includes('>>')
+
+                    if (inDoubleCurly || inDoubleAngle) {
+                      return <strong key={index}>{char}</strong>
+                    }
+                    return <span key={index}>{char}</span>
+                  })}
+                </div>
+              </div>
             </div>
 
             <div className="form-actions" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
