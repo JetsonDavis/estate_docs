@@ -279,7 +279,7 @@ const MergeDocuments: React.FC = () => {
                             {session.current_group_name && (
                               <div style={{ fontSize: '0.75rem', marginTop: '-4px' }}>
                                 <span
-                                  style={{ color: '#60a5fa', cursor: session.current_group_id ? 'pointer' : 'default', textDecoration: 'none' }}
+                                  style={{ color: '#3b82f6', cursor: session.current_group_id ? 'pointer' : 'default', textDecoration: 'none' }}
                                   onMouseEnter={(e) => { if (session.current_group_id) (e.target as HTMLElement).style.textDecoration = 'underline' }}
                                   onMouseLeave={(e) => { (e.target as HTMLElement).style.textDecoration = 'none' }}
                                   onClick={(e) => { if (session.current_group_id) { e.stopPropagation(); navigate(`/admin/question-groups/${session.current_group_id}/edit`) } }}

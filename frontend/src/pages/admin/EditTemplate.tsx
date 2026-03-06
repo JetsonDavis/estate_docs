@@ -32,7 +32,7 @@ const EditTemplate: React.FC = () => {
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
 
-  // Format content with bold for {{ }} and << >> patterns
+  // Format content with bold for {{ }} and << >> patterns, and color coding for IF/FOREACH
   const formatContent = (text: string) => {
     // Escape HTML first
     const escaped = text
@@ -40,11 +40,71 @@ const EditTemplate: React.FC = () => {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
 
-    // Apply bold formatting to patterns
-    return escaped
-      .replace(/\{\{([^}]+)\}\}/g, '<strong>{{$1}}</strong>')
-      .replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
-      .replace(/\n/g, '<br>')
+    // Color scheme for nesting levels
+    const colors = [
+      '#2563eb', // Blue for level 0
+      '#059669', // Green for level 1
+      '#7c3aed', // Purple for level 2
+      '#dc2626', // Red for level 3+
+    ]
+
+    // Track nesting depth as we parse
+    let result = ''
+    let depth = 0
+    const stack: string[] = [] // Track what we're inside (IF or FOREACH)
+
+    // Split by {{ }} blocks
+    const parts = escaped.split(/(\{\{[^}]+\}\})/g)
+
+    for (const part of parts) {
+      if (part.startsWith('{{') && part.endsWith('}}')) {
+        const inner = part.slice(2, -2).trim()
+
+        // Determine block type
+        let isOpening = false
+        let isClosing = false
+        let blockType = ''
+
+        if (inner.match(/^IF\s/i) || inner === 'IF') {
+          isOpening = true
+          blockType = 'IF'
+        } else if (inner.match(/^FOREACH\s/i)) {
+          isOpening = true
+          blockType = 'FOREACH'
+        } else if (inner === 'END FOREACH') {
+          isClosing = true
+          blockType = 'FOREACH'
+        } else if (inner === 'END') {
+          isClosing = true
+          blockType = 'IF'
+        } else if (inner === 'ELSE') {
+          // ELSE doesn't change depth, uses current depth
+          const color = colors[Math.min(depth - 1, colors.length - 1)]
+          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
+          continue
+        }
+
+        if (isOpening) {
+          const color = colors[Math.min(depth, colors.length - 1)]
+          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
+          stack.push(blockType)
+          depth++
+        } else if (isClosing) {
+          depth = Math.max(0, depth - 1)
+          const color = colors[Math.min(depth, colors.length - 1)]
+          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
+          stack.pop()
+        } else {
+          // Other {{ }} blocks (not control flow) - just bold
+          result += `<strong>{{${inner}}}</strong>`
+        }
+      } else {
+        // Regular text - apply << >> bold formatting
+        result += part.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
+      }
+    }
+
+    return result.replace(/\n/g, '<br>')
   }
 
   // Save cursor position before update
