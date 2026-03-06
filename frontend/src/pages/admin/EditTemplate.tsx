@@ -27,7 +27,7 @@ const EditTemplate: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false)
   const [blockErrors, setBlockErrors] = useState<string[]>([])
   const textareaInitializedRef = useRef(false)
-  const scrollPosRef = useRef<number>(0)
+  const scrollRatioRef = useRef<number>(0)
   const pageScrollRef = useRef<number>(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const formattedDivRef = useRef<HTMLDivElement | null>(null)
@@ -37,36 +37,51 @@ const EditTemplate: React.FC = () => {
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
 
-  // Restore scroll position when switching modes
-  useEffect(() => {
-    const savedScroll = scrollPosRef.current
-    const savedPageScroll = pageScrollRef.current
+  // Ref callback for textarea: runs exactly when the element mounts
+  const textareaRefCallback = useCallback((el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el
+    if (el && !textareaInitializedRef.current) {
+      textareaInitializedRef.current = true
+      const savedRatio = scrollRatioRef.current
+      const savedPageScroll = pageScrollRef.current
 
-    const restoreScroll = () => {
-      // Double rAF to run AFTER the browser's native focus-scroll
+      // Use setTimeout to let React finish rendering the value, then focus
+      setTimeout(() => {
+        if (textareaRef.current) {
+          const maxScroll = textareaRef.current.scrollHeight - textareaRef.current.clientHeight
+          const targetScroll = Math.round(savedRatio * maxScroll)
+
+          textareaRef.current.focus({ preventScroll: true })
+          textareaRef.current.scrollTop = targetScroll
+          window.scrollTo({ top: savedPageScroll })
+
+          // One more override after the browser settles
+          requestAnimationFrame(() => {
+            if (textareaRef.current) {
+              const max = textareaRef.current.scrollHeight - textareaRef.current.clientHeight
+              textareaRef.current.scrollTop = Math.round(savedRatio * max)
+            }
+            window.scrollTo({ top: savedPageScroll })
+          })
+        }
+      }, 0)
+    }
+  }, [])
+
+  // Restore scroll position when switching back to formatted view
+  useEffect(() => {
+    if (!isEditing && formattedDivRef.current) {
+      const savedRatio = scrollRatioRef.current
+      const savedPageScroll = pageScrollRef.current
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (isEditing && textareaRef.current) {
-            textareaRef.current.scrollTop = savedScroll
-          } else if (!isEditing && formattedDivRef.current) {
-            formattedDivRef.current.scrollTop = savedScroll
+          if (formattedDivRef.current) {
+            const maxScroll = formattedDivRef.current.scrollHeight - formattedDivRef.current.clientHeight
+            formattedDivRef.current.scrollTop = Math.round(savedRatio * maxScroll)
           }
-          // Restore page scroll so the page doesn't jump
           window.scrollTo({ top: savedPageScroll })
         })
       })
-    }
-
-    if (isEditing && textareaRef.current) {
-      if (!textareaInitializedRef.current) {
-        textareaInitializedRef.current = true
-        textareaRef.current.focus({ preventScroll: true })
-        textareaRef.current.scrollTop = savedScroll
-        window.scrollTo({ top: savedPageScroll })
-      }
-      restoreScroll()
-    } else if (!isEditing && formattedDivRef.current) {
-      restoreScroll()
     }
   }, [isEditing])
 
@@ -418,11 +433,13 @@ const EditTemplate: React.FC = () => {
               )}
               {isEditing ? (
                 <textarea
-                  ref={textareaRef}
+                  ref={textareaRefCallback}
                   value={markdownContent}
                   onChange={(e) => setMarkdownContent(e.target.value)}
                   onBlur={(e) => {
-                    scrollPosRef.current = e.currentTarget.scrollTop
+                    const el = e.currentTarget
+                    const maxScroll = el.scrollHeight - el.clientHeight
+                    scrollRatioRef.current = maxScroll > 0 ? el.scrollTop / maxScroll : 0
                     pageScrollRef.current = window.scrollY
                     textareaInitializedRef.current = false
                     setIsEditing(false)
@@ -442,7 +459,7 @@ const EditTemplate: React.FC = () => {
                   }}
                   style={{
                     width: '100%',
-                    minHeight: '600px',
+                    height: '600px',
                     padding: '0.875rem 1rem',
                     border: '2px solid #d1d5db',
                     borderRadius: '0.75rem',
@@ -463,13 +480,14 @@ const EditTemplate: React.FC = () => {
                   ref={formattedDivRef}
                   onClick={(e) => {
                     const div = e.currentTarget
-                    scrollPosRef.current = div.scrollTop
+                    const maxScroll = div.scrollHeight - div.clientHeight
+                    scrollRatioRef.current = maxScroll > 0 ? div.scrollTop / maxScroll : 0
                     pageScrollRef.current = window.scrollY
                     setIsEditing(true)
                   }}
                   style={{
                     width: '100%',
-                    minHeight: '600px',
+                    height: '600px',
                     padding: '0.875rem 1rem',
                     border: '2px solid #d1d5db',
                     borderRadius: '0.75rem',
