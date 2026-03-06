@@ -25,6 +25,7 @@ const EditTemplate: React.FC = () => {
   const templateRef = useRef(template)
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
   const [isEditing, setIsEditing] = useState(false)
+  const [blockErrors, setBlockErrors] = useState<string[]>([])
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -107,6 +108,69 @@ const EditTemplate: React.FC = () => {
   }
 
 
+  // Validate matching IF/END and FOREACH/END FOREACH blocks
+  const validateBlocks = (text: string): string[] => {
+    const errors: string[] = []
+    const blockRegex = /\{\{\s*(IF\s|FOREACH\s|ELSE|END FOREACH|END)\s*/gi
+    const stack: { type: string; line: number }[] = []
+    const lines = text.split('\n')
+
+    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+      const line = lines[lineNum]
+      let match: RegExpExecArray | null
+      const lineRegex = /\{\{\s*(IF\s[^}]*|FOREACH(?:\(\d+\))?\s[^}]*|ELSE|END FOREACH|END)\s*\}\}/gi
+
+      while ((match = lineRegex.exec(line)) !== null) {
+        const keyword = match[1].trim().toUpperCase()
+
+        if (keyword.startsWith('IF ') || keyword === 'IF') {
+          stack.push({ type: 'IF', line: lineNum + 1 })
+        } else if (keyword.startsWith('FOREACH')) {
+          stack.push({ type: 'FOREACH', line: lineNum + 1 })
+        } else if (keyword === 'END FOREACH') {
+          const last = stack.pop()
+          if (!last) {
+            errors.push(`Line ${lineNum + 1}: {{ END FOREACH }} without a matching {{ FOREACH }}`)
+          } else if (last.type !== 'FOREACH') {
+            errors.push(`Line ${lineNum + 1}: {{ END FOREACH }} but expected {{ END }} to close {{ IF }} from line ${last.line}`)
+            stack.push(last) // put it back
+          }
+        } else if (keyword === 'END') {
+          const last = stack.pop()
+          if (!last) {
+            errors.push(`Line ${lineNum + 1}: {{ END }} without a matching {{ IF }}`)
+          } else if (last.type !== 'IF') {
+            errors.push(`Line ${lineNum + 1}: {{ END }} but expected {{ END FOREACH }} to close {{ FOREACH }} from line ${last.line}`)
+            stack.push(last) // put it back
+          }
+        }
+      }
+    }
+
+    // Report unclosed blocks
+    for (const unclosed of stack) {
+      if (unclosed.type === 'IF') {
+        errors.push(`Line ${unclosed.line}: {{ IF }} is never closed with {{ END }}`)
+      } else {
+        errors.push(`Line ${unclosed.line}: {{ FOREACH }} is never closed with {{ END FOREACH }}`)
+      }
+    }
+
+    return errors
+  }
+
+  // Block navigation when there are block errors
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (blockErrors.length > 0) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [blockErrors])
+
   const autoSave = useCallback(async () => {
     const t = templateRef.current
     if (!t) return
@@ -185,6 +249,10 @@ const EditTemplate: React.FC = () => {
     e.preventDefault()
     if (!template) return
 
+    const errors = validateBlocks(markdownContent)
+    setBlockErrors(errors)
+    if (errors.length > 0) return
+
     try {
       setSubmitting(true)
       await templateService.updateTemplate(template.id, {
@@ -237,7 +305,13 @@ const EditTemplate: React.FC = () => {
             )}
           </div>
           <button
-            onClick={() => navigate('/admin/templates')}
+            onClick={() => {
+              if (blockErrors.length > 0) {
+                alert('Please fix the mismatched IF/FOREACH blocks before navigating away.')
+                return
+              }
+              navigate('/admin/templates')
+            }}
             className="cancel-button"
             style={{ padding: '0.625rem 1.25rem' }}
           >
@@ -291,11 +365,27 @@ const EditTemplate: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', paddingTop: '16px' }}>
                 Text (Use {'<<identifier>>'} for placeholders)
               </label>
+              {blockErrors.length > 0 && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem 0.75rem',
+                  marginBottom: '0.5rem'
+                }}>
+                  {blockErrors.map((err, i) => (
+                    <div key={i} style={{ color: '#dc2626', fontSize: '0.8rem', lineHeight: 1.4 }}>{err}</div>
+                  ))}
+                </div>
+              )}
               {isEditing ? (
                 <textarea
                   value={markdownContent}
                   onChange={(e) => setMarkdownContent(e.target.value)}
-                  onBlur={() => setIsEditing(false)}
+                  onBlur={() => {
+                    setIsEditing(false)
+                    setBlockErrors(validateBlocks(markdownContent))
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Tab') {
                       e.preventDefault()
@@ -356,7 +446,13 @@ const EditTemplate: React.FC = () => {
             <div className="form-actions" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button
                 type="button"
-                onClick={() => navigate('/admin/templates')}
+                onClick={() => {
+                  if (blockErrors.length > 0) {
+                    alert('Please fix the mismatched IF/FOREACH blocks before navigating away.')
+                    return
+                  }
+                  navigate('/admin/templates')
+                }}
                 className="cancel-button"
               >
                 Cancel
