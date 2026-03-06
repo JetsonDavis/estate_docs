@@ -12,7 +12,7 @@ const MergeDocuments: React.FC = () => {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(() => {
     const saved = localStorage.getItem('mergeDocuments_selectedSessionId')
     return saved ? parseInt(saved, 10) : null
@@ -276,6 +276,11 @@ const MergeDocuments: React.FC = () => {
                                 <span className="status-badge in-progress">In Progress</span>
                               )}
                             </div>
+                            {session.current_group_name && (
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.125rem' }}>
+                                {session.current_group_name}
+                              </div>
+                            )}
                             <div className="item-meta">
                               <span className="item-date">
                                 Created: {new Date(session.created_at).toLocaleDateString()}
