@@ -28,6 +28,7 @@ const EditTemplate: React.FC = () => {
   const [blockErrors, setBlockErrors] = useState<string[]>([])
   const clickCursorPosRef = useRef<number>(0)
   const textareaInitializedRef = useRef(false)
+  const scrollPosRef = useRef<number>(0)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -404,10 +405,11 @@ const EditTemplate: React.FC = () => {
                   ref={(el) => {
                     if (el && !textareaInitializedRef.current) {
                       textareaInitializedRef.current = true
-                      el.focus()
+                      el.focus({ preventScroll: true })
                       const pos = Math.min(clickCursorPosRef.current, el.value.length)
                       el.selectionStart = pos
                       el.selectionEnd = pos
+                      el.scrollTop = scrollPosRef.current
                     }
                   }}
                   style={{
@@ -432,6 +434,7 @@ const EditTemplate: React.FC = () => {
                 <div
                   onClick={(e) => {
                     const div = e.currentTarget
+                    scrollPosRef.current = div.scrollTop
                     const selection = window.getSelection()
                     if (selection && selection.rangeCount > 0) {
                       const range = selection.getRangeAt(0)

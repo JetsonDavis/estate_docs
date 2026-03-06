@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './hooks/useAuth'
 import ProtectedRoute from './components/auth/ProtectedRoute'
+import ScrollToTop from './components/ScrollToTop'
 import Header from './components/layout/Header'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -34,6 +35,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
+        <ScrollToTop />
         <AuthProvider>
           <Routes>
             {/* Public routes - no header */}
