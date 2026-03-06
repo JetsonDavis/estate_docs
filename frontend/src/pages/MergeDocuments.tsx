@@ -13,8 +13,14 @@ const MergeDocuments: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('mergeDocuments_selectedSessionId')
+    return saved ? parseInt(saved, 10) : null
+  })
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('mergeDocuments_selectedTemplateId')
+    return saved ? parseInt(saved, 10) : null
+  })
   const [sessionIdentifiers, setSessionIdentifiers] = useState<string[]>([])
   const [templateIdentifiers, setTemplateIdentifiers] = useState<string[]>([])
   const [loadingIdentifiers, setLoadingIdentifiers] = useState(false)
@@ -22,6 +28,24 @@ const MergeDocuments: React.FC = () => {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Persist selected session ID to localStorage
+  useEffect(() => {
+    if (selectedSessionId !== null) {
+      localStorage.setItem('mergeDocuments_selectedSessionId', selectedSessionId.toString())
+    } else {
+      localStorage.removeItem('mergeDocuments_selectedSessionId')
+    }
+  }, [selectedSessionId])
+
+  // Persist selected template ID to localStorage
+  useEffect(() => {
+    if (selectedTemplateId !== null) {
+      localStorage.setItem('mergeDocuments_selectedTemplateId', selectedTemplateId.toString())
+    } else {
+      localStorage.removeItem('mergeDocuments_selectedTemplateId')
+    }
+  }, [selectedTemplateId])
 
   useEffect(() => {
     if (selectedSessionId) {

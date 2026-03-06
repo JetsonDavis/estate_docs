@@ -576,6 +576,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set())
   const collapsedSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [flashingQuestions, setFlashingQuestions] = useState<Map<string, 'add' | 'delete'>>(new Map())
+  const [validationErrors, setValidationErrors] = useState<Set<string>>(new Set())
+  const [validationMessage, setValidationMessage] = useState('')
 
   const flashQuestion = (id: string, type: 'add' | 'delete') => {
     setFlashingQuestions(prev => new Map(prev).set(id, type))
@@ -589,6 +591,64 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   const isEditMode = !!groupId
+
+  // Validate all questions have identifier + question_text, all conditionals have value
+  const validateForm = (): boolean => {
+    const errors = new Set<string>()
+    const messages: string[] = []
+
+    // Check all questions
+    for (const q of questions) {
+      if (!q.identifier.trim()) {
+        errors.add(`q-identifier-${q.id}`)
+        messages.push(`Question is missing an identifier`)
+      }
+      if (!q.question_text.trim()) {
+        errors.add(`q-text-${q.id}`)
+        messages.push(`Question is missing question text`)
+      }
+    }
+
+    // Recursively check conditionals in question logic
+    const checkLogicItems = (items: QuestionLogicItem[]) => {
+      for (const item of items) {
+        if (item.type === 'conditional' && item.conditional) {
+          if (!item.conditional.value || !item.conditional.value.trim()) {
+            errors.add(`c-value-${item.id}`)
+            messages.push(`Conditional is missing a value`)
+          }
+          if (item.conditional.nestedItems) {
+            checkLogicItems(item.conditional.nestedItems)
+          }
+        }
+      }
+    }
+    checkLogicItems(questionLogic)
+
+    setValidationErrors(errors)
+
+    if (errors.size > 0) {
+      const uniqueMessages = [...new Set(messages)]
+      setValidationMessage(`Please fill in all required fields: ${uniqueMessages.join('; ')}`)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return false
+    }
+
+    setValidationMessage('')
+    return true
+  }
+
+  // Clear a specific validation error when user types in a field
+  const clearValidationError = (errorKey: string) => {
+    if (validationErrors.has(errorKey)) {
+      setValidationErrors(prev => {
+        const next = new Set(prev)
+        next.delete(errorKey)
+        if (next.size === 0) setValidationMessage('')
+        return next
+      })
+    }
+  }
 
   const saveCollapsedItems = (items: Set<string>) => {
     const targetGroupId = groupId || null
@@ -743,8 +803,17 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  // No beforeunload warning - auto-save handles persistence
-  // Pending requests complete quickly in the background
+  // Block navigation when there are validation errors
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (validationErrors.size > 0) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [validationErrors])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -2849,9 +2918,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <input
                   type="text"
                   value={nestedQuestion.identifier}
-                  onChange={(e) => updateQuestion(nestedQuestion.id, 'identifier', e.target.value)}
+                  onChange={(e) => { updateQuestion(nestedQuestion.id, 'identifier', e.target.value); clearValidationError(`q-identifier-${nestedQuestion.id}`) }}
                   onBlur={(e) => updateQuestion(nestedQuestion.id, 'identifier', e.target.value.toLowerCase().replace(/\s+/g, '_'))}
                   className="form-input"
+                  style={{ borderColor: validationErrors.has(`q-identifier-${nestedQuestion.id}`) ? '#dc2626' : undefined }}
                   placeholder="e.g., nested_field"
                 />
               </div>
@@ -2861,8 +2931,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <label className="form-label">Question Text *</label>
                 <textarea
                   value={nestedQuestion.question_text}
-                  onChange={(e) => updateQuestion(nestedQuestion.id, 'question_text', e.target.value)}
+                  onChange={(e) => { updateQuestion(nestedQuestion.id, 'question_text', e.target.value); clearValidationError(`q-text-${nestedQuestion.id}`) }}
                   className="form-textarea"
+                  style={{ borderColor: validationErrors.has(`q-text-${nestedQuestion.id}`) ? '#dc2626' : undefined }}
                   rows={1.5}
                   placeholder="Enter your question here..."
                 />
@@ -3387,7 +3458,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Value */}
               <div>
                 <label style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                  Value
+                  Value *
                 </label>
                 {(() => {
                   const currentOperator = item.conditional.operator || 'equals'
@@ -3400,9 +3471,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         type="number"
                         min="0"
                         value={item.conditional.value || ''}
-                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        onChange={(e) => { updateConditionalValue(item.id, 'value', e.target.value); clearValidationError(`c-value-${item.id}`) }}
                         className="form-input"
-                        style={{ fontSize: '0.8rem', width: '80px' }}
+                        style={{ fontSize: '0.8rem', width: '80px', borderColor: validationErrors.has(`c-value-${item.id}`) ? '#dc2626' : undefined }}
                         placeholder="0"
                       />
                     )
@@ -3420,18 +3491,18 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <input
                         type="date"
                         value={item.conditional.value || ''}
-                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        onChange={(e) => { updateConditionalValue(item.id, 'value', e.target.value); clearValidationError(`c-value-${item.id}`) }}
                         className="form-input"
-                        style={{ fontSize: '0.8rem' }}
+                        style={{ fontSize: '0.8rem', borderColor: validationErrors.has(`c-value-${item.id}`) ? '#dc2626' : undefined }}
                       />
                     )
                   } else if (isChoiceType && selectedQuestion?.options) {
                     return (
                       <select
                         value={item.conditional.value || ''}
-                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        onChange={(e) => { updateConditionalValue(item.id, 'value', e.target.value); clearValidationError(`c-value-${item.id}`) }}
                         className="form-select"
-                        style={{ fontSize: '0.8rem' }}
+                        style={{ fontSize: '0.8rem', borderColor: validationErrors.has(`c-value-${item.id}`) ? '#dc2626' : undefined }}
                       >
                         <option value="">Select value...</option>
                         {selectedQuestion.options.map((opt, idx) => (
@@ -3446,9 +3517,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <input
                         type="text"
                         value={item.conditional.value || ''}
-                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        onChange={(e) => { updateConditionalValue(item.id, 'value', e.target.value); clearValidationError(`c-value-${item.id}`) }}
                         className="form-input"
-                        style={{ fontSize: '0.8rem' }}
+                        style={{ fontSize: '0.8rem', borderColor: validationErrors.has(`c-value-${item.id}`) ? '#dc2626' : undefined }}
                         placeholder="Type person name..."
                       />
                     )
@@ -3457,9 +3528,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <input
                         type="text"
                         value={item.conditional.value || ''}
-                        onChange={(e) => updateConditionalValue(item.id, 'value', e.target.value)}
+                        onChange={(e) => { updateConditionalValue(item.id, 'value', e.target.value); clearValidationError(`c-value-${item.id}`) }}
                         className="form-input"
-                        style={{ fontSize: '0.8rem' }}
+                        style={{ fontSize: '0.8rem', borderColor: validationErrors.has(`c-value-${item.id}`) ? '#dc2626' : undefined }}
                         placeholder="Enter value"
                       />
                     )
@@ -3609,8 +3680,60 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     )
   }
 
+  // Wrap navigate to validate first
+  const navigateWithValidation = (path: string) => {
+    if (questions.length > 0 && !validateForm()) {
+      return
+    }
+    setValidationErrors(new Set())
+    setValidationMessage('')
+    navigate(path)
+  }
+
   return (
     <div className="question-groups-container">
+      {validationMessage && (
+        <div style={{
+          backgroundColor: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: '0.5rem',
+          padding: '0.75rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <svg fill="none" stroke="#dc2626" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem', flexShrink: 0 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <span style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: 500 }}>{validationMessage}</span>
+          <button
+            onClick={() => { setValidationMessage(''); setValidationErrors(new Set()) }}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1 }}
+          >&times;</button>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => navigateWithValidation('/admin/question-groups')}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#6b7280',
+          cursor: 'pointer',
+          fontSize: '0.875rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+          padding: '0.25rem 0',
+          marginBottom: '0.5rem'
+        }}
+      >
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Question Groups
+      </button>
       <div className="question-groups-header">
         <div>
           <h1 className="question-groups-title">{isEditMode ? 'Edit Question Group' : 'Create Question Group'}</h1>
@@ -3963,10 +4086,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <input
                     type="text"
                     value={question.identifier}
-                    onChange={(e) => updateQuestion(question.id, 'identifier', e.target.value)}
+                    onChange={(e) => { updateQuestion(question.id, 'identifier', e.target.value); clearValidationError(`q-identifier-${question.id}`) }}
                     onBlur={(e) => updateQuestion(question.id, 'identifier', e.target.value.toLowerCase().replace(/\s+/g, '_'))}
                     className="form-input"
-                    style={{ borderColor: question.isDuplicateIdentifier ? '#dc2626' : undefined }}
+                    style={{ borderColor: question.isDuplicateIdentifier || validationErrors.has(`q-identifier-${question.id}`) ? '#dc2626' : undefined }}
                     placeholder="e.g., full_name"
                   />
                   <div style={{ minHeight: '1.5rem', marginTop: '0.25rem' }}>
@@ -3987,8 +4110,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <label className="form-label">Question Text *</label>
                   <textarea
                     value={question.question_text}
-                    onChange={(e) => updateQuestion(question.id, 'question_text', e.target.value)}
+                    onChange={(e) => { updateQuestion(question.id, 'question_text', e.target.value); clearValidationError(`q-text-${question.id}`) }}
                     className="form-textarea"
+                    style={{ borderColor: validationErrors.has(`q-text-${question.id}`) ? '#dc2626' : undefined }}
                     rows={1.5}
                     placeholder="Enter your question here..."
                   />
