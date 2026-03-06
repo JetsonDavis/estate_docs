@@ -26,6 +26,7 @@ const EditTemplate: React.FC = () => {
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
   const [isEditing, setIsEditing] = useState(false)
   const [blockErrors, setBlockErrors] = useState<string[]>([])
+  const clickCursorPosRef = useRef<number>(0)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -398,7 +399,14 @@ const EditTemplate: React.FC = () => {
                       }, 0)
                     }
                   }}
-                  autoFocus
+                  ref={(el) => {
+                    if (el) {
+                      el.focus()
+                      const pos = Math.min(clickCursorPosRef.current, el.value.length)
+                      el.selectionStart = pos
+                      el.selectionEnd = pos
+                    }
+                  }}
                   style={{
                     width: '100%',
                     minHeight: '600px',
@@ -419,7 +427,35 @@ const EditTemplate: React.FC = () => {
                 />
               ) : (
                 <div
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => {
+                    // Capture cursor offset from click position in the formatted div
+                    const selection = window.getSelection()
+                    if (selection && selection.rangeCount > 0) {
+                      const range = selection.getRangeAt(0)
+                      const preRange = range.cloneRange()
+                      preRange.selectNodeContents(range.startContainer.parentElement?.closest('[dangerouslysetinnerhtml]') || range.startContainer.parentElement?.parentElement || range.startContainer)
+                      // Walk text nodes to calculate offset
+                      const container = (range.startContainer as Node)
+                      const div = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as HTMLElement
+                      const rootDiv = div?.closest?.('[style]') || div
+                      if (rootDiv) {
+                        const treeWalker = document.createTreeWalker(rootDiv, NodeFilter.SHOW_TEXT)
+                        let charCount = 0
+                        let node: Node | null
+                        while ((node = treeWalker.nextNode())) {
+                          if (node === range.startContainer) {
+                            charCount += range.startOffset
+                            break
+                          }
+                          charCount += (node.textContent?.length || 0)
+                        }
+                        clickCursorPosRef.current = charCount
+                      }
+                    } else {
+                      clickCursorPosRef.current = 0
+                    }
+                    setIsEditing(true)
+                  }}
                   style={{
                     width: '100%',
                     minHeight: '600px',
