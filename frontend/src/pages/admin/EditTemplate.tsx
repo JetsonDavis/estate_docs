@@ -24,8 +24,7 @@ const EditTemplate: React.FC = () => {
   const markdownContentRef = useRef(markdownContent)
   const templateRef = useRef(template)
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
-  const editableRef = useRef<HTMLDivElement>(null)
-  const cursorPositionRef = useRef<number>(0)
+  const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -107,77 +106,6 @@ const EditTemplate: React.FC = () => {
     return result.replace(/\n/g, '<br>')
   }
 
-  // Save cursor position before update
-  const saveCursorPosition = () => {
-    const selection = window.getSelection()
-    if (selection && selection.rangeCount > 0 && editableRef.current) {
-      const range = selection.getRangeAt(0)
-      const preCaretRange = range.cloneRange()
-      preCaretRange.selectNodeContents(editableRef.current)
-      preCaretRange.setEnd(range.endContainer, range.endOffset)
-      cursorPositionRef.current = preCaretRange.toString().length
-    }
-  }
-
-  // Restore cursor position after update
-  const restoreCursorPosition = () => {
-    if (!editableRef.current) return
-
-    const selection = window.getSelection()
-    if (!selection) return
-
-    let charCount = 0
-    const targetPosition = cursorPositionRef.current
-
-    const findTextNode = (node: Node): { node: Node; offset: number } | null => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const textLength = node.textContent?.length || 0
-        if (charCount + textLength >= targetPosition) {
-          return { node, offset: targetPosition - charCount }
-        }
-        charCount += textLength
-      } else {
-        for (let i = 0; i < node.childNodes.length; i++) {
-          const result = findTextNode(node.childNodes[i])
-          if (result) return result
-        }
-      }
-      return null
-    }
-
-    const result = findTextNode(editableRef.current)
-    if (result) {
-      const range = document.createRange()
-      range.setStart(result.node, result.offset)
-      range.collapse(true)
-      selection.removeAllRanges()
-      selection.addRange(range)
-    }
-  }
-
-  // Initialize content when template loads
-  useEffect(() => {
-    if (editableRef.current && template) {
-      editableRef.current.innerHTML = formatContent(markdownContent)
-    }
-  }, [template])
-
-  // Update formatted content when markdownContent changes (but not during typing)
-  const updateFormattedContent = useCallback(() => {
-    if (!editableRef.current) return
-
-    if (document.activeElement === editableRef.current) {
-      // User is typing - preserve cursor
-      saveCursorPosition()
-      editableRef.current.innerHTML = formatContent(markdownContent)
-      requestAnimationFrame(() => {
-        restoreCursorPosition()
-      })
-    } else {
-      // Not focused - just update
-      editableRef.current.innerHTML = formatContent(markdownContent)
-    }
-  }, [markdownContent])
 
   const autoSave = useCallback(async () => {
     const t = templateRef.current
@@ -363,26 +291,24 @@ const EditTemplate: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', paddingTop: '16px' }}>
                 Text (Use {'<<identifier>>'} for placeholders)
               </label>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <div
-                  ref={editableRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  onInput={(e) => {
-                    const text = e.currentTarget.innerText
-                    setMarkdownContent(text)
-                    // Debounce the formatting update
-                    clearTimeout((window as any).formatTimeout)
-                    ;(window as any).formatTimeout = setTimeout(() => {
-                      updateFormattedContent()
-                    }, 500)
-                  }}
+              {isEditing ? (
+                <textarea
+                  value={markdownContent}
+                  onChange={(e) => setMarkdownContent(e.target.value)}
+                  onBlur={() => setIsEditing(false)}
                   onKeyDown={(e) => {
                     if (e.key === 'Tab') {
                       e.preventDefault()
-                      document.execCommand('insertText', false, '\t')
+                      const start = e.currentTarget.selectionStart
+                      const end = e.currentTarget.selectionEnd
+                      const value = e.currentTarget.value
+                      setMarkdownContent(value.substring(0, start) + '\t' + value.substring(end))
+                      setTimeout(() => {
+                        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 1
+                      }, 0)
                     }
                   }}
+                  autoFocus
                   style={{
                     width: '100%',
                     minHeight: '600px',
@@ -396,10 +322,35 @@ const EditTemplate: React.FC = () => {
                     whiteSpace: 'pre-wrap',
                     wordWrap: 'break-word',
                     backgroundColor: 'white',
-                    outline: 'none'
+                    color: '#111827',
+                    outline: 'none',
+                    resize: 'vertical'
                   }}
                 />
-              </div>
+              ) : (
+                <div
+                  onClick={() => setIsEditing(true)}
+                  style={{
+                    width: '100%',
+                    minHeight: '600px',
+                    padding: '0.875rem 1rem',
+                    border: '2px solid #d1d5db',
+                    borderRadius: '0.75rem',
+                    fontSize: '1rem',
+                    fontFamily: "'Courier New', monospace",
+                    boxSizing: 'border-box',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                    backgroundColor: 'white',
+                    color: '#111827',
+                    cursor: 'text'
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: formatContent(markdownContent)
+                  }}
+                />
+              )}
             </div>
 
             <div className="form-actions" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
