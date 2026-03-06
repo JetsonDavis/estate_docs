@@ -240,7 +240,14 @@ const MergeDocuments: React.FC = () => {
             <div className="list-box-container">
               <div className="list-box">
                 <div className="list-box-header">
-                  <h2 className="list-box-title">Input Form</h2>
+                  <h2
+                    className="list-box-title"
+                    onClick={() => navigate('/document')}
+                    style={{ cursor: 'pointer' }}
+                    title="Go to Input Forms"
+                  >
+                    Input Form
+                  </h2>
                   <span className="list-box-count">{sessions.length}</span>
                 </div>
                 <div className="list-box-content">
@@ -302,7 +309,14 @@ const MergeDocuments: React.FC = () => {
 
               <div className="list-box">
                 <div className="list-box-header">
-                  <h2 className="list-box-title">Templates</h2>
+                  <h2
+                    className="list-box-title"
+                    onClick={() => navigate('/admin/templates')}
+                    style={{ cursor: 'pointer' }}
+                    title="Go to Templates"
+                  >
+                    Templates
+                  </h2>
                   <span className="list-box-count">{templates.length}</span>
                 </div>
                 <div className="list-box-content">

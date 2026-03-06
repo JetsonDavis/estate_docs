@@ -155,13 +155,26 @@ const EditTemplate: React.FC = () => {
     }
   }
 
-  // Update formatted content when markdownContent changes
+  // Initialize content when template loads
   useEffect(() => {
-    if (editableRef.current && document.activeElement === editableRef.current) {
+    if (editableRef.current && template) {
+      editableRef.current.innerHTML = formatContent(markdownContent)
+    }
+  }, [template])
+
+  // Update formatted content when markdownContent changes (but not during typing)
+  const updateFormattedContent = useCallback(() => {
+    if (!editableRef.current) return
+
+    if (document.activeElement === editableRef.current) {
+      // User is typing - preserve cursor
       saveCursorPosition()
       editableRef.current.innerHTML = formatContent(markdownContent)
-      restoreCursorPosition()
-    } else if (editableRef.current && document.activeElement !== editableRef.current) {
+      requestAnimationFrame(() => {
+        restoreCursorPosition()
+      })
+    } else {
+      // Not focused - just update
       editableRef.current.innerHTML = formatContent(markdownContent)
     }
   }, [markdownContent])
@@ -356,9 +369,13 @@ const EditTemplate: React.FC = () => {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={(e) => {
-                    saveCursorPosition()
                     const text = e.currentTarget.innerText
                     setMarkdownContent(text)
+                    // Debounce the formatting update
+                    clearTimeout((window as any).formatTimeout)
+                    ;(window as any).formatTimeout = setTimeout(() => {
+                      updateFormattedContent()
+                    }, 500)
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Tab') {
@@ -380,9 +397,6 @@ const EditTemplate: React.FC = () => {
                     wordWrap: 'break-word',
                     backgroundColor: 'white',
                     outline: 'none'
-                  }}
-                  dangerouslySetInnerHTML={{
-                    __html: formatContent(markdownContent)
                   }}
                 />
               </div>
