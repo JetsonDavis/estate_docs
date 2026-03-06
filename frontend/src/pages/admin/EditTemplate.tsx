@@ -27,6 +27,7 @@ const EditTemplate: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false)
   const [blockErrors, setBlockErrors] = useState<string[]>([])
   const clickCursorPosRef = useRef<number>(0)
+  const textareaInitializedRef = useRef(false)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -384,6 +385,7 @@ const EditTemplate: React.FC = () => {
                   value={markdownContent}
                   onChange={(e) => setMarkdownContent(e.target.value)}
                   onBlur={() => {
+                    textareaInitializedRef.current = false
                     setIsEditing(false)
                     setBlockErrors(validateBlocks(markdownContent))
                   }}
@@ -400,7 +402,8 @@ const EditTemplate: React.FC = () => {
                     }
                   }}
                   ref={(el) => {
-                    if (el) {
+                    if (el && !textareaInitializedRef.current) {
+                      textareaInitializedRef.current = true
                       el.focus()
                       const pos = Math.min(clickCursorPosRef.current, el.value.length)
                       el.selectionStart = pos
@@ -495,10 +498,20 @@ const EditTemplate: React.FC = () => {
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || blockErrors.length > 0}
                 className="submit-button"
+                style={blockErrors.length > 0 ? {
+                  backgroundColor: '#dc2626',
+                  borderColor: '#dc2626',
+                  cursor: 'not-allowed',
+                  opacity: 0.9
+                } : {}}
               >
-                {submitting ? 'Saving...' : 'Save Changes'}
+                {blockErrors.length > 0
+                  ? 'Error, please correct before saving'
+                  : submitting
+                    ? 'Saving...'
+                    : 'Save Changes'}
               </button>
             </div>
           </form>
