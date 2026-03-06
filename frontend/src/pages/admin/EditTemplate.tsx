@@ -430,30 +430,15 @@ const EditTemplate: React.FC = () => {
                 />
               ) : (
                 <div
-                  onClick={() => {
-                    // Capture cursor offset from click position in the formatted div
+                  onClick={(e) => {
+                    const div = e.currentTarget
                     const selection = window.getSelection()
                     if (selection && selection.rangeCount > 0) {
                       const range = selection.getRangeAt(0)
-                      const preRange = range.cloneRange()
-                      preRange.selectNodeContents(range.startContainer.parentElement?.closest('[dangerouslysetinnerhtml]') || range.startContainer.parentElement?.parentElement || range.startContainer)
-                      // Walk text nodes to calculate offset
-                      const container = (range.startContainer as Node)
-                      const div = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as HTMLElement
-                      const rootDiv = div?.closest?.('[style]') || div
-                      if (rootDiv) {
-                        const treeWalker = document.createTreeWalker(rootDiv, NodeFilter.SHOW_TEXT)
-                        let charCount = 0
-                        let node: Node | null
-                        while ((node = treeWalker.nextNode())) {
-                          if (node === range.startContainer) {
-                            charCount += range.startOffset
-                            break
-                          }
-                          charCount += (node.textContent?.length || 0)
-                        }
-                        clickCursorPosRef.current = charCount
-                      }
+                      const preCaretRange = document.createRange()
+                      preCaretRange.selectNodeContents(div)
+                      preCaretRange.setEnd(range.startContainer, range.startOffset)
+                      clickCursorPosRef.current = preCaretRange.toString().length
                     } else {
                       clickCursorPosRef.current = 0
                     }
