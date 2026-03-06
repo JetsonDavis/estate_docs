@@ -25,11 +25,86 @@ const EditTemplate: React.FC = () => {
   const templateRef = useRef(template)
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
   const editableRef = useRef<HTMLDivElement>(null)
+  const cursorPositionRef = useRef<number>(0)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
+
+  // Format content with bold for {{ }} and << >> patterns
+  const formatContent = (text: string) => {
+    // Escape HTML first
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+    // Apply bold formatting to patterns
+    return escaped
+      .replace(/\{\{([^}]+)\}\}/g, '<strong>{{$1}}</strong>')
+      .replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
+      .replace(/\n/g, '<br>')
+  }
+
+  // Save cursor position before update
+  const saveCursorPosition = () => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0 && editableRef.current) {
+      const range = selection.getRangeAt(0)
+      const preCaretRange = range.cloneRange()
+      preCaretRange.selectNodeContents(editableRef.current)
+      preCaretRange.setEnd(range.endContainer, range.endOffset)
+      cursorPositionRef.current = preCaretRange.toString().length
+    }
+  }
+
+  // Restore cursor position after update
+  const restoreCursorPosition = () => {
+    if (!editableRef.current) return
+
+    const selection = window.getSelection()
+    if (!selection) return
+
+    let charCount = 0
+    const targetPosition = cursorPositionRef.current
+
+    const findTextNode = (node: Node): { node: Node; offset: number } | null => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const textLength = node.textContent?.length || 0
+        if (charCount + textLength >= targetPosition) {
+          return { node, offset: targetPosition - charCount }
+        }
+        charCount += textLength
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          const result = findTextNode(node.childNodes[i])
+          if (result) return result
+        }
+      }
+      return null
+    }
+
+    const result = findTextNode(editableRef.current)
+    if (result) {
+      const range = document.createRange()
+      range.setStart(result.node, result.offset)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+  }
+
+  // Update formatted content when markdownContent changes
+  useEffect(() => {
+    if (editableRef.current && document.activeElement === editableRef.current) {
+      saveCursorPosition()
+      editableRef.current.innerHTML = formatContent(markdownContent)
+      restoreCursorPosition()
+    } else if (editableRef.current && document.activeElement !== editableRef.current) {
+      editableRef.current.innerHTML = formatContent(markdownContent)
+    }
+  }, [markdownContent])
 
   const autoSave = useCallback(async () => {
     const t = templateRef.current
@@ -221,11 +296,11 @@ const EditTemplate: React.FC = () => {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={(e) => {
+                    saveCursorPosition()
                     const text = e.currentTarget.innerText
                     setMarkdownContent(text)
                   }}
                   onKeyDown={(e) => {
-                    // Allow all normal typing behavior
                     if (e.key === 'Tab') {
                       e.preventDefault()
                       document.execCommand('insertText', false, '\t')
@@ -246,28 +321,10 @@ const EditTemplate: React.FC = () => {
                     backgroundColor: 'white',
                     outline: 'none'
                   }}
-                >
-                  {markdownContent.split('').map((char, index) => {
-                    // Track if we're in a special pattern
-                    const beforeText = markdownContent.substring(0, index)
-                    const remainingText = markdownContent.substring(index)
-
-                    // Check if current position is inside {{ }}
-                    const lastDoubleCurlyOpen = beforeText.lastIndexOf('{{')
-                    const lastDoubleCurlyClose = beforeText.lastIndexOf('}}')
-                    const inDoubleCurly = lastDoubleCurlyOpen > lastDoubleCurlyClose && remainingText.includes('}}')
-
-                    // Check if current position is inside << >>
-                    const lastDoubleAngleOpen = beforeText.lastIndexOf('<<')
-                    const lastDoubleAngleClose = beforeText.lastIndexOf('>>')
-                    const inDoubleAngle = lastDoubleAngleOpen > lastDoubleAngleClose && remainingText.includes('>>')
-
-                    if (inDoubleCurly || inDoubleAngle) {
-                      return <strong key={index}>{char}</strong>
-                    }
-                    return <span key={index}>{char}</span>
-                  })}
-                </div>
+                  dangerouslySetInnerHTML={{
+                    __html: formatContent(markdownContent)
+                  }}
+                />
               </div>
             </div>
 
