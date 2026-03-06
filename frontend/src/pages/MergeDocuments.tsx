@@ -277,7 +277,7 @@ const MergeDocuments: React.FC = () => {
                               )}
                             </div>
                             {session.current_group_name && (
-                              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.125rem' }}>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                                 {session.current_group_name}
                               </div>
                             )}
