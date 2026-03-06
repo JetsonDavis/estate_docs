@@ -26,14 +26,49 @@ const EditTemplate: React.FC = () => {
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
   const [isEditing, setIsEditing] = useState(false)
   const [blockErrors, setBlockErrors] = useState<string[]>([])
-  const clickCursorPosRef = useRef<number>(0)
   const textareaInitializedRef = useRef(false)
   const scrollPosRef = useRef<number>(0)
+  const pageScrollRef = useRef<number>(0)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const formattedDivRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
+
+  // Restore scroll position when switching modes
+  useEffect(() => {
+    const savedScroll = scrollPosRef.current
+    const savedPageScroll = pageScrollRef.current
+
+    const restoreScroll = () => {
+      // Double rAF to run AFTER the browser's native focus-scroll
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (isEditing && textareaRef.current) {
+            textareaRef.current.scrollTop = savedScroll
+          } else if (!isEditing && formattedDivRef.current) {
+            formattedDivRef.current.scrollTop = savedScroll
+          }
+          // Restore page scroll so the page doesn't jump
+          window.scrollTo({ top: savedPageScroll })
+        })
+      })
+    }
+
+    if (isEditing && textareaRef.current) {
+      if (!textareaInitializedRef.current) {
+        textareaInitializedRef.current = true
+        textareaRef.current.focus({ preventScroll: true })
+        textareaRef.current.scrollTop = savedScroll
+        window.scrollTo({ top: savedPageScroll })
+      }
+      restoreScroll()
+    } else if (!isEditing && formattedDivRef.current) {
+      restoreScroll()
+    }
+  }, [isEditing])
 
   // Format content with bold for {{ }} and << >> patterns, and color coding for IF/FOREACH
   const formatContent = (text: string) => {
@@ -383,9 +418,12 @@ const EditTemplate: React.FC = () => {
               )}
               {isEditing ? (
                 <textarea
+                  ref={textareaRef}
                   value={markdownContent}
                   onChange={(e) => setMarkdownContent(e.target.value)}
-                  onBlur={() => {
+                  onBlur={(e) => {
+                    scrollPosRef.current = e.currentTarget.scrollTop
+                    pageScrollRef.current = window.scrollY
                     textareaInitializedRef.current = false
                     setIsEditing(false)
                     setBlockErrors(validateBlocks(markdownContent))
@@ -400,16 +438,6 @@ const EditTemplate: React.FC = () => {
                       setTimeout(() => {
                         e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 1
                       }, 0)
-                    }
-                  }}
-                  ref={(el) => {
-                    if (el && !textareaInitializedRef.current) {
-                      textareaInitializedRef.current = true
-                      el.focus({ preventScroll: true })
-                      const pos = Math.min(clickCursorPosRef.current, el.value.length)
-                      el.selectionStart = pos
-                      el.selectionEnd = pos
-                      el.scrollTop = scrollPosRef.current
                     }
                   }}
                   style={{
@@ -432,19 +460,11 @@ const EditTemplate: React.FC = () => {
                 />
               ) : (
                 <div
+                  ref={formattedDivRef}
                   onClick={(e) => {
                     const div = e.currentTarget
                     scrollPosRef.current = div.scrollTop
-                    const selection = window.getSelection()
-                    if (selection && selection.rangeCount > 0) {
-                      const range = selection.getRangeAt(0)
-                      const preCaretRange = document.createRange()
-                      preCaretRange.selectNodeContents(div)
-                      preCaretRange.setEnd(range.startContainer, range.startOffset)
-                      clickCursorPosRef.current = preCaretRange.toString().length
-                    } else {
-                      clickCursorPosRef.current = 0
-                    }
+                    pageScrollRef.current = window.scrollY
                     setIsEditing(true)
                   }}
                   style={{
