@@ -173,7 +173,7 @@ class DocumentService:
             except (ValueError, TypeError):
                 return answer_value
 
-        if question_type != 'person':
+        if question_type not in ('person', 'person_backup'):
             return answer_value
 
         # Try to parse as JSON array of person objects
@@ -209,8 +209,8 @@ class DocumentService:
                         # The conjunction on THIS person indicates how it connects
                         # to the PREVIOUS person (e.g., "then Andrea" means
                         # Andrea follows the previous person with "then")
-                        conjunction = person.get('conjunction', '')
-                        if i > 0 and conjunction:
+                        conjunction = person.get('conjunction', '') or 'and'
+                        if i > 0:
                             if conjunction.lower() == 'then':
                                 result_parts.append(', then')
                             else:
