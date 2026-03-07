@@ -77,6 +77,30 @@ If you have a repeatable group with identifiers `beneficiary` (person type) and 
 3. Bob Johnson, residing at 789 Pine Rd, Houston, TX 77001, shall receive 20% of the estate.
 ```
 
+### Inline Usage (Outside FOREACH)
+
+When a repeatable group identifier is used **outside** a FOREACH loop (e.g., `<<beneficiary_share>>`), the array values are automatically joined using the **conjunction** set on the person entries in the same repeatable group.
+
+The conjunction (and, or, then) is configured per-entry on the person question's "Relationship to Previous Entry" dropdown during data input.
+
+**Example:**
+
+If `beneficiary` has 3 entries with conjunctions "and" between them, and `beneficiary_share` is in the same repeatable group with values `["50%", "30%", "20%"]`:
+
+```
+The shares shall be <<beneficiary_share>>.
+```
+
+**Output:**
+```
+The shares shall be 50%, 30%, and 20%.
+```
+
+Formatting rules:
+- **2 items**: `A and B` (or `A or B`, `A, then B`)
+- **3+ items with "and"/"or"**: Oxford comma — `A, B, and C`
+- **"then"**: Always comma-separated — `A, then B, then C`
+
 ---
 
 ## Conditional Sections
@@ -178,7 +202,7 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 
 | Syntax | Purpose |
 |--------|---------|
-| `<<identifier>>` | Replace with answer value |
+| `<<identifier>>` | Replace with answer value (arrays joined with group conjunction) |
 | `<<person.field>>` | Replace with person field value |
 | `{{ FOREACH ident }} ... {{ END FOREACH }}` | Loop over repeatable group |
 | `##` (inside FOREACH) | 1-based loop index |

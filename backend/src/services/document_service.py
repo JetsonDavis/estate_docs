@@ -81,11 +81,16 @@ class DocumentService:
                     if stripped not in raw_answer_map:
                         raw_answer_map[stripped] = answer.answer_value
 
+        # Build conjunction info for repeatable groups
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, answers)
+
         # Merge template with answers
         merged_content = DocumentService._merge_template(
             template.markdown_content,
             answer_map,
-            raw_answer_map
+            raw_answer_map,
+            conj_map,
+            id_grp_map
         )
 
         # Generate document name if not provided
@@ -219,6 +224,59 @@ class DocumentService:
             return answer_value
 
     @staticmethod
+    def _build_conjunction_info(db: Session, answers: List[SessionAnswer]) -> tuple:
+        """
+        Build conjunction info from person-type repeatable answers.
+
+        Returns:
+            Tuple of (conjunction_map, identifier_group_map) where:
+            - conjunction_map: {repeatable_group_id: [conj1, conj2, ...]} from person entries
+            - identifier_group_map: {identifier: repeatable_group_id} for all repeatable questions
+        """
+        conjunction_map = {}  # repeatable_group_id -> [conjunctions]
+        identifier_group_map = {}  # identifier -> repeatable_group_id
+
+        for answer in answers:
+            question = db.query(Question).filter(
+                Question.id == answer.question_id
+            ).first()
+            if not question:
+                continue
+
+            # Map every repeatable question's identifier to its group
+            if question.repeatable and question.repeatable_group_id:
+                ident = question.identifier.lower()
+                identifier_group_map[ident] = question.repeatable_group_id
+                if '.' in question.identifier:
+                    stripped = question.identifier.split('.', 1)[1].lower()
+                    identifier_group_map[stripped] = question.repeatable_group_id
+
+                # Extract conjunctions from person-type answers
+                if question.question_type in ('person', 'person_backup'):
+                    group_id = question.repeatable_group_id
+                    if group_id not in conjunction_map:
+                        try:
+                            parsed = json.loads(answer.answer_value)
+                            if isinstance(parsed, list):
+                                conjunctions = []
+                                for item in parsed:
+                                    decoded = item
+                                    if isinstance(decoded, str):
+                                        try:
+                                            decoded = json.loads(decoded)
+                                        except (json.JSONDecodeError, TypeError):
+                                            pass
+                                    if isinstance(decoded, dict):
+                                        conjunctions.append(decoded.get('conjunction', 'and'))
+                                    else:
+                                        conjunctions.append('and')
+                                conjunction_map[group_id] = conjunctions
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+        return conjunction_map, identifier_group_map
+
+    @staticmethod
     def _is_value_empty(value: str) -> bool:
         """Check if a value should be considered empty."""
         if not value:
@@ -231,7 +289,7 @@ class DocumentService:
         return False
 
     @staticmethod
-    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None) -> str:
+    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
         """
         Merge template content with answer values.
 
@@ -800,11 +858,10 @@ class DocumentService:
                 try:
                     parsed = json.loads(value)
                     if isinstance(parsed, list) and len(parsed) > 0:
-                        # Format as numbered list, handling double-encoded strings
-                        numbered_items = []
-                        for i, item in enumerate(parsed, 1):
+                        # Decode items, handling double-encoded strings
+                        items = []
+                        for item in parsed:
                             decoded = item
-                            # Decode double-encoded JSON strings
                             if isinstance(decoded, str):
                                 try:
                                     obj = json.loads(decoded)
@@ -816,9 +873,40 @@ class DocumentService:
                                 item_str = decoded.get('name', str(decoded))
                             else:
                                 item_str = str(decoded)
-                            numbered_items.append(f"{i}. {item_str}")
-                        result = '\n'.join(numbered_items)
-                        return result
+                            items.append(item_str)
+
+                        # Look up conjunctions from the repeatable group
+                        _conj_map = conjunction_map or {}
+                        _id_grp_map = identifier_group_map or {}
+                        group_id = _id_grp_map.get(identifier)
+                        conjunctions = _conj_map.get(group_id, []) if group_id else []
+
+                        # Join items using conjunctions
+                        if len(items) == 1:
+                            return items[0]
+
+                        result_parts = [items[0]]
+                        for i in range(1, len(items)):
+                            # Conjunction at index i describes how item i connects to previous
+                            conj = conjunctions[i] if i < len(conjunctions) else 'and'
+                            if not conj:
+                                conj = 'and'
+                            if conj.lower() == 'then':
+                                result_parts.append(f', then {items[i]}')
+                            elif i == len(items) - 1 and conj.lower() == 'and':
+                                # Last item with "and": use Oxford comma for 3+ items
+                                if len(items) > 2:
+                                    result_parts.append(f', {conj} {items[i]}')
+                                else:
+                                    result_parts.append(f' {conj} {items[i]}')
+                            elif i == len(items) - 1 and conj.lower() == 'or':
+                                if len(items) > 2:
+                                    result_parts.append(f', {conj} {items[i]}')
+                                else:
+                                    result_parts.append(f' {conj} {items[i]}')
+                            else:
+                                result_parts.append(f', {items[i]}')
+                        return ''.join(result_parts)
                 except (json.JSONDecodeError, TypeError):
                     pass  # Not JSON, return as-is
                 return value
@@ -911,6 +999,9 @@ class DocumentService:
                     if stripped not in raw_answer_map:
                         raw_answer_map[stripped] = answer.answer_value
         
+        # Build conjunction info for repeatable groups
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, answers)
+
         # Get template identifiers
         template_identifiers = template.extract_identifiers()
         
@@ -924,7 +1015,9 @@ class DocumentService:
         merged_content = DocumentService._merge_template(
             template.markdown_content,
             answer_map,
-            raw_answer_map
+            raw_answer_map,
+            conj_map,
+            id_grp_map
         )
         
         return {
@@ -1085,10 +1178,14 @@ class DocumentService:
                 if stripped not in answer_map:
                     answer_map[stripped] = formatted_value
         
+        # Build conjunction info for repeatable groups
+        raw_answers = [answer for answer, question in answers_query]
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, raw_answers)
+
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
-        merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map)
+        merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map, conj_map, id_grp_map)
         
         # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
         identifier_pattern = r'<<([^>]+)>>'
