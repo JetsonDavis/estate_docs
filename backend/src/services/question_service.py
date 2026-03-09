@@ -172,107 +172,117 @@ class QuestionGroupService:
                 detail="Question group not found"
             )
 
-        # Get all existing group names and identifiers for uniqueness check
-        all_groups = db.query(QuestionGroup).all()
-        existing_names = [g.name for g in all_groups]
-        existing_identifiers = [g.identifier for g in all_groups]
+        try:
+            # Get all existing group names and identifiers for uniqueness check
+            all_groups = db.query(QuestionGroup).all()
+            existing_names = [g.name for g in all_groups]
+            existing_identifiers = [g.identifier for g in all_groups]
 
-        # Generate unique name and identifier
-        new_name = generate_copy_name(original_group.name, existing_names)
-        new_identifier = generate_copy_identifier(original_group.identifier, existing_identifiers)
+            # Generate unique name and identifier
+            new_name = generate_copy_name(original_group.name, existing_names)
+            new_identifier = generate_copy_identifier(original_group.identifier, existing_identifiers)
 
-        # Create the new group
-        new_group = QuestionGroup(
-            name=new_name,
-            description=original_group.description,
-            identifier=new_identifier,
-            display_order=original_group.display_order,
-            question_logic=original_group.question_logic,
-            collapsed_items=original_group.collapsed_items,
-            is_active=original_group.is_active
-        )
-
-        db.add(new_group)
-        db.flush()  # Get the new group ID without committing
-
-        # Copy all questions from the original group
-        original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
-
-        # Build a mapping of old identifiers to new identifiers for updating question_logic
-        identifier_mapping = {}
-
-        for original_question in original_questions:
-            # Strip the old namespace prefix and add the new one
-            old_namespace = f"{original_group.identifier}."
-            if original_question.identifier.startswith(old_namespace):
-                base_identifier = original_question.identifier[len(old_namespace):]
-            else:
-                base_identifier = original_question.identifier
-
-            new_identifier = f"{new_group.identifier}.{base_identifier}"
-            identifier_mapping[original_question.identifier] = new_identifier
-
-            # Create the new question - copy directly from original
-            new_question = Question(
-                question_group_id=new_group.id,
-                question_text=original_question.question_text,
-                question_type=original_question.question_type,  # Copy directly
+            # Create the new group
+            new_group = QuestionGroup(
+                name=new_name,
+                description=original_group.description,
                 identifier=new_identifier,
-                repeatable=original_question.repeatable,
-                repeatable_group_id=original_question.repeatable_group_id,
-                display_order=original_question.display_order,
-                is_required=original_question.is_required,
-                help_text=original_question.help_text,
-                options=original_question.options,
-                database_table=original_question.database_table,
-                database_value_column=original_question.database_value_column,
-                database_label_column=original_question.database_label_column,
-                validation_rules=original_question.validation_rules,
-                is_active=original_question.is_active
+                display_order=original_group.display_order,
+                question_logic=original_group.question_logic,
+                collapsed_items=original_group.collapsed_items,
+                is_active=original_group.is_active
             )
 
-            db.add(new_question)
-            db.flush()  # Flush each question immediately to avoid bulk insert issues
+            db.add(new_group)
+            db.flush()  # Get the new group ID without committing
 
-        # Update question_logic to use new identifiers
-        if new_group.question_logic:
-            updated_logic = []
-            for logic_item in new_group.question_logic:
-                updated_item = logic_item.copy()
+            # Copy all questions from the original group
+            original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
 
-                # Update ifIdentifier if it exists
-                if 'ifIdentifier' in updated_item and updated_item['ifIdentifier'] in identifier_mapping:
-                    updated_item['ifIdentifier'] = identifier_mapping[updated_item['ifIdentifier']]
+            # Build a mapping of old identifiers to new identifiers for updating question_logic
+            identifier_mapping = {}
 
-                # Update identifier in nested items recursively
-                def update_nested_identifiers(items):
+            for original_question in original_questions:
+                # Strip the old namespace prefix and add the new one
+                old_namespace = f"{original_group.identifier}."
+                if original_question.identifier.startswith(old_namespace):
+                    base_identifier = original_question.identifier[len(old_namespace):]
+                else:
+                    base_identifier = original_question.identifier
+
+                new_q_identifier = f"{new_group.identifier}.{base_identifier}"
+                identifier_mapping[original_question.identifier] = new_q_identifier
+
+                # Create the new question - copy directly from original
+                new_question = Question(
+                    question_group_id=new_group.id,
+                    question_text=original_question.question_text,
+                    question_type=original_question.question_type,  # Copy directly
+                    identifier=new_q_identifier,
+                    repeatable=original_question.repeatable,
+                    repeatable_group_id=original_question.repeatable_group_id,
+                    display_order=original_question.display_order,
+                    is_required=original_question.is_required,
+                    help_text=original_question.help_text,
+                    options=original_question.options,
+                    database_table=original_question.database_table,
+                    database_value_column=original_question.database_value_column,
+                    database_label_column=original_question.database_label_column,
+                    validation_rules=original_question.validation_rules,
+                    is_active=original_question.is_active
+                )
+
+                db.add(new_question)
+                db.flush()  # Flush each question immediately to avoid bulk insert issues
+
+            # Update question_logic to use new identifiers
+            if new_group.question_logic:
+                def update_nested_identifiers(items, mapping):
                     if not items:
                         return items
                     updated_items = []
                     for item in items:
                         updated_nested = item.copy()
                         if item.get('type') == 'question' and 'identifier' in item:
-                            if item['identifier'] in identifier_mapping:
-                                updated_nested['identifier'] = identifier_mapping[item['identifier']]
+                            if item['identifier'] in mapping:
+                                updated_nested['identifier'] = mapping[item['identifier']]
                         elif item.get('type') == 'conditional':
-                            if 'ifIdentifier' in item and item['ifIdentifier'] in identifier_mapping:
-                                updated_nested['ifIdentifier'] = identifier_mapping[item['ifIdentifier']]
+                            if 'ifIdentifier' in item and item['ifIdentifier'] in mapping:
+                                updated_nested['ifIdentifier'] = mapping[item['ifIdentifier']]
                             if 'items' in item:
-                                updated_nested['items'] = update_nested_identifiers(item['items'])
+                                updated_nested['items'] = update_nested_identifiers(item['items'], mapping)
                         updated_items.append(updated_nested)
                     return updated_items
 
-                if 'items' in updated_item:
-                    updated_item['items'] = update_nested_identifiers(updated_item['items'])
+                updated_logic = []
+                for logic_item in new_group.question_logic:
+                    updated_item = logic_item.copy()
 
-                updated_logic.append(updated_item)
+                    # Update ifIdentifier if it exists
+                    if 'ifIdentifier' in updated_item and updated_item['ifIdentifier'] in identifier_mapping:
+                        updated_item['ifIdentifier'] = identifier_mapping[updated_item['ifIdentifier']]
 
-            new_group.question_logic = updated_logic
+                    if 'items' in updated_item:
+                        updated_item['items'] = update_nested_identifiers(updated_item['items'], identifier_mapping)
 
-        db.commit()
-        db.refresh(new_group)
+                    updated_logic.append(updated_item)
 
-        return new_group
+                new_group.question_logic = updated_logic
+
+            db.commit()
+            db.refresh(new_group)
+
+            return new_group
+
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to copy question group: {str(e)}"
+            )
 
 
 class QuestionService:
@@ -378,10 +388,12 @@ class QuestionService:
         if question_data.identifier is not None:
             # Build namespaced identifier using the question's group
             group = db.query(QuestionGroup).filter(QuestionGroup.id == question.question_group_id).first()
-            if group:
-                question.identifier = f"{group.identifier}.{question_data.identifier}"
-            else:
-                question.identifier = question_data.identifier
+            if not group:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Question group {question.question_group_id} not found; cannot build namespaced identifier"
+                )
+            question.identifier = f"{group.identifier}.{question_data.identifier}"
         if question_data.display_order is not None:
             question.display_order = question_data.display_order
         if question_data.is_required is not None:
