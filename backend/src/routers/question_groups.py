@@ -210,8 +210,6 @@ async def create_question(
     """
     # Ensure question_group_id matches the path parameter
     question_data.question_group_id = group_id
-    import logging
-    logging.getLogger(__name__).warning(f"[DEBUG] CREATE question: identifier={question_data.identifier}, repeatable={question_data.repeatable}, type={question_data.question_type}")
     question = QuestionService.create_question(db, question_data)
     return QuestionResponse.model_validate(question)
 
@@ -240,8 +238,6 @@ async def update_question(
     """
     Update a question (admin only).
     """
-    import logging
-    logging.getLogger(__name__).warning(f"[DEBUG] UPDATE question {question_id}: repeatable={question_data.repeatable}, type={question_data.question_type}, identifier={question_data.identifier}")
     question = QuestionService.update_question(db, question_id, question_data)
     return QuestionResponse.model_validate(question)
 

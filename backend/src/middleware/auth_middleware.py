@@ -1,7 +1,9 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from ..utils.security import verify_token
+from ..database import get_db
+from sqlalchemy.orm import Session
 
 
 security = HTTPBearer()
@@ -64,18 +66,22 @@ async def get_current_user_from_cookie(request: Request) -> Optional[dict]:
     return payload
 
 
-async def require_auth(request: Request) -> dict:
+async def require_auth(request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Dependency that requires authentication via cookie.
     
+    Re-checks the database to ensure the user is still active,
+    so deactivated users are rejected immediately.
+    
     Args:
         request: FastAPI request object
+        db: Database session
         
     Returns:
         Decoded token payload with user information
         
     Raises:
-        HTTPException: If not authenticated
+        HTTPException: If not authenticated or user deactivated
     """
     user = await get_current_user_from_cookie(request)
     
@@ -85,15 +91,25 @@ async def require_auth(request: Request) -> dict:
             detail="Authentication required",
         )
     
+    # Re-check that user is still active in the database
+    from ..models.user import User
+    db_user = db.query(User).filter(User.id == int(user["sub"])).first()
+    if not db_user or not db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account has been deactivated",
+        )
+    
     return user
 
 
-async def require_admin(request: Request) -> dict:
+async def require_admin(request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Dependency that requires admin role.
     
     Args:
         request: FastAPI request object
+        db: Database session
         
     Returns:
         Decoded token payload with user information
@@ -101,7 +117,7 @@ async def require_admin(request: Request) -> dict:
     Raises:
         HTTPException: If not authenticated or not admin
     """
-    user = await require_auth(request)
+    user = await require_auth(request, db)
     
     if user.get("role") != "admin":
         raise HTTPException(

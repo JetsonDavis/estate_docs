@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
     
+    # Cookie security — defaults to True; set COOKIE_SECURE=false in .env for local HTTP dev
+    cookie_secure: bool = True
+    
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:3005"]
 

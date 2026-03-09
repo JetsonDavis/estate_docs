@@ -31,6 +31,11 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username='{self.username}', role='{self.role.value}')>"
@@ -75,3 +80,29 @@ class PasswordResetToken(Base, TimestampMixin):
     def is_valid(self) -> bool:
         """Check if token is valid (not used and not expired)."""
         return not self.is_used and not self.is_expired()
+
+
+class RefreshToken(Base, TimestampMixin):
+    """Server-side refresh token store for revocation and rotation."""
+    
+    __tablename__ = "refresh_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_jti = Column(String(255), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    is_revoked = Column(Boolean, default=False, nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="refresh_tokens")
+    
+    def __repr__(self) -> str:
+        return f"<RefreshToken(id={self.id}, user_id={self.user_id}, is_revoked={self.is_revoked})>"
+    
+    def is_expired(self) -> bool:
+        """Check if token is expired."""
+        return datetime.utcnow() > self.expires_at
+    
+    def is_valid(self) -> bool:
+        """Check if token is valid (not revoked and not expired)."""
+        return not self.is_revoked and not self.is_expired()

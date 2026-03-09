@@ -192,6 +192,15 @@ class SessionService:
                 detail="Current question group not found"
             )
 
+        # Validate question_ids belong to the current group
+        valid_question_ids = {q.id for q in current_group.questions}
+        for answer_data in answers:
+            if answer_data.question_id not in valid_question_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Question {answer_data.question_id} does not belong to current group"
+                )
+
         # Save answers
         for answer_data in answers:
             # Check if answer already exists for this question
@@ -984,6 +993,20 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
+        
+        # Validate question_ids belong to the current group
+        if session.current_group_id:
+            current_group = db.query(QuestionGroup).filter(
+                QuestionGroup.id == session.current_group_id
+            ).first()
+            if current_group:
+                valid_question_ids = {q.id for q in current_group.questions}
+                for answer_data in answers:
+                    if answer_data.question_id not in valid_question_ids:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Question {answer_data.question_id} does not belong to current group"
+                        )
         
         for answer_data in answers:
             existing = db.query(SessionAnswer).filter(

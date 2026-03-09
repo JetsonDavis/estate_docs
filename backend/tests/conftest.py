@@ -4,6 +4,15 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 from src.database import Base, get_db
 from src.main import app
+from src.middleware.rate_limit import auth_rate_limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Reset rate limiter state before each test."""
+    auth_rate_limiter.reset()
+    yield
+    auth_rate_limiter.reset()
 
 # Use SQLite in-memory for tests with StaticPool to share connection
 TEST_DATABASE_URL = "sqlite:///:memory:"

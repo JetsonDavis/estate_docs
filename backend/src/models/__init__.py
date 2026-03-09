@@ -38,7 +38,7 @@ class VersionMixin:
 
 
 # Import models to ensure they're registered with SQLAlchemy
-from .user import User, PasswordResetToken  # noqa: E402, F401
+from .user import User, PasswordResetToken, RefreshToken  # noqa: E402, F401
 from .question import QuestionGroup, Question  # noqa: E402, F401
 from .template import Template  # noqa: E402, F401
 from .session import InputForm, SessionAnswer  # noqa: E402, F401

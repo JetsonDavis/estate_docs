@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
-from ..models.user import User, PasswordResetToken
+from ..models.user import User, PasswordResetToken, RefreshToken
 from ..schemas.auth import LoginRequest, RegisterRequest
 from ..utils.security import (
     hash_password,
@@ -12,6 +12,7 @@ from ..utils.security import (
 )
 from ..utils.email import send_password_reset_email
 from fastapi import HTTPException, status
+import hashlib
 
 
 class AuthService:
@@ -79,9 +80,18 @@ class AuthService:
             "role": user.role.value,
         }
         access_token = create_access_token(token_data)
-        refresh_token = create_refresh_token(token_data)
+        refresh_jwt, jti, expires_at = create_refresh_token(token_data)
         
-        return user, access_token, refresh_token
+        # Store refresh token server-side for revocation
+        stored_token = RefreshToken(
+            user_id=user.id,
+            token_jti=jti,
+            expires_at=expires_at,
+        )
+        db.add(stored_token)
+        db.commit()
+        
+        return user, access_token, refresh_jwt
     
     @staticmethod
     def register(db: Session, register_data: RegisterRequest) -> User:
@@ -156,18 +166,19 @@ class AuthService:
         
         # Generate reset token
         token = generate_password_reset_token()
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         expires_at = datetime.utcnow() + timedelta(hours=24)
         
-        # Save token to database
+        # Save hashed token to database
         reset_token = PasswordResetToken(
             user_id=user.id,
-            token=token,
+            token=token_hash,
             expires_at=expires_at,
         )
         db.add(reset_token)
         db.commit()
         
-        # Send email
+        # Send plaintext token to user via email
         send_password_reset_email(user.email, token)
         
         return True
@@ -188,8 +199,9 @@ class AuthService:
         Raises:
             HTTPException: If token is invalid or expired
         """
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         reset_token = db.query(PasswordResetToken).filter(
-            PasswordResetToken.token == token
+            PasswordResetToken.token == token_hash
         ).first()
         
         if not reset_token:

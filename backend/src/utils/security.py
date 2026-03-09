@@ -64,7 +64,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: dict) -> tuple[str, str, datetime]:
     """
     Create a JWT refresh token with longer expiration.
     
@@ -72,15 +72,23 @@ def create_refresh_token(data: dict) -> str:
         data: Dictionary of claims to encode in the token
         
     Returns:
-        Encoded JWT refresh token string
+        Tuple of (encoded_jwt, jti, expires_at) where jti is the unique
+        token identifier for server-side tracking/revocation
     """
+    import uuid
+    jti = str(uuid.uuid4())
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=settings.jwt_refresh_token_expire_days)
-    to_encode.update({"exp": expire, "iat": datetime.utcnow(), "type": "refresh"})
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "type": "refresh",
+        "jti": jti,
+    })
     encoded_jwt = jwt.encode(
         to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
     )
-    return encoded_jwt
+    return encoded_jwt, jti, expire
 
 
 def verify_token(token: str) -> Optional[dict]:

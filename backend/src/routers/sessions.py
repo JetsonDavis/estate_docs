@@ -1,6 +1,6 @@
 """API endpoints for document session management."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -48,8 +48,8 @@ async def create_session(
 
 @router.get("/", response_model=List[InputFormResponse])
 async def list_sessions(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
 ) -> List[InputFormResponse]:

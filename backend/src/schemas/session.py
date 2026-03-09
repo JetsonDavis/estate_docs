@@ -6,7 +6,7 @@ from datetime import datetime
 class SessionAnswerBase(BaseModel):
     """Base schema for session answers."""
     question_id: int
-    answer_value: str
+    answer_value: str = Field(..., max_length=50_000)
 
 
 class SessionAnswerCreate(SessionAnswerBase):
