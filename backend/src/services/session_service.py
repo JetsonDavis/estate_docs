@@ -16,26 +16,7 @@ from ..schemas.session import (
     QuestionToDisplay,
     SessionQuestionsResponse
 )
-
-
-def generate_copy_name(original_name: str, existing_names: List[str]) -> str:
-    """
-    Generate a macOS-style copy name for client identifiers.
-    - "Original" -> "Original copy"
-    - "Original copy" -> "Original copy copy"
-    - "Original copy copy" -> "Original copy copy copy"
-    """
-    base_name = original_name
-    copy_suffix = " copy"
-
-    # Start with "name copy"
-    new_name = f"{base_name}{copy_suffix}"
-
-    # If that exists, keep adding " copy" until we find a unique name
-    while new_name in existing_names:
-        new_name = f"{new_name}{copy_suffix}"
-
-    return new_name
+from ..utils.naming import generate_copy_name
 
 
 class SessionService:
@@ -420,30 +401,8 @@ class SessionService:
 
         # Allow viewing/editing completed sessions - don't block access
 
-        # Get flow and its groups
-        flow = None
-        flow_name = None
-        ordered_groups = []
-
-        if session.flow_id:
-            flow = db.query(DocumentFlow).filter(
-                DocumentFlow.id == session.flow_id
-            ).first()
-            if flow:
-                flow_name = flow.name
-                # Get groups from flow_logic
-                if flow.flow_logic:
-                    ordered_groups = SessionService._get_groups_from_flow_logic(
-                        db, flow.flow_logic, session_id
-                    )
-
-        # If no flow or no groups from flow_logic, use current_group_id
-        if not ordered_groups and session.current_group_id:
-            group = db.query(QuestionGroup).filter(
-                QuestionGroup.id == session.current_group_id
-            ).first()
-            if group:
-                ordered_groups = [group]
+        # Resolve ordered groups from flow (or fallback)
+        ordered_groups, flow_name = SessionService._get_ordered_groups(db, session)
 
         if not ordered_groups:
             # For sessions with no group (e.g., completed or orphaned),
@@ -607,6 +566,42 @@ class SessionService:
         )
 
     @staticmethod
+    def _get_ordered_groups(
+        db: Session,
+        session: InputForm
+    ) -> Tuple[List[QuestionGroup], Optional[str]]:
+        """
+        Resolve ordered question groups for a session from its flow.
+        Returns (ordered_groups, flow_name).
+
+        Falls back to the session's current_group_id if no flow is set
+        or the flow has no flow_logic.
+        """
+        ordered_groups = []
+        flow_name = None
+
+        if session.flow_id:
+            flow = db.query(DocumentFlow).filter(
+                DocumentFlow.id == session.flow_id
+            ).first()
+            if flow:
+                flow_name = flow.name
+                if flow.flow_logic:
+                    ordered_groups = SessionService._get_groups_from_flow_logic(
+                        db, flow.flow_logic, session.id
+                    )
+
+        # Fallback: use current_group_id as a single-element list
+        if not ordered_groups and session.current_group_id:
+            group = db.query(QuestionGroup).filter(
+                QuestionGroup.id == session.current_group_id
+            ).first()
+            if group:
+                ordered_groups = [group]
+
+        return ordered_groups, flow_name
+
+    @staticmethod
     def _get_groups_from_flow_logic(
         db: Session,
         flow_logic: List[Dict],
@@ -717,9 +712,9 @@ class SessionService:
         import json
         logger = logging.getLogger(__name__)
 
-        logger.info(f"_get_questions_from_logic called for group {group.id} ({group.name})")
-        logger.info(f"question_logic: {group.question_logic}")
-        logger.info(f"existing_answers: {existing_answers}")
+        logger.debug(f"_get_questions_from_logic called for group {group.id} ({group.name})")
+        logger.debug(f"question_logic: {group.question_logic}")
+        logger.debug(f"existing_answers: {existing_answers}")
 
         # Batch-load all active questions for this group in one query
         all_group_questions = db.query(Question).filter(
@@ -730,7 +725,7 @@ class SessionService:
 
         if not group.question_logic:
             # No logic defined - return all questions in order with depth 0
-            logger.info("No question_logic defined, returning all questions")
+            logger.debug("No question_logic defined, returning all questions")
             simple_numbers = {q.id: str(i + 1) for i, q in enumerate(all_group_questions)}
             return [(q, 0, str(i + 1)) for i, q in enumerate(all_group_questions)], {}, simple_numbers, {}
 
@@ -758,7 +753,7 @@ class SessionService:
                     stripped_identifier = question.identifier.split('.', 1)[1]
                     answer_by_identifier[stripped_identifier] = answer
 
-        logger.info(f"answer_by_identifier: {answer_by_identifier}")
+        logger.debug(f"answer_by_identifier: {answer_by_identifier}")
 
         # Pre-scan logic to find question identifiers (repeatable and non-repeatable)
         def find_question_identifiers(items: List[Dict]):
@@ -783,8 +778,8 @@ class SessionService:
                         find_question_identifiers(nested)
 
         find_question_identifiers(group.question_logic)
-        logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
-        logger.info(f"All identifiers: {all_identifier_to_question_id}")
+        logger.debug(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
+        logger.debug(f"All identifiers: {all_identifier_to_question_id}")
 
         # PASS 1: Assign hierarchical numbers to ALL questions in the tree
         # This ensures numbering matches the admin view exactly
@@ -803,7 +798,7 @@ class SessionService:
                         hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
                         question_numbers[question_id] = hierarchical_number
                         last_question_number = hierarchical_number
-                        logger.info(f"Assigned number {hierarchical_number} to question_id {question_id}")
+                        logger.debug(f"Assigned number {hierarchical_number} to question_id {question_id}")
 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     cond = item['conditional']
@@ -814,7 +809,7 @@ class SessionService:
                         assign_hierarchical_numbers(nested_items, nested_prefix)
 
         assign_hierarchical_numbers(group.question_logic)
-        logger.info(f"Question numbers assigned: {question_numbers}")
+        logger.debug(f"Question numbers assigned: {question_numbers}")
 
         def collect_nested_questions(items: List[Dict]) -> list:
             """Collect question objects from nested logic items, including nested conditionals as metadata.
@@ -872,10 +867,10 @@ class SessionService:
             """Process logic items. Returns False if stop flag encountered.
             Uses pre-assigned hierarchical numbers from question_numbers dict."""
             indent = "  " * depth
-            logger.info(f"{indent}Processing {len(items)} logic items at depth {depth}")
+            logger.debug(f"{indent}Processing {len(items)} logic items at depth {depth}")
 
             for idx, item in enumerate(items):
-                logger.info(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
+                logger.debug(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
 
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
@@ -886,7 +881,7 @@ class SessionService:
                         question = question_by_id.get(question_id)
                         # Only add to result if found, active, and not already added
                         if question and question.id not in question_ids_added:
-                            logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
+                            logger.debug(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
                             questions_with_data.append((question, depth, hierarchical_number))
                             question_ids_added.add(question.id)
                         elif not question:
@@ -896,7 +891,7 @@ class SessionService:
 
                     # Check for stop flag
                     if item.get('stopFlow'):
-                        logger.info(f"{indent}  Stop flag encountered")
+                        logger.debug(f"{indent}  Stop flag encountered")
                         return False
 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
@@ -906,8 +901,8 @@ class SessionService:
                     operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
 
                     operator_display = '==' if operator == 'equals' else '!='
-                    logger.info(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
-                    logger.info(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
+                    logger.debug(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
+                    logger.debug(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
 
                     # Collect conditional follow-up questions as metadata
                     # For repeatable questions: used for per-instance rendering
@@ -935,7 +930,7 @@ class SessionService:
                                     'operator': operator,
                                     'questions': followup_questions
                                 })
-                            logger.info(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
+                            logger.debug(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
 
                     # Check if condition is met
                     # Don't show conditional questions if the referenced field is empty
@@ -944,7 +939,7 @@ class SessionService:
 
                         # If the actual value is empty/None, don't show conditional questions
                         if actual_value is None or actual_value == '':
-                            logger.info(f"{indent}  Condition NOT MET (field is empty)")
+                            logger.debug(f"{indent}  Condition NOT MET (field is empty)")
                             continue
 
                         # Evaluate based on operator
@@ -981,7 +976,7 @@ class SessionService:
                             else:  # count_less_than
                                 condition_met = count < threshold
 
-                            logger.info(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
+                            logger.debug(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
                         else:  # 'equals' or default
                             # For repeatable questions, the answer may be a JSON array
                             # Check if any element in the array matches the expected value
@@ -992,18 +987,18 @@ class SessionService:
                                         condition_met = expected_value not in parsed
                                     else:
                                         condition_met = expected_value in parsed
-                                    logger.info(f"{indent}  Array comparison: '{expected_value}' in {parsed} = {condition_met}")
+                                    logger.debug(f"{indent}  Array comparison: '{expected_value}' in {parsed} = {condition_met}")
                                 else:
                                     condition_met = actual_value == expected_value
                             except (json.JSONDecodeError, TypeError, ValueError):
                                 condition_met = actual_value == expected_value
 
                         if condition_met:
-                            logger.info(f"{indent}  Condition MET - processing nested items")
+                            logger.debug(f"{indent}  Condition MET - processing nested items")
                             # Skip adding to flat list if this is a repeatable follow-up
                             # (frontend will render per-instance using conditional_followups)
                             if identifier in repeatable_identifier_to_question_id:
-                                logger.info(f"{indent}  Skipping flat list addition (repeatable follow-up)")
+                                logger.debug(f"{indent}  Skipping flat list addition (repeatable follow-up)")
                             else:
                                 nested_items = cond.get('nestedItems', [])
                                 if nested_items:
@@ -1014,18 +1009,18 @@ class SessionService:
 
                             # Check for end flow flag
                             if cond.get('endFlow'):
-                                logger.info(f"{indent}  End flow flag encountered")
+                                logger.debug(f"{indent}  End flow flag encountered")
                                 return False
                         else:
-                            logger.info(f"{indent}  Condition NOT MET (value mismatch)")
+                            logger.debug(f"{indent}  Condition NOT MET (value mismatch)")
                     else:
-                        logger.info(f"{indent}  Condition NOT MET (identifier not in answers)")
+                        logger.debug(f"{indent}  Condition NOT MET (identifier not in answers)")
 
             return True
 
         process_logic_items(group.question_logic)
-        logger.info(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
-        logger.info(f"Repeatable followups: {repeatable_followups}")
+        logger.debug(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
+        logger.debug(f"Repeatable followups: {repeatable_followups}")
         return questions_with_data, repeatable_followups, question_numbers, all_followups
 
     @staticmethod
@@ -1153,23 +1148,8 @@ class SessionService:
         if answers:
             SessionService.save_answers(db, session_id, user_id, answers)
 
-        # Get ordered groups from flow
-        ordered_groups = []
-        if session.flow_id:
-            flow = db.query(DocumentFlow).filter(
-                DocumentFlow.id == session.flow_id
-            ).first()
-            if flow and flow.flow_logic:
-                ordered_groups = SessionService._get_groups_from_flow_logic(
-                    db, flow.flow_logic, session_id
-                )
-
-        if not ordered_groups and session.current_group_id:
-            group = db.query(QuestionGroup).filter(
-                QuestionGroup.id == session.current_group_id
-            ).first()
-            if group:
-                ordered_groups = [group]
+        # Resolve ordered groups from flow (or fallback)
+        ordered_groups, _ = SessionService._get_ordered_groups(db, session)
 
         # Find current index
         current_index = 0
