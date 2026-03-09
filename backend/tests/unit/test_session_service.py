@@ -125,24 +125,28 @@ class TestSessionService:
 
         assert exc_info.value.status_code == 404
 
-    def test_submit_answers_already_completed(self, db_session: Session, sample_session):
-        """Test submitting answers to completed session."""
+    def test_submit_answers_already_completed(self, db_session: Session, sample_session, sample_questions):
+        """Test submitting answers to completed session is allowed (for editing)."""
         sample_session.is_completed = True
         sample_session.completed_at = datetime.utcnow()
         db_session.commit()
 
-        answers = [SessionAnswerCreate(question_id=1, answer_value="Test")]
+        answers = [SessionAnswerCreate(question_id=sample_questions[0].id, answer_value="Edited")]
 
-        with pytest.raises(HTTPException) as exc_info:
-            SessionService.submit_answers(
-                db_session,
-                sample_session.id,
-                sample_session.user_id,
-                answers
-            )
+        updated_session = SessionService.submit_answers(
+            db_session,
+            sample_session.id,
+            sample_session.user_id,
+            answers
+        )
 
-        assert exc_info.value.status_code == 400
-        assert "already completed" in str(exc_info.value.detail)
+        assert updated_session is not None
+        saved = db_session.query(SessionAnswer).filter(
+            SessionAnswer.session_id == sample_session.id,
+            SessionAnswer.question_id == sample_questions[0].id
+        ).first()
+        assert saved is not None
+        assert saved.answer_value == "Edited"
 
     def test_submit_answers_update_existing(self, db_session: Session, sample_session, sample_questions):
         """Test updating existing answers."""

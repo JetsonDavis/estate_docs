@@ -3,7 +3,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List
 from pydantic import BaseModel
 import io
 
@@ -191,13 +190,10 @@ async def merge_document(
                 "Content-Disposition": f"attachment; filename=merged_document_{request.session_id}_{request.template_id}.docx"
             }
         )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to merge document: {str(e)}"
-        )
+        ) from e

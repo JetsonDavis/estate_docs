@@ -62,27 +62,21 @@ class DocumentService:
                 detail="Session not found"
             )
 
-        # Get all answers for the session
-        answers = db.query(SessionAnswer).filter(
+        # Get all answers with their questions in a single joined query
+        answer_pairs = db.query(SessionAnswer, Question).join(
+            Question, SessionAnswer.question_id == Question.id
+        ).filter(
             SessionAnswer.session_id == request.session_id
         ).all()
 
-        # Build answer map: identifier -> answer_value
-        answer_map = DocumentService._build_answer_map(db, answers)
+        # Build answer map: identifier -> formatted answer_value
+        answer_map = DocumentService._build_answer_map(answer_pairs)
 
         # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
-        raw_answer_map = {}
-        for answer in answers:
-            question = db.query(Question).filter(Question.id == answer.question_id).first()
-            if question:
-                raw_answer_map[question.identifier.lower()] = answer.answer_value
-                if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1].lower()
-                    if stripped not in raw_answer_map:
-                        raw_answer_map[stripped] = answer.answer_value
+        raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
 
         # Build conjunction info for repeatable groups
-        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, answers)
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(answer_pairs)
 
         # Merge template with answers
         merged_content = DocumentService._merge_template(
@@ -113,42 +107,59 @@ class DocumentService:
         return document
 
     @staticmethod
-    def _build_answer_map(db: Session, answers: List[SessionAnswer]) -> dict:
+    def _build_answer_map(answer_question_pairs: List[Tuple[SessionAnswer, Question]]) -> dict:
         """
         Build a map of question identifiers to answer values.
 
         Args:
-            db: Database session
-            answers: List of session answers
+            answer_question_pairs: List of (SessionAnswer, Question) tuples from a joined query
 
         Returns:
             Dictionary mapping identifiers to answer values
         """
         answer_map = {}
 
-        for answer in answers:
-            # Get question to find its identifier
-            question = db.query(Question).filter(
-                Question.id == answer.question_id
-            ).first()
-
-            if question:
-                # Format person answers with conjunctions
-                formatted_value = DocumentService._format_answer_value(
-                    answer.answer_value,
-                    question.question_type
-                )
-                # Store under lowercased full namespaced identifier (e.g., "group.poa_sign_date")
-                answer_map[question.identifier.lower()] = formatted_value
-                # Also store under stripped identifier (e.g., "poa_sign_date")
-                # so templates can reference identifiers without namespace prefix
-                if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1].lower()
-                    # Only set stripped key if not already taken (first writer wins)
-                    if stripped not in answer_map:
-                        answer_map[stripped] = formatted_value
+        for answer, question in answer_question_pairs:
+            # Format person answers with conjunctions
+            formatted_value = DocumentService._format_answer_value(
+                answer.answer_value,
+                question.question_type
+            )
+            # Store under lowercased full namespaced identifier (e.g., "group.poa_sign_date")
+            answer_map[question.identifier.lower()] = formatted_value
+            # Also store under stripped identifier (e.g., "poa_sign_date")
+            # so templates can reference identifiers without namespace prefix
+            if '.' in question.identifier:
+                stripped = question.identifier.split('.', 1)[1].lower()
+                # Only set stripped key if not already taken (first writer wins)
+                if stripped not in answer_map:
+                    answer_map[stripped] = formatted_value
 
         return answer_map
+
+    @staticmethod
+    def _build_raw_answer_map(answer_question_pairs: List[Tuple[SessionAnswer, Question]]) -> dict:
+        """
+        Build a map of question identifiers to raw (unformatted) answer values.
+
+        Raw values preserve JSON arrays so FOREACH loops can parse them.
+
+        Args:
+            answer_question_pairs: List of (SessionAnswer, Question) tuples from a joined query
+
+        Returns:
+            Dictionary mapping identifiers to raw answer values
+        """
+        raw_answer_map = {}
+
+        for answer, question in answer_question_pairs:
+            raw_answer_map[question.identifier.lower()] = answer.answer_value
+            if '.' in question.identifier:
+                stripped = question.identifier.split('.', 1)[1].lower()
+                if stripped not in raw_answer_map:
+                    raw_answer_map[stripped] = answer.answer_value
+
+        return raw_answer_map
 
     @staticmethod
     def _format_answer_value(answer_value: str, question_type: str) -> str:
@@ -224,9 +235,12 @@ class DocumentService:
             return answer_value
 
     @staticmethod
-    def _build_conjunction_info(db: Session, answers: List[SessionAnswer]) -> tuple:
+    def _build_conjunction_info(answer_question_pairs: List[Tuple[SessionAnswer, Question]]) -> tuple:
         """
         Build conjunction info from person-type repeatable answers.
+
+        Args:
+            answer_question_pairs: List of (SessionAnswer, Question) tuples from a joined query
 
         Returns:
             Tuple of (conjunction_map, identifier_group_map) where:
@@ -236,13 +250,7 @@ class DocumentService:
         conjunction_map = {}  # repeatable_group_id -> [conjunctions]
         identifier_group_map = {}  # identifier -> repeatable_group_id
 
-        for answer in answers:
-            question = db.query(Question).filter(
-                Question.id == answer.question_id
-            ).first()
-            if not question:
-                continue
-
+        for answer, question in answer_question_pairs:
             # Map every repeatable question's identifier to its group
             if question.repeatable and question.repeatable_group_id:
                 ident = question.identifier.lower()
@@ -288,106 +296,120 @@ class DocumentService:
             return True
         return False
 
+    # ── Shared word lists for counter tokens ─────────────────────────
+    _CARDINAL_WORDS = [
+        '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
+        'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
+        'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
+        'Nineteen', 'Twenty'
+    ]
+    _ORDINAL_WORDS = [
+        '', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth',
+        'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth',
+        'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
+        'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
+    ]
+
+    # ── Pre-compiled regexes ──────────────────────────────────────────
+    _FOREACH_RE = re.compile(
+        r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}'
+        r'(.*?)'
+        r'\{\{\s*END\s+FOREACH\s*\}\}',
+        re.DOTALL | re.IGNORECASE
+    )
+    _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
+    _END_RE = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
+    _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
+    _COUNTER_RE = re.compile(r'(###|##%|##)(?:\+(\d*))?')
+    _IDENTIFIER_RE = re.compile(r'<<([^>]+)>>')
+    _CONDITIONAL_RE = re.compile(r'\[\[(.*?)\]\]', re.DOTALL)
+
     @staticmethod
-    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
+    def _parse_array(raw: str):
+        """Try to parse a string as a JSON array; return list or None."""
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return None
+
+    @staticmethod
+    def _decode_json_item(item):
+        """Decode a possibly multi-level JSON-encoded item to its innermost dict or str."""
+        decoded = item
+        if isinstance(decoded, str):
+            for _ in range(3):
+                try:
+                    obj = json.loads(decoded)
+                    if isinstance(obj, dict):
+                        return obj
+                    elif isinstance(obj, str):
+                        decoded = obj
+                    else:
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    break
+        return decoded
+
+    @staticmethod
+    def _format_item(item, field: str = None) -> str:
+        """Format a single array element for output.
+
+        Handles double-encoded JSON strings where each element may be
+        a JSON string containing a JSON object (e.g. '{"name":"Alice"}').
         """
-        Merge template content with answer values.
+        decoded = DocumentService._decode_json_item(item)
 
-        Replaces all occurrences of <<identifier>> with corresponding answer values.
+        if isinstance(decoded, dict):
+            if field:
+                return str(decoded.get(field, ''))
+            return decoded.get('name', str(decoded))
+        if isinstance(decoded, str):
+            if field:
+                return decoded if field == 'name' else ''
+            return decoded
+        return str(decoded)
 
-        Supports conditional syntax:
-        - [[ ... ]] - If all identifiers inside are empty, remove the entire section
-        - {{ IF <<identifier>> }} ... {{ END }} - Include content if identifier is NOT empty
-        - {{ IF NOT <<identifier>> }} ... {{ END }} - Include content if identifier IS empty
+    @staticmethod
+    def _counter_to_str(token: str, n: int) -> str:
+        """Convert a counter token (##, ###, ##%) and number to its string representation."""
+        if token == '###':
+            return DocumentService._CARDINAL_WORDS[n] if n < len(DocumentService._CARDINAL_WORDS) else str(n)
+        elif token == '##%':
+            return DocumentService._ORDINAL_WORDS[n] if n < len(DocumentService._ORDINAL_WORDS) else f'{n}th'
+        else:
+            return str(n)
 
-        Supports loop syntax for repeatable groups:
-        - {{ FOREACH identifier }} ... {{ END FOREACH }}
-          Repeats the body once per element in the identifier's array.
-          Inside the body, <<identifier>> resolves to the Nth element,
-          and ## becomes the 1-based loop index.
-          All other array-valued identifiers also resolve to their Nth element
-          (parallel iteration for repeatable group members).
+    @staticmethod
+    def _process_foreach_blocks(text: str, answer_map: dict, raw_map: dict, global_counter: list) -> str:
+        """Process {{ FOREACH identifier }} ... {{ END FOREACH }} blocks.
 
         Args:
-            template_content: Template markdown content
-            answer_map: Dictionary mapping identifiers to answer values
+            text: Template text potentially containing FOREACH blocks
+            answer_map: Formatted identifier -> value map
+            raw_map: Raw (unformatted) identifier -> value map
+            global_counter: Mutable [int] shared counter for ## tokens
 
         Returns:
-            Merged content with identifiers replaced
+            Text with FOREACH blocks expanded
         """
-        merged_content = template_content
-
-        # ── FOREACH loops ──────────────────────────────────────────────
-        # Process {{ FOREACH identifier }} ... {{ END FOREACH }} blocks
-        # Must run before all other directives so the expanded output can
-        # be further processed by IF / conditional / identifier passes.
         import logging
         _logger = logging.getLogger(__name__)
 
-        # Shared counter for ##, ###, ##% tokens across FOREACH and outside
-        _global_counter = [0]
-
-        foreach_pattern = r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}(.*?)\{\{\s*END\s+FOREACH\s*\}\}'
-
-        def _parse_array(raw: str):
-            """Try to parse a string as a JSON array; return list or None."""
-            if not raw:
-                return None
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, list):
-                    return parsed
-            except (json.JSONDecodeError, TypeError):
-                pass
-            return None
-
-        def _format_item(item, field: str = None) -> str:
-            """Format a single array element for output.
-            
-            Handles double-encoded JSON strings where each element may be
-            a JSON string containing a JSON object (e.g. '{"name":"Alice"}').
-            """
-            # Normalise: if item is a string, try to decode it (possibly multiple levels)
-            decoded = item
-            if isinstance(decoded, str):
-                for _ in range(3):  # up to 3 levels of encoding
-                    try:
-                        obj = json.loads(decoded)
-                        if isinstance(obj, dict):
-                            decoded = obj
-                            break
-                        elif isinstance(obj, str):
-                            decoded = obj  # try another level
-                        else:
-                            break
-                    except (json.JSONDecodeError, TypeError):
-                        break
-
-            if isinstance(decoded, dict):
-                if field:
-                    return str(decoded.get(field, ''))
-                return decoded.get('name', str(decoded))
-            if isinstance(decoded, str):
-                if field:
-                    return decoded if field == 'name' else ''
-                return decoded
-            return str(decoded)
-
-        # For FOREACH loops, prefer raw (unformatted) values so JSON arrays are still parseable
-        _raw_map = raw_answer_map if raw_answer_map else answer_map
-
-        def process_foreach_block(match):
-            counter_start_str = match.group(1)  # optional (N) start number
+        def _process_block(match):
+            counter_start_str = match.group(1)
             loop_identifier = match.group(2).lower()
             body_template = match.group(3)
 
-            # Set global counter to start - 1 so first iteration becomes start
             if counter_start_str:
-                _global_counter[0] = int(counter_start_str) - 1
+                global_counter[0] = int(counter_start_str) - 1
 
-            # Get the array for the loop identifier — use raw values so person arrays aren't pre-formatted
-            raw_value = _raw_map.get(loop_identifier, '') or answer_map.get(loop_identifier, '')
-            loop_array = _parse_array(raw_value)
+            raw_value = raw_map.get(loop_identifier, '') or answer_map.get(loop_identifier, '')
+            loop_array = DocumentService._parse_array(raw_value)
 
             if not loop_array or len(loop_array) == 0:
                 _logger.info(f"FOREACH: identifier '{loop_identifier}' has no array data, removing block")
@@ -396,414 +418,303 @@ class DocumentService:
             instance_count = len(loop_array)
             _logger.info(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
 
-            # Find all identifiers referenced in the body
-            # Keep original case for replacement, use lowercased for lookups
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
-            # Pre-parse arrays for all referenced identifiers (use raw values for JSON arrays)
             identifier_arrays = {}
             for ident in body_identifiers_raw:
-                # Handle dot notation (e.g., person_ident.field)
                 base_ident = ident.split('.', 1)[0].lower() if '.' in ident else ident.lower()
                 if base_ident not in identifier_arrays:
-                    raw = _raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
-                    arr = _parse_array(raw)
-                    identifier_arrays[base_ident] = arr
+                    raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
+                    identifier_arrays[base_ident] = DocumentService._parse_array(raw)
 
-            # Helper: extract conjunction from a (possibly double-encoded) person item
-            def _get_conjunction(item) -> str:
-                decoded = item
-                if isinstance(decoded, str):
-                    for _ in range(3):
-                        try:
-                            obj = json.loads(decoded)
-                            if isinstance(obj, dict):
-                                decoded = obj
-                                break
-                            elif isinstance(obj, str):
-                                decoded = obj
-                            else:
-                                break
-                        except (json.JSONDecodeError, TypeError):
-                            break
-                if isinstance(decoded, dict):
-                    return decoded.get('conjunction', '')
-                return ''
-
-            # Build output for each instance
             output_parts = []
             for idx in range(instance_count):
                 instance_body = body_template
+                global_counter[0] += 1
 
-                # Replace loop index tokens (order matters: ### and ##% before ##)
-                _cardinal_words = [
-                    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
-                    'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
-                    'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
-                    'Nineteen', 'Twenty'
-                ]
-                _ordinal_words = [
-                    '', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth',
-                    'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth',
-                    'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
-                    'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
-                ]
-                _global_counter[0] += 1
-
-                def _foreach_counter_replace(m):
-                    token = m.group(1)  # ###, ##%, or ##
-                    plus_str = m.group(2)  # e.g. '', '1', '2', None
+                def _foreach_counter_replace(m, _gc=global_counter):
+                    token = m.group(1)
+                    plus_str = m.group(2)
                     inc = int(plus_str) if plus_str else 0
-                    n = _global_counter[0] + inc
-                    if token == '###':
-                        return _cardinal_words[n] if n < len(_cardinal_words) else str(n)
-                    elif token == '##%':
-                        return _ordinal_words[n] if n < len(_ordinal_words) else f'{n}th'
-                    else:
-                        return str(n)
+                    return DocumentService._counter_to_str(token, _gc[0] + inc)
 
-                # Match ###, ##%, or ## optionally followed by +N (longest token first)
-                instance_body = re.sub(r'(###|##%|##)(?:\+(\d*))?', _foreach_counter_replace, instance_body)
+                instance_body = DocumentService._COUNTER_RE.sub(_foreach_counter_replace, instance_body)
 
-                # Replace each <<identifier>> with the Nth element
                 for orig_ident in body_identifiers_raw:
                     ident = orig_ident.lower()
-                    has_dot = '.' in ident
-                    if has_dot:
+                    if '.' in ident:
                         base_ident, field_name = ident.split('.', 1)
                     else:
-                        base_ident = ident
-                        field_name = None
+                        base_ident, field_name = ident, None
 
                     arr = identifier_arrays.get(base_ident)
                     if arr is not None and idx < len(arr):
-                        replacement = _format_item(arr[idx], field_name)
+                        replacement = DocumentService._format_item(arr[idx], field_name)
                     elif arr is not None:
-                        replacement = ''  # Index out of range
+                        replacement = ''
                     else:
-                        # Not an array — use scalar value as-is
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
                         replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
 
-                    # Replace using original case from template
                     instance_body = instance_body.replace(f'<<{orig_ident}>>', replacement)
 
                 output_parts.append(instance_body)
 
             return ''.join(output_parts)
 
-        # Process FOREACH blocks (may be nested in future, but for now single-level)
-        merged_content = re.sub(foreach_pattern, process_foreach_block, merged_content, flags=re.DOTALL | re.IGNORECASE)
+        return DocumentService._FOREACH_RE.sub(_process_block, text)
 
-        # ── Conditional / IF directives ────────────────────────────────
-        # Uses a recursive parser instead of regex to support nested IF blocks.
-        # Supported forms:
-        #   {{ IF <<ident>> }}              — include if ident has a value
-        #   {{ IF NOT <<ident>> }}          — include if ident is empty
-        #   {{ IF <<ident>> = "value" }}    — include if ident equals value
-        #   {{ IF <<ident>> != "value" }}   — include if ident does not equal value
-        #   {{ IF <<ident>> = EMPTY }}      — include if ident is empty (same as IF NOT)
-        #   {{ IF <<ident>> = NULL }}       — include if ident is empty (same as IF NOT)
-        #   {{ IF <<ident>> != EMPTY }}     — include if ident has a value (same as IF)
-        #   {{ IF <<ident>> != NULL }}      — include if ident has a value (same as IF)
-        # Optional {{ ELSE }} between {{ IF ... }} and {{ END }}.
-        # All closed by {{ END }}. Nesting is fully supported.
+    @staticmethod
+    def _resolve_identifier_value(identifier: str, answer_map: dict, raw_answer_map: dict) -> str:
+        """Resolve an identifier to its value, supporting dot notation.
 
-        # Regex for any {{ IF ... }} opening tag (captures the full condition text)
-        _if_open_re = re.compile(
-            r'\{\{\s*IF\s+(.*?)\s*\}\}',
-            re.IGNORECASE
-        )
-        _end_re = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
-        _else_re = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
+        For simple identifiers, looks up in answer_map.
+        For dot notation (e.g., 'person.relationship'), parses the
+        person JSON from raw_answer_map and extracts the field.
+        """
+        direct = answer_map.get(identifier, '')
+        if direct and not DocumentService._is_value_empty(direct):
+            return direct
 
-        def _resolve_identifier_value(identifier: str) -> str:
-            """Resolve an identifier to its value, supporting dot notation.
-
-            For simple identifiers, looks up in answer_map.
-            For dot notation (e.g., 'person.relationship'), parses the
-            person JSON from raw_answer_map and extracts the field.
-            """
-            # First try direct lookup
-            direct = answer_map.get(identifier, '')
-            if direct and not DocumentService._is_value_empty(direct):
-                return direct
-
-            # Try dot notation: base_ident.field
-            if '.' in identifier:
-                base, field = identifier.split('.', 1)
-                raw_json = (raw_answer_map or {}).get(base, '') or ''
-                if raw_json:
-                    try:
-                        parsed = json.loads(raw_json)
-                        if isinstance(parsed, dict):
-                            val = parsed.get(field)
+        if '.' in identifier:
+            base, field = identifier.split('.', 1)
+            raw_json = (raw_answer_map or {}).get(base, '') or ''
+            if raw_json:
+                try:
+                    parsed = json.loads(raw_json)
+                    if isinstance(parsed, dict):
+                        val = parsed.get(field)
+                        if val is not None:
+                            return str(val)
+                    elif isinstance(parsed, list) and len(parsed) > 0:
+                        first = parsed[0]
+                        if isinstance(first, str):
+                            try:
+                                first = json.loads(first)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        if isinstance(first, dict):
+                            val = first.get(field)
                             if val is not None:
                                 return str(val)
-                        elif isinstance(parsed, list) and len(parsed) > 0:
-                            # For arrays, extract field from first element
-                            first = parsed[0]
-                            if isinstance(first, str):
-                                try:
-                                    first = json.loads(first)
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
-                            if isinstance(first, dict):
-                                val = first.get(field)
-                                if val is not None:
-                                    return str(val)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            return ''
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return ''
 
-        def _evaluate_if_condition(condition_text: str) -> bool:
-            """Evaluate the condition inside {{ IF <condition> }}.
+    @staticmethod
+    def _evaluate_if_condition(condition_text: str, answer_map: dict, raw_answer_map: dict) -> bool:
+        """Evaluate the condition inside {{ IF <condition> }}.
 
-            Returns True if the content should be included.
-            """
-            cond = condition_text.strip()
+        Returns True if the content should be included.
+        """
+        cond = condition_text.strip()
 
-            # --- IF NOT <<ident>> ---
-            not_match = re.match(
-                r'NOT\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
-            )
-            if not_match:
-                identifier = not_match.group(1).lower()
-                value = _resolve_identifier_value(identifier)
-                return DocumentService._is_value_empty(value)
+        not_match = re.match(
+            r'NOT\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
+        )
+        if not_match:
+            identifier = not_match.group(1).lower()
+            value = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
+            return DocumentService._is_value_empty(value)
 
-            # --- IF <<ident>> != "value" or EMPTY/NULL ---
-            _q = r'["\'“”‘’«»]'  # any quote character
-            neq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'“”‘’«»]*)' + _q + r'?|(EMPTY|NULL))',
-                cond, re.IGNORECASE
-            )
-            if neq_match:
-                identifier = neq_match.group(1).lower()
-                keyword = neq_match.group(3)
-                actual = _resolve_identifier_value(identifier)
-                if keyword and keyword.upper() in ('EMPTY', 'NULL'):
-                    # != EMPTY / != NULL means "has a value"
-                    return not DocumentService._is_value_empty(actual)
-                expected = neq_match.group(2) or ''
-                return actual.lower() != expected.lower()
+        _q = r'["\'\u201c\u201d\u2018\u2019\u00ab\u00bb]'
+        neq_match = re.match(
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL))',
+            cond, re.IGNORECASE
+        )
+        if neq_match:
+            identifier = neq_match.group(1).lower()
+            keyword = neq_match.group(3)
+            actual = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
+            if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+                return not DocumentService._is_value_empty(actual)
+            expected = neq_match.group(2) or ''
+            return actual.lower() != expected.lower()
 
-            # --- IF <<ident>> = "value" or EMPTY/NULL ---
-            eq_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:' + _q + r'([^"\'“”‘’«»]*)' + _q + r'?|(EMPTY|NULL))',
-                cond, re.IGNORECASE
-            )
-            if eq_match:
-                identifier = eq_match.group(1).lower()
-                keyword = eq_match.group(3)
-                actual = _resolve_identifier_value(identifier)
-                if keyword and keyword.upper() in ('EMPTY', 'NULL'):
-                    # = EMPTY / = NULL means "is empty"
-                    return DocumentService._is_value_empty(actual)
-                expected = eq_match.group(2) or ''
-                return actual.lower() == expected.lower()
+        eq_match = re.match(
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL))',
+            cond, re.IGNORECASE
+        )
+        if eq_match:
+            identifier = eq_match.group(1).lower()
+            keyword = eq_match.group(3)
+            actual = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
+            if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+                return DocumentService._is_value_empty(actual)
+            expected = eq_match.group(2) or ''
+            return actual.lower() == expected.lower()
 
-            # --- IF <<ident>> (has value) ---
-            plain_match = re.match(
-                r'(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
-            )
-            if plain_match:
-                identifier = plain_match.group(1).lower()
-                value = _resolve_identifier_value(identifier)
-                return not DocumentService._is_value_empty(value)
+        plain_match = re.match(
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
+        )
+        if plain_match:
+            identifier = plain_match.group(1).lower()
+            value = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
+            return not DocumentService._is_value_empty(value)
 
-            # Unknown form — leave content in place
-            return True
+        return True
 
-        def _process_if_blocks(text: str) -> str:
-            """Recursively process nested {{ IF }} ... {{ ELSE }} ... {{ END }} blocks.
+    @staticmethod
+    def _process_if_blocks(text: str, answer_map: dict, raw_answer_map: dict) -> str:
+        """Recursively process nested {{ IF }} ... {{ ELSE }} ... {{ END }} blocks.
 
-            Scans *text* left-to-right.  When an {{ IF ... }} tag is found the
-            parser counts nesting depth to locate the matching {{ END }} and an
-            optional {{ ELSE }} at the same depth.  The if-body (and else-body,
-            if present) are recursively processed, then the condition decides
-            which branch to keep.
-            """
-            result = []
-            pos = 0
+        Scans *text* left-to-right.  When an {{ IF ... }} tag is found the
+        parser counts nesting depth to locate the matching {{ END }} and an
+        optional {{ ELSE }} at the same depth.  The if-body (and else-body,
+        if present) are recursively processed, then the condition decides
+        which branch to keep.
+        """
+        _if_open_re = DocumentService._IF_OPEN_RE
+        _end_re = DocumentService._END_RE
+        _else_re = DocumentService._ELSE_RE
 
-            while pos < len(text):
-                # Find the next {{ IF ... }} tag
-                open_match = _if_open_re.search(text, pos)
-                if not open_match:
-                    # No more IF tags — append remainder
-                    result.append(text[pos:])
+        result = []
+        pos = 0
+
+        while pos < len(text):
+            open_match = _if_open_re.search(text, pos)
+            if not open_match:
+                result.append(text[pos:])
+                break
+
+            result.append(text[pos:open_match.start()])
+
+            condition_text = open_match.group(1)
+            body_start = open_match.end()
+
+            depth = 1
+            scan = body_start
+            body_end = body_start
+            else_start = None
+            else_end = None
+            while depth > 0 and scan < len(text):
+                next_open = _if_open_re.search(text, scan)
+                next_end = _end_re.search(text, scan)
+                next_else = _else_re.search(text, scan)
+
+                if next_end is None:
+                    scan = len(text)
                     break
 
-                # Append text before this IF tag
-                result.append(text[pos:open_match.start()])
+                candidates = [('end', next_end)]
+                if next_open:
+                    candidates.append(('open', next_open))
+                if next_else:
+                    candidates.append(('else', next_else))
+                candidates.sort(key=lambda c: c[1].start())
 
-                condition_text = open_match.group(1)
-                body_start = open_match.end()
+                tag_type, tag_match = candidates[0]
 
-                # Walk forward to find the matching {{ END }}, respecting nesting.
-                # Also track the position of a {{ ELSE }} at depth 1 (top level
-                # of this IF block) so we can split into if-body / else-body.
-                depth = 1
-                scan = body_start
-                body_end = body_start  # default; overwritten when matching END found
-                else_start = None      # start of {{ ELSE }} tag text (if found)
-                else_end = None        # end of {{ ELSE }} tag text (if found)
-                while depth > 0 and scan < len(text):
-                    next_open = _if_open_re.search(text, scan)
-                    next_end = _end_re.search(text, scan)
-                    next_else = _else_re.search(text, scan)
-
-                    if next_end is None:
-                        # No matching END — treat rest of text as body (malformed)
-                        scan = len(text)
-                        break
-
-                    # Collect all candidate tags and pick the earliest one
-                    candidates = [('end', next_end)]
-                    if next_open:
-                        candidates.append(('open', next_open))
-                    if next_else:
-                        candidates.append(('else', next_else))
-                    candidates.sort(key=lambda c: c[1].start())
-
-                    tag_type, tag_match = candidates[0]
-
-                    if tag_type == 'open':
-                        depth += 1
-                        scan = tag_match.end()
-                    elif tag_type == 'else' and depth == 1:
-                        # {{ ELSE }} at the current IF's depth — record position
-                        else_start = tag_match.start()
-                        else_end = tag_match.end()
-                        scan = tag_match.end()
-                    elif tag_type == 'else':
-                        # {{ ELSE }} inside a nested IF — skip it
-                        scan = tag_match.end()
-                    else:  # 'end'
-                        depth -= 1
-                        if depth == 0:
-                            body_end = tag_match.start()
-                            scan = tag_match.end()
-                        else:
-                            scan = tag_match.end()
-
-                if depth != 0:
-                    # Malformed template — no matching END; include as-is
-                    result.append(text[open_match.start():])
-                    break
-
-                # Split into if-body and optional else-body
-                if else_start is not None:
-                    if_body = text[body_start:else_start]
-                    else_body = text[else_end:body_end]
+                if tag_type == 'open':
+                    depth += 1
+                    scan = tag_match.end()
+                elif tag_type == 'else' and depth == 1:
+                    else_start = tag_match.start()
+                    else_end = tag_match.end()
+                    scan = tag_match.end()
+                elif tag_type == 'else':
+                    scan = tag_match.end()
                 else:
-                    if_body = text[body_start:body_end]
-                    else_body = None
+                    depth -= 1
+                    if depth == 0:
+                        body_end = tag_match.start()
+                        scan = tag_match.end()
+                    else:
+                        scan = tag_match.end()
 
-                # Evaluate the condition and pick the correct branch
-                if _evaluate_if_condition(condition_text):
-                    result.append(_process_if_blocks(if_body))
-                elif else_body is not None:
-                    result.append(_process_if_blocks(else_body))
-                # else: no ELSE branch and condition is false — discard
+            if depth != 0:
+                result.append(text[open_match.start():])
+                break
 
-                pos = scan
+            if else_start is not None:
+                if_body = text[body_start:else_start]
+                else_body = text[else_end:body_end]
+            else:
+                if_body = text[body_start:body_end]
+                else_body = None
 
-            return ''.join(result)
+            if DocumentService._evaluate_if_condition(condition_text, answer_map, raw_answer_map):
+                result.append(DocumentService._process_if_blocks(if_body, answer_map, raw_answer_map))
+            elif else_body is not None:
+                result.append(DocumentService._process_if_blocks(else_body, answer_map, raw_answer_map))
 
-        merged_content = _process_if_blocks(merged_content)
+            pos = scan
 
-        # Process conditional sections [[ ... ]]
-        # If all identifiers inside are empty, remove the entire section
-        # After evaluation, the brackets are removed from the output
-        logger = _logger
+        return ''.join(result)
 
-        conditional_pattern = r'\[\[(.*?)\]\]'
+    @staticmethod
+    def _process_conditional_sections(text: str, answer_map: dict) -> str:
+        """Process [[ ... ]] conditional sections.
 
-        # Debug: Check if pattern matches anything
-        matches = re.findall(conditional_pattern, merged_content, flags=re.DOTALL)
-        logger.info(f"Found {len(matches)} conditional sections: {matches}")
+        If any identifier inside is empty, remove the entire section.
+        Otherwise, replace identifiers and remove the brackets.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
 
-        def process_conditional_section(match):
+        def _process_section(match):
             section_content = match.group(1)
-            logger.info(f"Processing conditional section: '{section_content}'")
 
-            # Find all identifiers in this section
-            identifier_pattern = r'<<([^>]+)>>'
-            identifiers_in_section = re.findall(identifier_pattern, section_content)
-            logger.info(f"Identifiers in section: {identifiers_in_section}")
+            identifiers_in_section = re.findall(r'<<([^>]+)>>', section_content)
 
             if not identifiers_in_section:
-                # No identifiers in section, keep the content (without brackets)
-                logger.info(f"No identifiers, keeping content: '{section_content}'")
                 return section_content
 
-            # Check if ANY identifier in this section is empty/non-existent
-            # If any identifier is empty, remove the entire section
             for identifier in identifiers_in_section:
                 value = answer_map.get(identifier.lower(), '')
-                logger.info(f"Checking identifier '{identifier}': value='{value}', is_empty={DocumentService._is_value_empty(value)}")
                 if DocumentService._is_value_empty(value):
-                    # At least one identifier is empty - remove the entire section
-                    logger.info(f"Identifier '{identifier}' is empty, removing entire section")
+                    logger.info(f"Identifier '{identifier}' is empty, removing conditional section")
                     return ''
 
-            # All identifiers have values - keep the section content (without brackets)
-            # and replace the identifiers with their values
             result = section_content
             for identifier in identifiers_in_section:
                 value = answer_map.get(identifier.lower(), '')
                 result = result.replace(f'<<{identifier}>>', value)
-            logger.info(f"All identifiers have values, result: '{result}'")
             return result
 
-        merged_content = re.sub(conditional_pattern, process_conditional_section, merged_content, flags=re.DOTALL)
+        return DocumentService._CONDITIONAL_RE.sub(_process_section, text)
 
-        # Replace ##, ###, ##% tokens outside FOREACH with a running counter
-        _cardinal_words = [
-            '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
-            'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
-            'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen',
-            'Nineteen', 'Twenty'
-        ]
-        _ordinal_words = [
-            '', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth',
-            'Seventh', 'Eighth', 'Ninth', 'Tenth', 'Eleventh', 'Twelfth',
-            'Thirteenth', 'Fourteenth', 'Fifteenth', 'Sixteenth',
-            'Seventeenth', 'Eighteenth', 'Nineteenth', 'Twentieth'
-        ]
-        def _replace_counter_token(match):
-            token = match.group(1)  # ###, ##%, or ##
-            plus_str = match.group(2)  # e.g. '', '1', '2', None
+    @staticmethod
+    def _replace_counter_tokens(text: str, global_counter: list) -> str:
+        """Replace ##, ###, ##% tokens with running counter values.
+
+        Args:
+            text: Text containing counter tokens
+            global_counter: Mutable [int] shared counter state
+
+        Returns:
+            Text with counter tokens replaced
+        """
+        def _replacer(match):
+            token = match.group(1)
+            plus_str = match.group(2)
             inc = int(plus_str) if plus_str else 1
-            _global_counter[0] += inc
-            num = _global_counter[0]
-            if token == '###':
-                return _cardinal_words[num] if num < len(_cardinal_words) else str(num)
-            elif token == '##%':
-                return _ordinal_words[num] if num < len(_ordinal_words) else f'{num}th'
-            else:  # ##
-                return str(num)
+            global_counter[0] += inc
+            return DocumentService._counter_to_str(token, global_counter[0])
 
-        # Match ###, ##%, or ## optionally followed by +N (longest token first)
-        merged_content = re.sub(r'(###|##%|##)(?:\+(\d*))?', _replace_counter_token, merged_content)
+        return DocumentService._COUNTER_RE.sub(_replacer, text)
 
-        # Then, replace all identifiers with their values
-        pattern = r'<<([^>]+)>>'
+    @staticmethod
+    def _replace_identifiers(text: str, answer_map: dict, raw_answer_map: dict,
+                             conjunction_map: dict, identifier_group_map: dict) -> str:
+        """Replace all <<identifier>> tokens with their values.
 
-        def replace_identifier(match):
+        Handles dot notation for person fields, JSON arrays with conjunction
+        joining, and scalar values.
+        """
+        _conj_map = conjunction_map or {}
+        _id_grp_map = identifier_group_map or {}
+        _raw_map = raw_answer_map or {}
+
+        def _replace(match):
             identifier = match.group(1).lower()
 
-            # Check if this is a person field with dot notation (e.g., person.field)
             if '.' in identifier:
                 parts = identifier.split('.', 1)
                 person_identifier = parts[0]
                 field_name = parts[1]
 
-                # First try the raw answer (before formatting) so we can parse JSON
-                raw_json = (raw_answer_map or {}).get(person_identifier, '') or ''
-                # Fall back to the formatted answer_map value
+                raw_json = _raw_map.get(person_identifier, '') or ''
                 formatted = answer_map.get(person_identifier, '')
 
                 if raw_json:
@@ -815,13 +726,8 @@ class DocumentService:
                             if field_value is not None:
                                 return str(field_value)
                         elif isinstance(person_data, list) and len(person_data) > 0:
-                            # Array of person objects (possibly double-encoded)
-                            # If asking for 'name' on an array, return the
-                            # fully formatted name string with conjunctions
                             if field_name == 'name':
                                 return formatted if formatted else ''
-
-                            # For other fields, decode and extract from first person
                             first = person_data[0]
                             if isinstance(first, str):
                                 try:
@@ -835,7 +741,6 @@ class DocumentService:
                     except (json.JSONDecodeError, TypeError):
                         pass
 
-                # If raw parsing failed, try the formatted value
                 if formatted:
                     try:
                         person_data = json.loads(formatted)
@@ -844,62 +749,39 @@ class DocumentService:
                             if field_value is not None:
                                 return str(field_value)
                     except (json.JSONDecodeError, TypeError):
-                        # Already formatted text — if asking for 'name', return it
                         if field_name == 'name':
                             return formatted
 
-                # Person field not found - return empty string
                 return ''
 
             value = answer_map.get(identifier, '')
-            # Return answer value if available and not empty, otherwise return empty string
             if not DocumentService._is_value_empty(value):
-                # Check if value is a JSON array (repeatable question)
                 try:
                     parsed = json.loads(value)
                     if isinstance(parsed, list) and len(parsed) > 0:
-                        # Decode items, handling double-encoded strings
                         items = []
                         for item in parsed:
-                            decoded = item
-                            if isinstance(decoded, str):
-                                try:
-                                    obj = json.loads(decoded)
-                                    if isinstance(obj, dict):
-                                        decoded = obj
-                                except (json.JSONDecodeError, TypeError):
-                                    pass
+                            decoded = DocumentService._decode_json_item(item)
                             if isinstance(decoded, dict):
                                 item_str = decoded.get('name', str(decoded))
                             else:
                                 item_str = str(decoded)
                             items.append(item_str)
 
-                        # Look up conjunctions from the repeatable group
-                        _conj_map = conjunction_map or {}
-                        _id_grp_map = identifier_group_map or {}
                         group_id = _id_grp_map.get(identifier)
                         conjunctions = _conj_map.get(group_id, []) if group_id else []
 
-                        # Join items using conjunctions
                         if len(items) == 1:
                             return items[0]
 
                         result_parts = [items[0]]
                         for i in range(1, len(items)):
-                            # Conjunction at index i describes how item i connects to previous
                             conj = conjunctions[i] if i < len(conjunctions) else 'and'
                             if not conj:
                                 conj = 'and'
                             if conj.lower() == 'then':
                                 result_parts.append(f', then {items[i]}')
-                            elif i == len(items) - 1 and conj.lower() == 'and':
-                                # Last item with "and": use Oxford comma for 3+ items
-                                if len(items) > 2:
-                                    result_parts.append(f', {conj} {items[i]}')
-                                else:
-                                    result_parts.append(f' {conj} {items[i]}')
-                            elif i == len(items) - 1 and conj.lower() == 'or':
+                            elif i == len(items) - 1 and conj.lower() in ('and', 'or'):
                                 if len(items) > 2:
                                     result_parts.append(f', {conj} {items[i]}')
                                 else:
@@ -908,35 +790,60 @@ class DocumentService:
                                 result_parts.append(f', {items[i]}')
                         return ''.join(result_parts)
                 except (json.JSONDecodeError, TypeError):
-                    pass  # Not JSON, return as-is
+                    pass
                 return value
             return ''
-        
-        merged_content = re.sub(pattern, replace_identifier, merged_content)
-        
-        # Finally, replace ## with auto-incrementing counter and #^. with current counter (no increment)
-        # Use a simple pattern - ## anywhere in the text
-        counter = [1]  # Use list to allow modification in nested function
-        
-        def replace_counter(match):
-            current = counter[0]
-            counter[0] += 1
-            return str(current)
-        
-        def replace_counter_peek(match):
-            # Return current counter value without incrementing
-            return str(counter[0])
-        
-        # First replace #^. with current counter (no increment) - must be done before ##
-        merged_content = re.sub(r'#\^\.', replace_counter_peek, merged_content)
-        
-        # Then replace ## with auto-incrementing counter
-        merged_content = re.sub(r'##', replace_counter, merged_content)
-        
-        # Clean up any double spaces or extra whitespace left behind
-        merged_content = re.sub(r'  +', ' ', merged_content)
-        
-        return merged_content
+
+        return DocumentService._IDENTIFIER_RE.sub(_replace, text)
+
+    @staticmethod
+    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
+        """
+        Merge template content with answer values.
+
+        Orchestrates five passes in order:
+        1. FOREACH loops — expand repeatable blocks
+        2. IF / ELSE conditionals — evaluate nested conditional blocks
+        3. [[ ... ]] conditional sections — remove sections with empty identifiers
+        4. Counter tokens (##, ###, ##%) — replace with running numbers
+        5. Identifier replacement — replace remaining <<identifier>> tokens
+
+        Args:
+            template_content: Template markdown content
+            answer_map: Dictionary mapping identifiers to formatted answer values
+            raw_answer_map: Dictionary mapping identifiers to raw (unformatted) values
+            conjunction_map: {repeatable_group_id: [conjunctions]} for joining arrays
+            identifier_group_map: {identifier: repeatable_group_id} for repeatable questions
+
+        Returns:
+            Merged content with identifiers replaced
+        """
+        raw_map = raw_answer_map if raw_answer_map else answer_map
+        global_counter = [0]
+
+        # Pass 1: FOREACH loops
+        merged = DocumentService._process_foreach_blocks(
+            template_content, answer_map, raw_map, global_counter
+        )
+
+        # Pass 2: IF / ELSE conditionals
+        merged = DocumentService._process_if_blocks(merged, answer_map, raw_answer_map)
+
+        # Pass 3: [[ ... ]] conditional sections
+        merged = DocumentService._process_conditional_sections(merged, answer_map)
+
+        # Pass 4: Counter tokens
+        merged = DocumentService._replace_counter_tokens(merged, global_counter)
+
+        # Pass 5: Identifier replacement
+        merged = DocumentService._replace_identifiers(
+            merged, answer_map, raw_answer_map, conjunction_map, identifier_group_map
+        )
+
+        # Clean up double spaces
+        merged = re.sub(r'  +', ' ', merged)
+
+        return merged
     
     @staticmethod
     def preview_document(
@@ -981,26 +888,20 @@ class DocumentService:
                 detail="Session not found"
             )
         
-        # Get answers
-        answers = db.query(SessionAnswer).filter(
+        # Get all answers with their questions in a single joined query
+        answer_pairs = db.query(SessionAnswer, Question).join(
+            Question, SessionAnswer.question_id == Question.id
+        ).filter(
             SessionAnswer.session_id == session_id
         ).all()
         
-        answer_map = DocumentService._build_answer_map(db, answers)
+        answer_map = DocumentService._build_answer_map(answer_pairs)
 
         # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
-        raw_answer_map = {}
-        for answer in answers:
-            question = db.query(Question).filter(Question.id == answer.question_id).first()
-            if question:
-                raw_answer_map[question.identifier.lower()] = answer.answer_value
-                if '.' in question.identifier:
-                    stripped = question.identifier.split('.', 1)[1].lower()
-                    if stripped not in raw_answer_map:
-                        raw_answer_map[stripped] = answer.answer_value
+        raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
         
         # Build conjunction info for repeatable groups
-        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, answers)
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(answer_pairs)
 
         # Get template identifiers
         template_identifiers = template.extract_identifiers()
@@ -1136,7 +1037,10 @@ class DocumentService:
         ).first()
         
         if not template:
-            raise ValueError("Template not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Template not found"
+            )
         
         # Get session (verify user owns it)
         session = db.query(InputForm).filter(
@@ -1145,102 +1049,27 @@ class DocumentService:
         ).first()
         
         if not session:
-            raise ValueError("Session not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
         
-        # Get all answers for this session with their question identifiers
-        answers_query = db.query(SessionAnswer, Question).join(
+        # Get all answers with their questions in a single joined query
+        answer_pairs = db.query(SessionAnswer, Question).join(
             Question, SessionAnswer.question_id == Question.id
         ).filter(
             SessionAnswer.session_id == session_id
         ).all()
         
-        # Build a raw answer map (before formatting) for FOREACH and person JSON data
-        raw_answer_map = {}
-        for answer, question in answers_query:
-            raw_answer_map[question.identifier.lower()] = answer.answer_value
-            # Also store under stripped identifier (without namespace prefix)
-            if '.' in question.identifier:
-                stripped = question.identifier.split('.', 1)[1].lower()
-                if stripped not in raw_answer_map:
-                    raw_answer_map[stripped] = answer.answer_value
-
-        # Build a mapping of identifier -> answer value (with formatting for person types)
-        answer_map = {}
-        for answer, question in answers_query:
-            formatted_value = DocumentService._format_answer_value(
-                answer.answer_value,
-                question.question_type
-            )
-            answer_map[question.identifier.lower()] = formatted_value
-            # Also store under stripped identifier (without namespace prefix)
-            if '.' in question.identifier:
-                stripped = question.identifier.split('.', 1)[1].lower()
-                if stripped not in answer_map:
-                    answer_map[stripped] = formatted_value
-        
-        # Build conjunction info for repeatable groups
-        raw_answers = [answer for answer, question in answers_query]
-        conj_map, id_grp_map = DocumentService._build_conjunction_info(db, raw_answers)
+        # Build answer maps and conjunction info from the joined pairs
+        raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
+        answer_map = DocumentService._build_answer_map(answer_pairs)
+        conj_map, id_grp_map = DocumentService._build_conjunction_info(answer_pairs)
 
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
         merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map, conj_map, id_grp_map)
-        
-        # Handle person field dot notation (e.g., <<person.field>>) for any remaining placeholders
-        identifier_pattern = r'<<([^>]+)>>'
-        
-        def replace_person_fields(match):
-            identifier = match.group(1).strip().lower()
-            print(f"DEBUG: Processing identifier: '{identifier}'")
-            
-            # Check if this is a person field with dot notation (e.g., person.field)
-            if '.' in identifier:
-                parts = identifier.split('.', 1)
-                person_identifier = parts[0]
-                field_name = parts[1]
-                print(f"DEBUG: person_identifier='{person_identifier}', field_name='{field_name}'")
-                
-                # Get the raw person JSON from answers (not the formatted version)
-                person_json = raw_answer_map.get(person_identifier, '')
-                print(f"DEBUG: person_json for '{person_identifier}': {person_json[:200] if person_json else 'NOT FOUND'}")
-                
-                if person_json:
-                    try:
-                        # Person data is now stored as JSON object with all fields
-                        person_data = json.loads(person_json)
-                        
-                        if isinstance(person_data, dict):
-                            # New format: JSON object with person fields
-                            field_value = person_data.get(field_name)
-                            if field_value is not None:
-                                return str(field_value)
-                        elif isinstance(person_data, list) and len(person_data) > 0:
-                            # Legacy format: array of person objects or names
-                            first_person = person_data[0]
-                            if isinstance(first_person, dict):
-                                field_value = first_person.get(field_name)
-                                if field_value is not None:
-                                    return str(field_value)
-                                # Also check 'name' field for legacy format
-                                if field_name == 'name' and 'name' in first_person:
-                                    return str(first_person['name'])
-                            elif isinstance(first_person, str) and field_name == 'name':
-                                # Old format: just array of name strings
-                                return first_person
-                    except (json.JSONDecodeError, TypeError):
-                        # Not JSON, might be a plain string - only return if asking for 'name'
-                        if field_name == 'name':
-                            return person_json
-                
-                # If person or field not found, return empty string
-                return ''
-            
-            # Regular identifier that wasn't replaced - return empty string
-            return ''
-        
-        # Replace any remaining person field identifiers
-        merged_content = re.sub(identifier_pattern, replace_person_fields, merged_content)
         
         # Create a Word document
         doc = Document()
