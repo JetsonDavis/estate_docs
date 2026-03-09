@@ -201,13 +201,17 @@ class SessionService:
                     detail=f"Question {answer_data.question_id} does not belong to current group"
                 )
 
+        # Batch-load existing answers for submitted question_ids in one query
+        submitted_question_ids = [a.question_id for a in answers]
+        existing_answers_list = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id,
+            SessionAnswer.question_id.in_(submitted_question_ids)
+        ).all()
+        existing_by_qid = {a.question_id: a for a in existing_answers_list}
+
         # Save answers
         for answer_data in answers:
-            # Check if answer already exists for this question
-            existing_answer = db.query(SessionAnswer).filter(
-                SessionAnswer.session_id == session_id,
-                SessionAnswer.question_id == answer_data.question_id
-            ).first()
+            existing_answer = existing_by_qid.get(answer_data.question_id)
 
             if existing_answer:
                 # Update existing answer
@@ -296,12 +300,12 @@ class SessionService:
                                         count = 1  # Non-array value counts as 1
                                 except (json.JSONDecodeError, TypeError):
                                     count = 1 if actual_value else 0  # Non-JSON value counts as 1 if not empty
-                                
+
                                 try:
                                     threshold = int(expected_value)
                                 except (ValueError, TypeError):
                                     threshold = 0
-                                
+
                                 if operator == 'count_greater_than':
                                     condition_met = count > threshold
                                 elif operator == 'count_equals':
@@ -316,9 +320,26 @@ class SessionService:
                                     return next_group_id
                                 break
 
-        # If no conditional flow matched, find next group by display_order
+        # If no conditional flow matched, find next group within the same flow
+        if session.flow_id:
+            flow = db.query(DocumentFlow).filter(
+                DocumentFlow.id == session.flow_id
+            ).first()
+            if flow and flow.flow_logic:
+                # Get ordered groups from flow logic and find the one after current
+                ordered_groups = SessionService._get_groups_from_flow_logic(
+                    db, flow.flow_logic, session.id
+                )
+                for i, g in enumerate(ordered_groups):
+                    if g.id == current_group.id and i + 1 < len(ordered_groups):
+                        return ordered_groups[i + 1].id
+                # Current group is last in flow or not found
+                return None
+
+        # No flow — find next active group by display_order (scoped fallback)
         next_group = db.query(QuestionGroup).filter(
-            QuestionGroup.display_order > current_group.display_order
+            QuestionGroup.display_order > current_group.display_order,
+            QuestionGroup.is_active == True
         ).order_by(QuestionGroup.display_order).first()
 
         return next_group.id if next_group else None
@@ -460,9 +481,6 @@ class SessionService:
         if not current_group:
             current_group = ordered_groups[0]
             current_group_index = 0
-            # Update session's current_group_id
-            session.current_group_id = current_group.id
-            db.commit()
 
         # Get existing answers for this session
         existing_answers_list = db.query(SessionAnswer).filter(
@@ -604,21 +622,56 @@ class SessionService:
         existing_answers = db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id
         ).all()
+
+        # Batch-load all questions referenced by answers in one query
+        answer_question_ids = [a.question_id for a in existing_answers]
+        if answer_question_ids:
+            questions_for_answers = db.query(Question).filter(
+                Question.id.in_(answer_question_ids)
+            ).all()
+            question_id_to_identifier = {q.id: q.identifier for q in questions_for_answers}
+        else:
+            question_id_to_identifier = {}
+
         answer_map = {}
         for answer in existing_answers:
-            question = db.query(Question).filter(Question.id == answer.question_id).first()
-            if question:
-                answer_map[question.identifier] = answer.answer_value
+            identifier = question_id_to_identifier.get(answer.question_id)
+            if identifier:
+                answer_map[identifier] = answer.answer_value
+
+        # Collect all group IDs referenced in flow_logic, then batch-load
+        def collect_group_ids(steps: List[Dict]) -> set:
+            ids = set()
+            for step in steps:
+                if step.get('type') == 'group' and step.get('groupId'):
+                    ids.add(step['groupId'])
+                elif step.get('type') == 'conditional' and step.get('conditional'):
+                    cond = step['conditional']
+                    if cond.get('targetGroupId'):
+                        ids.add(cond['targetGroupId'])
+                    if cond.get('nestedSteps'):
+                        ids.update(collect_group_ids(cond['nestedSteps']))
+            return ids
+
+        all_group_ids = collect_group_ids(flow_logic)
+        if all_group_ids:
+            all_groups = db.query(QuestionGroup).filter(
+                QuestionGroup.id.in_(all_group_ids),
+                QuestionGroup.is_active == True
+            ).all()
+            group_by_id = {g.id: g for g in all_groups}
+        else:
+            group_by_id = {}
+
+        added_group_ids = set()
 
         def process_steps(steps: List[Dict]):
             for step in steps:
                 if step.get('type') == 'group' and step.get('groupId'):
-                    group = db.query(QuestionGroup).filter(
-                        QuestionGroup.id == step['groupId'],
-                        QuestionGroup.is_active == True
-                    ).first()
-                    if group and group not in groups:
+                    group = group_by_id.get(step['groupId'])
+                    if group and group.id not in added_group_ids:
                         groups.append(group)
+                        added_group_ids.add(group.id)
 
                 elif step.get('type') == 'conditional' and step.get('conditional'):
                     cond = step['conditional']
@@ -631,12 +684,10 @@ class SessionService:
                             # Condition met - add target group
                             target_group_id = cond.get('targetGroupId')
                             if target_group_id:
-                                target_group = db.query(QuestionGroup).filter(
-                                    QuestionGroup.id == target_group_id,
-                                    QuestionGroup.is_active == True
-                                ).first()
-                                if target_group and target_group not in groups:
+                                target_group = group_by_id.get(target_group_id)
+                                if target_group and target_group.id not in added_group_ids:
                                     groups.append(target_group)
+                                    added_group_ids.add(target_group.id)
 
                             # Process nested steps
                             if cond.get('nestedSteps'):
@@ -670,15 +721,18 @@ class SessionService:
         logger.info(f"question_logic: {group.question_logic}")
         logger.info(f"existing_answers: {existing_answers}")
 
+        # Batch-load all active questions for this group in one query
+        all_group_questions = db.query(Question).filter(
+            Question.question_group_id == group.id,
+            Question.is_active == True
+        ).order_by(Question.display_order).all()
+        question_by_id = {q.id: q for q in all_group_questions}
+
         if not group.question_logic:
             # No logic defined - return all questions in order with depth 0
             logger.info("No question_logic defined, returning all questions")
-            questions = db.query(Question).filter(
-                Question.question_group_id == group.id,
-                Question.is_active == True
-            ).order_by(Question.display_order).all()
-            simple_numbers = {q.id: str(i + 1) for i, q in enumerate(questions)}
-            return [(q, 0, str(i + 1)) for i, q in enumerate(questions)], {}, simple_numbers, {}
+            simple_numbers = {q.id: str(i + 1) for i, q in enumerate(all_group_questions)}
+            return [(q, 0, str(i + 1)) for i, q in enumerate(all_group_questions)], {}, simple_numbers, {}
 
         questions_with_data = []  # List of (question, depth, hierarchical_number) tuples
         question_ids_added = set()  # Track which question IDs have been added
@@ -690,12 +744,12 @@ class SessionService:
         repeatable_followups = {}
         # Conditional follow-ups for ALL questions (including non-repeatable): used for answer deletion
         all_followups = {}
-        
-        # Build answer map by identifier
+
+        # Build answer map by identifier using pre-loaded questions
         # Store both namespaced and non-namespaced versions for compatibility
         answer_by_identifier = {}
         for q_id, answer in existing_answers.items():
-            question = db.query(Question).filter(Question.id == q_id).first()
+            question = question_by_id.get(q_id)
             if question:
                 # Store with full namespaced identifier
                 answer_by_identifier[question.identifier] = answer
@@ -705,14 +759,14 @@ class SessionService:
                     answer_by_identifier[stripped_identifier] = answer
 
         logger.info(f"answer_by_identifier: {answer_by_identifier}")
-        
+
         # Pre-scan logic to find question identifiers (repeatable and non-repeatable)
         def find_question_identifiers(items: List[Dict]):
             for item in items:
                 if item.get('type') == 'question':
                     qid = item.get('questionId')
                     if qid:
-                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        q = question_by_id.get(qid)
                         if q:
                             all_identifier_to_question_id[q.identifier] = q.id
                             if '.' in q.identifier:
@@ -727,7 +781,7 @@ class SessionService:
                     nested = item['conditional'].get('nestedItems', [])
                     if nested:
                         find_question_identifiers(nested)
-        
+
         find_question_identifiers(group.question_logic)
         logger.info(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
         logger.info(f"All identifiers: {all_identifier_to_question_id}")
@@ -764,7 +818,7 @@ class SessionService:
 
         def collect_nested_questions(items: List[Dict]) -> list:
             """Collect question objects from nested logic items, including nested conditionals as metadata.
-            
+
             Returns a list of (question, sub_followups) tuples where sub_followups is a list of
             {trigger_value, operator, questions} dicts for conditionals that depend on the question.
             """
@@ -775,14 +829,14 @@ class SessionService:
                 if item.get('type') == 'question':
                     qid = item.get('questionId')
                     if qid:
-                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        q = question_by_id.get(qid)
                         if q:
                             question_map[q.identifier] = q
                             # Also map stripped identifier
                             if '.' in q.identifier:
                                 stripped = q.identifier.split('.', 1)[1]
                                 question_map[stripped] = q
-            
+
             # Second pass: find conditionals and associate them with their parent questions
             sub_followups_map = {}  # question_id -> list of {trigger_value, operator, questions}
             for item in items:
@@ -803,13 +857,13 @@ class SessionService:
                                 'operator': cond.get('operator', 'equals'),
                                 'questions': nested_results  # list of (question, sub_followups) tuples
                             })
-            
+
             # Build final list: (question, sub_followups)
             for item in items:
                 if item.get('type') == 'question':
                     qid = item.get('questionId')
                     if qid:
-                        q = db.query(Question).filter(Question.id == qid, Question.is_active == True).first()
+                        q = question_by_id.get(qid)
                         if q:
                             collected.append((q, sub_followups_map.get(q.id)))
             return collected
@@ -829,10 +883,7 @@ class SessionService:
                         # Use pre-assigned hierarchical number
                         hierarchical_number = question_numbers.get(question_id, "?")
 
-                        question = db.query(Question).filter(
-                            Question.id == question_id,
-                            Question.is_active == True
-                        ).first()
+                        question = question_by_id.get(question_id)
                         # Only add to result if found, active, and not already added
                         if question and question.id not in question_ids_added:
                             logger.info(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
@@ -865,7 +916,7 @@ class SessionService:
                         parent_q_id = all_identifier_to_question_id[identifier]
                         nested_items = cond.get('nestedItems', [])
                         followup_questions = collect_nested_questions(nested_items)
-                        
+
                         if followup_questions:
                             # Always collect into all_followups for answer deletion
                             if parent_q_id not in all_followups:
@@ -917,19 +968,19 @@ class SessionService:
                                     count = 1  # Non-array value counts as 1
                             except (json.JSONDecodeError, TypeError):
                                 count = 1 if actual_value else 0  # Non-JSON value counts as 1 if not empty
-                            
+
                             try:
                                 threshold = int(expected_value)
                             except (ValueError, TypeError):
                                 threshold = 0
-                            
+
                             if operator == 'count_greater_than':
                                 condition_met = count > threshold
                             elif operator == 'count_equals':
                                 condition_met = count == threshold
                             else:  # count_less_than
                                 condition_met = count < threshold
-                            
+
                             logger.info(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
                         else:  # 'equals' or default
                             # For repeatable questions, the answer may be a JSON array
@@ -946,7 +997,7 @@ class SessionService:
                                     condition_met = actual_value == expected_value
                             except (json.JSONDecodeError, TypeError, ValueError):
                                 condition_met = actual_value == expected_value
-                        
+
                         if condition_met:
                             logger.info(f"{indent}  Condition MET - processing nested items")
                             # Skip adding to flat list if this is a repeatable follow-up
@@ -976,7 +1027,7 @@ class SessionService:
         logger.info(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
         logger.info(f"Repeatable followups: {repeatable_followups}")
         return questions_with_data, repeatable_followups, question_numbers, all_followups
-    
+
     @staticmethod
     def save_answers(
         db: Session,
@@ -993,7 +1044,7 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Validate question_ids belong to the current group
         if session.current_group_id:
             current_group = db.query(QuestionGroup).filter(
@@ -1007,13 +1058,18 @@ class SessionService:
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Question {answer_data.question_id} does not belong to current group"
                         )
-        
+
+        # Batch-load existing answers for submitted question_ids in one query
+        submitted_question_ids = [a.question_id for a in answers]
+        existing_answers_list = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id,
+            SessionAnswer.question_id.in_(submitted_question_ids)
+        ).all()
+        existing_by_qid = {a.question_id: a for a in existing_answers_list}
+
         for answer_data in answers:
-            existing = db.query(SessionAnswer).filter(
-                SessionAnswer.session_id == session_id,
-                SessionAnswer.question_id == answer_data.question_id
-            ).first()
-            
+            existing = existing_by_qid.get(answer_data.question_id)
+
             if existing:
                 existing.answer_value = answer_data.answer_value
             else:
@@ -1023,9 +1079,9 @@ class SessionService:
                     answer_value=answer_data.answer_value
                 )
                 db.add(answer)
-        
+
         db.commit()
-    
+
     @staticmethod
     def delete_answers(
         db: Session,
@@ -1073,14 +1129,14 @@ class SessionService:
     ) -> InputForm:
         """
         Navigate to next or previous group in the flow.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             user_id: User ID
             direction: 'forward' or 'backward'
             answers: Optional answers to save before navigating
-            
+
         Returns:
             Updated session
         """
@@ -1090,13 +1146,13 @@ class SessionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Allow navigation and saving on completed sessions for editing
-        
+
         # Save answers if provided
         if answers:
             SessionService.save_answers(db, session_id, user_id, answers)
-        
+
         # Get ordered groups from flow
         ordered_groups = []
         if session.flow_id:
@@ -1107,21 +1163,21 @@ class SessionService:
                 ordered_groups = SessionService._get_groups_from_flow_logic(
                     db, flow.flow_logic, session_id
                 )
-        
+
         if not ordered_groups and session.current_group_id:
             group = db.query(QuestionGroup).filter(
                 QuestionGroup.id == session.current_group_id
             ).first()
             if group:
                 ordered_groups = [group]
-        
+
         # Find current index
         current_index = 0
         for i, group in enumerate(ordered_groups):
             if group.id == session.current_group_id:
                 current_index = i
                 break
-        
+
         # Navigate
         if direction == 'forward':
             if current_index < len(ordered_groups) - 1:
@@ -1131,16 +1187,16 @@ class SessionService:
                 # Last group - mark as completed
                 session.is_completed = True
                 session.completed_at = datetime.utcnow()
-        
+
         elif direction == 'backward':
             if current_index > 0:
                 session.current_group_id = ordered_groups[current_index - 1].id
-        
+
         db.commit()
         db.refresh(session)
-        
+
         return session
-    
+
     @staticmethod
     def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[List[str]]:
         """
