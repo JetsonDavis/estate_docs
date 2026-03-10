@@ -27,7 +27,7 @@ class TestSessionService:
         assert session.client_identifier == "John Doe"
         assert session.user_id == 1
         assert session.current_group_id == sample_question_group.id
-        assert session.is_completed == False
+        assert session.is_completed is False
 
     def test_create_session_default_starting_group(self, db_session: Session, sample_question_group):
         """Test session creation with default starting group."""
@@ -194,7 +194,7 @@ class TestSessionService:
         )
 
         # Since there's no next group, session should complete
-        assert updated_session.is_completed == True
+        assert updated_session.is_completed is True
 
     def test_default_flow_navigation(self, db_session: Session, sample_session, sample_questions):
         """Test default flow navigation when no condition matches."""
@@ -210,7 +210,7 @@ class TestSessionService:
         )
 
         # Should complete since there's no next group
-        assert updated_session.is_completed == True
+        assert updated_session.is_completed is True
 
     def test_session_completion(self, db_session: Session, sample_session_last_group, sample_questions):
         """Test session completion when no next group."""
@@ -225,7 +225,7 @@ class TestSessionService:
             answers
         )
 
-        assert updated_session.is_completed == True
+        assert updated_session.is_completed is True
         assert updated_session.completed_at is not None
 
     def test_get_session_answers(self, db_session: Session, sample_session, sample_questions):
@@ -256,7 +256,7 @@ class TestSessionService:
             sample_session.user_id
         )
 
-        assert success == True
+        assert success is True
 
         # Verify session is deleted
         deleted = db_session.query(InputForm).filter(
@@ -267,25 +267,7 @@ class TestSessionService:
     def test_delete_session_not_found(self, db_session: Session):
         """Test deleting non-existent session."""
         success = SessionService.delete_session(db_session, 999, 1)
-        assert success == False
-
-
-@pytest.fixture
-def db_session():
-    """Create a mock database session."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from src.models import Base
-
-    engine = create_engine('sqlite:///:memory:')
-    Base.metadata.create_all(engine)
-
-    SessionLocal = sessionmaker(bind=engine)
-    session = SessionLocal()
-
-    yield session
-
-    session.close()
+        assert success is False
 
 
 @pytest.fixture

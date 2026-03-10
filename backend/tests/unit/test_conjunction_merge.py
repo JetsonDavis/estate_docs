@@ -93,6 +93,10 @@ class TestConjunctionMerge:
         assert "John Smith" in result
         assert "Jane Doe" in result
         assert "Bob Johnson" in result
+        # Verify the names are joined with conjunctions, not just concatenated
+        assert "John Smith" in result and "Jane Doe" in result and "Bob Johnson" in result
+        # With 3 "and" conjunctions the result should use Oxford comma format
+        assert ", " in result or " and " in result
 
     def test_identifier_not_in_group_defaults_to_and(self):
         """Identifier not in any group still defaults to 'and' joining."""

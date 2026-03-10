@@ -8,9 +8,21 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=8)
 
 
+class UserInfo(BaseModel):
+    """Typed user info returned on login."""
+    id: int
+    username: str
+    email: str
+    full_name: Optional[str]
+    role: str
+    is_email_verified: bool
+    last_login: Optional[str]
+    created_at: str
+
+
 class LoginResponse(BaseModel):
     """Login response schema."""
-    user: dict
+    user: UserInfo
     message: str = "Login successful"
 
 

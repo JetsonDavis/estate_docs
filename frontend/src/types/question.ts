@@ -72,6 +72,7 @@ export interface QuestionLogicItem {
   id: string
   type: 'question' | 'conditional'
   questionId?: number
+  localQuestionId?: string
   stopFlow?: boolean
   conditional?: {
     ifIdentifier: string

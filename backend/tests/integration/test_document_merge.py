@@ -50,8 +50,16 @@ def client(test_db):
 
 
 @pytest.fixture
-def test_user(test_db):
-    db = TestingSessionLocal()
+def db(test_db):
+    """Provide a managed database session for test data setup."""
+    session = TestingSessionLocal()
+    yield session
+    session.rollback()
+    session.close()
+
+
+@pytest.fixture
+def test_user(db):
     user = User(
         username="testuser",
         email="test@test.com",
@@ -62,9 +70,7 @@ def test_user(test_db):
     db.add(user)
     db.commit()
     db.refresh(user)
-    user_id = user.id
-    db.close()
-    return user_id
+    return user.id
 
 
 @pytest.fixture
@@ -74,6 +80,7 @@ def user_token(client, test_user):
         json={"username": "testuser", "password": "password"}
     )
     assert response.status_code == 200
+    # Login sets httpOnly cookies on the TestClient; subsequent requests send them automatically.
     return response.cookies.get("access_token")
 
 
@@ -162,9 +169,8 @@ def _create_session_with_answers(db, user_id, group_id, answers_map):
 class TestDocumentMergeConjunction:
     """Test person conjunction in document merge/preview."""
 
-    def test_preview_two_persons_no_conjunction_defaults_to_and(self, client, user_token, test_user):
+    def test_preview_two_persons_no_conjunction_defaults_to_and(self, client, user_token, test_user, db):
         """When person data has no conjunction field, names should be joined with 'and'."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -180,7 +186,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -190,9 +195,8 @@ class TestDocumentMergeConjunction:
         assert "Shay Stiers and Kyra Dushkin" in content
         assert "Shay Stiers Kyra Dushkin" not in content.replace("Shay Stiers and Kyra Dushkin", "")
 
-    def test_preview_two_persons_with_and_conjunction(self, client, user_token, test_user):
+    def test_preview_two_persons_with_and_conjunction(self, client, user_token, test_user, db):
         """Person data with explicit 'and' conjunction."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -207,7 +211,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -216,9 +219,8 @@ class TestDocumentMergeConjunction:
         content = response.json()["markdown_content"]
         assert "Alice and Bob" in content
 
-    def test_preview_three_persons_with_and_conjunction(self, client, user_token, test_user):
+    def test_preview_three_persons_with_and_conjunction(self, client, user_token, test_user, db):
         """Three persons with 'and' — should use Oxford comma in inline array join."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -234,7 +236,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -246,9 +247,8 @@ class TestDocumentMergeConjunction:
         assert "Bob" in content
         assert "Carol" in content
 
-    def test_preview_persons_with_then_conjunction(self, client, user_token, test_user):
+    def test_preview_persons_with_then_conjunction(self, client, user_token, test_user, db):
         """Person data with 'then' conjunction."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -263,7 +263,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -274,9 +273,8 @@ class TestDocumentMergeConjunction:
         assert "then" in content
         assert "Bob" in content
 
-    def test_preview_inline_repeatable_share_uses_conjunction(self, client, user_token, test_user):
+    def test_preview_inline_repeatable_share_uses_conjunction(self, client, user_token, test_user, db):
         """Non-person repeatable (shares) inline should be joined with conjunction from person entries."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -293,7 +291,6 @@ class TestDocumentMergeConjunction:
             trustor_qid: person_data,
             share_qid: share_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -302,9 +299,8 @@ class TestDocumentMergeConjunction:
         content = response.json()["markdown_content"]
         assert "50% and 50%" in content
 
-    def test_preview_inline_three_shares_oxford_comma(self, client, user_token, test_user):
+    def test_preview_inline_three_shares_oxford_comma(self, client, user_token, test_user, db):
         """Three non-person repeatable values with 'and' should use Oxford comma."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -322,7 +318,6 @@ class TestDocumentMergeConjunction:
             trustor_qid: person_data,
             share_qid: share_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -331,9 +326,8 @@ class TestDocumentMergeConjunction:
         content = response.json()["markdown_content"]
         assert "50%, 30%, and 20%" in content
 
-    def test_preview_single_person_no_conjunction(self, client, user_token, test_user):
+    def test_preview_single_person_no_conjunction(self, client, user_token, test_user, db):
         """Single person should just show the name, no conjunction needed."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -347,7 +341,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
@@ -356,9 +349,8 @@ class TestDocumentMergeConjunction:
         content = response.json()["markdown_content"]
         assert "Trustor: Alice" in content
 
-    def test_generate_document_has_conjunction(self, client, user_token, test_user):
+    def test_generate_document_has_conjunction(self, client, user_token, test_user, db):
         """Generate (not just preview) should also have conjunctions."""
-        db = TestingSessionLocal()
         group_id, trustor_qid, share_qid = _setup_repeatable_group(db)
 
         template_id = _create_template(
@@ -373,7 +365,6 @@ class TestDocumentMergeConjunction:
         session_id = _create_session_with_answers(db, test_user, group_id, {
             trustor_qid: person_data
         })
-        db.close()
 
         response = client.post(
             "/api/v1/documents/generate",
@@ -386,3 +377,65 @@ class TestDocumentMergeConjunction:
         assert response.status_code == 201
         content = response.json()["markdown_content"]
         assert "Shay Stiers and Kyra Dushkin" in content
+
+
+class TestDocumentMergeAuthz:
+    """Negative-path authorization and not-found tests for document preview/generate."""
+
+    def test_preview_nonexistent_session_returns_404(self, client, user_token, test_user, db):
+        """Previewing a session that does not exist should return 404."""
+        response = client.post(
+            "/api/v1/documents/preview?session_id=999999&template_id=1"
+        )
+        assert response.status_code == 404
+
+    def test_preview_nonexistent_template_returns_404(self, client, user_token, test_user, db):
+        """Previewing with a valid session but a nonexistent template should return 404."""
+        group_id, trustor_qid, _ = _setup_repeatable_group(db)
+        session_id = _create_session_with_answers(db, test_user, group_id, {})
+
+        response = client.post(
+            f"/api/v1/documents/preview?session_id={session_id}&template_id=999999"
+        )
+        assert response.status_code == 404
+
+    def test_preview_session_belonging_to_other_user_returns_404(self, client, user_token, test_user, db):
+        """Previewing a session owned by a different user should return 403 or 404."""
+        # Create a second user directly in the database.
+        other_user = User(
+            username="otheruser",
+            email="other@test.com",
+            hashed_password=hash_password("password2"),
+            role=UserRole.user,
+            is_active=True
+        )
+        db.add(other_user)
+        db.commit()
+        db.refresh(other_user)
+
+        # Create a template and session owned by test_user (user1).
+        group_id, trustor_qid, _ = _setup_repeatable_group(db, group_identifier="authz_group")
+        template_id = _create_template(db, test_user, "Hello <<trustor>>")
+        session_id = _create_session_with_answers(db, test_user, group_id, {})
+
+        # Login as the second user using a fresh TestClient (its own cookie jar).
+        other_client = TestClient(app)
+        login_response = other_client.post(
+            "/api/v1/auth/login",
+            json={"username": "otheruser", "password": "password2"}
+        )
+        assert login_response.status_code == 200
+
+        # Attempt to preview user1's session while authenticated as user2.
+        response = other_client.post(
+            f"/api/v1/documents/preview?session_id={session_id}&template_id={template_id}"
+        )
+        assert response.status_code in (403, 404)
+
+    def test_generate_nonexistent_session_returns_404(self, client, user_token, test_user, db):
+        """Generating a document for a session that does not exist should return 404."""
+        response = client.post(
+            "/api/v1/documents/generate",
+            json={"session_id": 999999, "template_id": 1, "document_name": "Test"}
+        )
+        assert response.status_code == 404

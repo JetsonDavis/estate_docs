@@ -181,8 +181,8 @@ const MergeDocuments: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
+        credentials: 'include',
         body: JSON.stringify({
           session_id: selectedSessionId,
           template_id: selectedTemplateId

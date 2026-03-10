@@ -4,11 +4,14 @@ from sqlalchemy.orm import Session
 from typing import Optional, Tuple, List
 from fastapi import HTTPException, status
 import re
+import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt
 import io
 import json
+
+_logger = logging.getLogger(__name__)
 
 from ..models.document import GeneratedDocument
 from ..models.template import Template
@@ -189,7 +192,6 @@ class DocumentService:
 
         # Try to parse as JSON array of person objects
         try:
-            import json
             parsed = json.loads(answer_value)
 
             if isinstance(parsed, list) and len(parsed) > 0:
@@ -397,9 +399,6 @@ class DocumentService:
         Returns:
             Text with FOREACH blocks expanded
         """
-        import logging
-        _logger = logging.getLogger(__name__)
-
         def _process_block(match):
             counter_start_str = match.group(1)
             loop_identifier = match.group(2).lower()
@@ -412,11 +411,11 @@ class DocumentService:
             loop_array = DocumentService._parse_array(raw_value)
 
             if not loop_array or len(loop_array) == 0:
-                _logger.info(f"FOREACH: identifier '{loop_identifier}' has no array data, removing block")
+                _logger.debug(f"FOREACH: identifier '{loop_identifier}' has no array data, removing block")
                 return ''
 
             instance_count = len(loop_array)
-            _logger.info(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
+            _logger.debug(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
 
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
@@ -649,9 +648,6 @@ class DocumentService:
         If any identifier inside is empty, remove the entire section.
         Otherwise, replace identifiers and remove the brackets.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
         def _process_section(match):
             section_content = match.group(1)
 
@@ -663,7 +659,7 @@ class DocumentService:
             for identifier in identifiers_in_section:
                 value = answer_map.get(identifier.lower(), '')
                 if DocumentService._is_value_empty(value):
-                    logger.info(f"Identifier '{identifier}' is empty, removing conditional section")
+                    _logger.debug(f"Identifier '{identifier}' is empty, removing conditional section")
                     return ''
 
             result = section_content

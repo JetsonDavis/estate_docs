@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from typing import Optional, List, Tuple, Dict, Any
 from fastapi import HTTPException, status
 from datetime import datetime
+import json
+import logging
 import math
+
+_logger = logging.getLogger(__name__)
 
 from ..models.session import InputForm, SessionAnswer
 from ..models.question import QuestionGroup, Question
@@ -273,7 +277,6 @@ class SessionService:
                             elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
                                 # Count operators for repeatable fields - parse JSON array and compare length
                                 try:
-                                    import json
                                     parsed = json.loads(actual_value)
                                     if isinstance(parsed, list):
                                         count = len(parsed)
@@ -708,13 +711,9 @@ class SessionService:
               for repeatable questions that have conditional follow-ups
             - question_numbers: Dict mapping question_id -> hierarchical_number string
         """
-        import logging
-        import json
-        logger = logging.getLogger(__name__)
-
-        logger.debug(f"_get_questions_from_logic called for group {group.id} ({group.name})")
-        logger.debug(f"question_logic: {group.question_logic}")
-        logger.debug(f"existing_answers: {existing_answers}")
+        _logger.debug(f"_get_questions_from_logic called for group {group.id} ({group.name})")
+        _logger.debug(f"question_logic: {group.question_logic}")
+        _logger.debug(f"existing_answers: {existing_answers}")
 
         # Batch-load all active questions for this group in one query
         all_group_questions = db.query(Question).filter(
@@ -725,7 +724,7 @@ class SessionService:
 
         if not group.question_logic:
             # No logic defined - return all questions in order with depth 0
-            logger.debug("No question_logic defined, returning all questions")
+            _logger.debug("No question_logic defined, returning all questions")
             simple_numbers = {q.id: str(i + 1) for i, q in enumerate(all_group_questions)}
             return [(q, 0, str(i + 1)) for i, q in enumerate(all_group_questions)], {}, simple_numbers, {}
 
@@ -753,7 +752,7 @@ class SessionService:
                     stripped_identifier = question.identifier.split('.', 1)[1]
                     answer_by_identifier[stripped_identifier] = answer
 
-        logger.debug(f"answer_by_identifier: {answer_by_identifier}")
+        _logger.debug(f"answer_by_identifier: {answer_by_identifier}")
 
         # Pre-scan logic to find question identifiers (repeatable and non-repeatable)
         def find_question_identifiers(items: List[Dict]):
@@ -778,8 +777,8 @@ class SessionService:
                         find_question_identifiers(nested)
 
         find_question_identifiers(group.question_logic)
-        logger.debug(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
-        logger.debug(f"All identifiers: {all_identifier_to_question_id}")
+        _logger.debug(f"Repeatable identifiers: {repeatable_identifier_to_question_id}")
+        _logger.debug(f"All identifiers: {all_identifier_to_question_id}")
 
         # PASS 1: Assign hierarchical numbers to ALL questions in the tree
         # This ensures numbering matches the admin view exactly
@@ -798,7 +797,7 @@ class SessionService:
                         hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
                         question_numbers[question_id] = hierarchical_number
                         last_question_number = hierarchical_number
-                        logger.debug(f"Assigned number {hierarchical_number} to question_id {question_id}")
+                        _logger.debug(f"Assigned number {hierarchical_number} to question_id {question_id}")
 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     cond = item['conditional']
@@ -809,7 +808,7 @@ class SessionService:
                         assign_hierarchical_numbers(nested_items, nested_prefix)
 
         assign_hierarchical_numbers(group.question_logic)
-        logger.debug(f"Question numbers assigned: {question_numbers}")
+        _logger.debug(f"Question numbers assigned: {question_numbers}")
 
         def collect_nested_questions(items: List[Dict]) -> list:
             """Collect question objects from nested logic items, including nested conditionals as metadata.
@@ -867,10 +866,10 @@ class SessionService:
             """Process logic items. Returns False if stop flag encountered.
             Uses pre-assigned hierarchical numbers from question_numbers dict."""
             indent = "  " * depth
-            logger.debug(f"{indent}Processing {len(items)} logic items at depth {depth}")
+            _logger.debug(f"{indent}Processing {len(items)} logic items at depth {depth}")
 
             for idx, item in enumerate(items):
-                logger.debug(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
+                _logger.debug(f"{indent}Item {idx}: type={item.get('type')}, questionId={item.get('questionId')}")
 
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
@@ -881,17 +880,17 @@ class SessionService:
                         question = question_by_id.get(question_id)
                         # Only add to result if found, active, and not already added
                         if question and question.id not in question_ids_added:
-                            logger.debug(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
+                            _logger.debug(f"{indent}  Adding question: {question.identifier} (id={question.id}, depth={depth}, number={hierarchical_number})")
                             questions_with_data.append((question, depth, hierarchical_number))
                             question_ids_added.add(question.id)
                         elif not question:
-                            logger.warning(f"{indent}  Question with id {question_id} not found or inactive (assigned number={hierarchical_number})")
+                            _logger.warning(f"{indent}  Question with id {question_id} not found or inactive (assigned number={hierarchical_number})")
                     else:
-                        logger.warning(f"{indent}  Question item has no questionId")
+                        _logger.warning(f"{indent}  Question item has no questionId")
 
                     # Check for stop flag
                     if item.get('stopFlow'):
-                        logger.debug(f"{indent}  Stop flag encountered")
+                        _logger.debug(f"{indent}  Stop flag encountered")
                         return False
 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
@@ -901,8 +900,8 @@ class SessionService:
                     operator = cond.get('operator', 'equals')  # Default to 'equals' for backwards compatibility
 
                     operator_display = '==' if operator == 'equals' else '!='
-                    logger.debug(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
-                    logger.debug(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
+                    _logger.debug(f"{indent}  Conditional: if {identifier} {operator_display} '{expected_value}'")
+                    _logger.debug(f"{indent}  Current answer for {identifier}: '{answer_by_identifier.get(identifier, 'NOT ANSWERED')}'")
 
                     # Collect conditional follow-up questions as metadata
                     # For repeatable questions: used for per-instance rendering
@@ -930,7 +929,7 @@ class SessionService:
                                     'operator': operator,
                                     'questions': followup_questions
                                 })
-                            logger.debug(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
+                            _logger.debug(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
 
                     # Check if condition is met
                     # Don't show conditional questions if the referenced field is empty
@@ -939,7 +938,7 @@ class SessionService:
 
                         # If the actual value is empty/None, don't show conditional questions
                         if actual_value is None or actual_value == '':
-                            logger.debug(f"{indent}  Condition NOT MET (field is empty)")
+                            _logger.debug(f"{indent}  Condition NOT MET (field is empty)")
                             continue
 
                         # Evaluate based on operator
@@ -976,7 +975,7 @@ class SessionService:
                             else:  # count_less_than
                                 condition_met = count < threshold
 
-                            logger.debug(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
+                            _logger.debug(f"{indent}  Count comparison: {count} {operator} {threshold} = {condition_met}")
                         else:  # 'equals' or default
                             # For repeatable questions, the answer may be a JSON array
                             # Check if any element in the array matches the expected value
@@ -987,18 +986,18 @@ class SessionService:
                                         condition_met = expected_value not in parsed
                                     else:
                                         condition_met = expected_value in parsed
-                                    logger.debug(f"{indent}  Array comparison: '{expected_value}' in {parsed} = {condition_met}")
+                                    _logger.debug(f"{indent}  Array comparison: '{expected_value}' in {parsed} = {condition_met}")
                                 else:
                                     condition_met = actual_value == expected_value
                             except (json.JSONDecodeError, TypeError, ValueError):
                                 condition_met = actual_value == expected_value
 
                         if condition_met:
-                            logger.debug(f"{indent}  Condition MET - processing nested items")
+                            _logger.debug(f"{indent}  Condition MET - processing nested items")
                             # Skip adding to flat list if this is a repeatable follow-up
                             # (frontend will render per-instance using conditional_followups)
                             if identifier in repeatable_identifier_to_question_id:
-                                logger.debug(f"{indent}  Skipping flat list addition (repeatable follow-up)")
+                                _logger.debug(f"{indent}  Skipping flat list addition (repeatable follow-up)")
                             else:
                                 nested_items = cond.get('nestedItems', [])
                                 if nested_items:
@@ -1009,18 +1008,18 @@ class SessionService:
 
                             # Check for end flow flag
                             if cond.get('endFlow'):
-                                logger.debug(f"{indent}  End flow flag encountered")
+                                _logger.debug(f"{indent}  End flow flag encountered")
                                 return False
                         else:
-                            logger.debug(f"{indent}  Condition NOT MET (value mismatch)")
+                            _logger.debug(f"{indent}  Condition NOT MET (value mismatch)")
                     else:
-                        logger.debug(f"{indent}  Condition NOT MET (identifier not in answers)")
+                        _logger.debug(f"{indent}  Condition NOT MET (identifier not in answers)")
 
             return True
 
         process_logic_items(group.question_logic)
-        logger.debug(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
-        logger.debug(f"Repeatable followups: {repeatable_followups}")
+        _logger.debug(f"Final questions to display: {[(q.identifier, d, h) for q, d, h in questions_with_data]}")
+        _logger.debug(f"Repeatable followups: {repeatable_followups}")
         return questions_with_data, repeatable_followups, question_numbers, all_followups
 
     @staticmethod

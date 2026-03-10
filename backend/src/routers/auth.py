@@ -12,7 +12,7 @@ from ..schemas.auth import (
 )
 from ..schemas.user import UserResponse
 from ..services.auth_service import AuthService
-from ..middleware.auth_middleware import require_auth
+from ..middleware.auth_middleware import require_auth, get_user_id
 from ..middleware.rate_limit import auth_rate_limiter, get_client_ip
 from ..config import settings
 
@@ -90,6 +90,7 @@ async def refresh_token(
     Validates the token against the server-side store, revokes the old
     refresh token, and issues a rotated replacement (token rotation).
     """
+    auth_rate_limiter.check(get_client_ip(request))
     from ..models.user import RefreshToken as RefreshTokenModel
     from ..utils.security import verify_token, create_access_token, create_refresh_token
     
@@ -217,7 +218,8 @@ async def get_current_user(
     """
     from ..services.user_service import UserService
     
-    user = UserService.get_user_by_id(db, int(current_user["sub"]))
+    uid = get_user_id(current_user)
+    user = UserService.get_user_by_id(db, uid)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -247,15 +249,17 @@ async def forgot_password(
 
 @router.post("/reset-password", response_model=MessageResponse)
 async def reset_password(
+    request: Request,
     reset_data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ) -> MessageResponse:
     """
     Reset password using token from email.
-    
+
     - **token**: Password reset token from email
     - **new_password**: New strong password
     """
+    auth_rate_limiter.check(get_client_ip(request))
     AuthService.reset_password(db, reset_data.token, reset_data.new_password)
     return MessageResponse(message="Password reset successfully")
 
@@ -272,9 +276,10 @@ async def change_password(
     - **current_password**: Current password
     - **new_password**: New strong password
     """
+    uid = get_user_id(current_user)
     AuthService.change_password(
         db,
-        int(current_user["sub"]),
+        uid,
         change_data.current_password,
         change_data.new_password
     )

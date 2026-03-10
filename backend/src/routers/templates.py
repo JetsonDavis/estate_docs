@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional
 from ..database import get_db
-from ..middleware.auth_middleware import require_auth, require_admin
+from ..middleware.auth_middleware import require_auth, require_admin, get_user_id
 from ..schemas.template import (
     TemplateCreate,
     TemplateUpdate,
@@ -34,7 +34,7 @@ async def upload_file(
     """
     result = await TemplateService.process_uploaded_file(
         file,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         db,
         template_name
     )
@@ -66,7 +66,7 @@ async def create_template(
     template = TemplateService.create_template(
         db,
         template_data,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     return TemplateResponse.model_validate(template)

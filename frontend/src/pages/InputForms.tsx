@@ -9,6 +9,26 @@ import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import './InputForms.css'
 
+const US_STATES = [
+  { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
+  { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' }, { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' }, { value: 'ID', label: 'Idaho' },
+  { value: 'IL', label: 'Illinois' }, { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' }, { value: 'LA', label: 'Louisiana' },
+  { value: 'ME', label: 'Maine' }, { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' }, { value: 'MS', label: 'Mississippi' },
+  { value: 'MO', label: 'Missouri' }, { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' }, { value: 'NJ', label: 'New Jersey' },
+  { value: 'NM', label: 'New Mexico' }, { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' }, { value: 'OK', label: 'Oklahoma' },
+  { value: 'OR', label: 'Oregon' }, { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
+  { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+  { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
+  { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+  { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' }
+]
+
 const InputForms: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
@@ -54,7 +74,7 @@ const InputForms: React.FC = () => {
     } else {
       loadSessions()
     }
-  }, [sessionId])
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSessions = async () => {
     try {
@@ -332,8 +352,6 @@ const InputForms: React.FC = () => {
     // Derive real question ID for backend saves (synthetic IDs are realId * 100000 + instanceIdx)
     const realQuestionId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
 
-    console.log('handleRadioChange called:', { questionId, realQuestionId, newValue, instanceIndex, identifier: question.identifier })
-
     // For repeatable questions, build the full JSON array with the new value
     // We can't rely on reading state here because React may not have flushed the update yet
     let valueToSave = newValue
@@ -352,7 +370,6 @@ const InputForms: React.FC = () => {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: realQuestionId, answer_value: valueToSave }]
       })
-      console.log('Answer saved successfully, valueToSave:', valueToSave)
     } catch (err) {
       console.error('Failed to save answer:', err)
     }
@@ -362,15 +379,9 @@ const InputForms: React.FC = () => {
     const strippedId = question.identifier.includes('.')
       ? question.identifier.split('.').slice(1).join('.')
       : question.identifier
-    console.log('Checking conditional dependency:', {
-      identifier: question.identifier,
-      strippedId,
-      conditional_identifiers: sessionData.conditional_identifiers
-    })
     const isConditionalDependency = sessionData.conditional_identifiers?.includes(question.identifier)
       || sessionData.conditional_identifiers?.includes(strippedId)
       || false
-    console.log('isConditionalDependency:', isConditionalDependency)
     if (!isConditionalDependency) return
 
     // Delete answers from ALL conditional branches that don't match the new value.
@@ -386,7 +397,6 @@ const InputForms: React.FC = () => {
         // For repeatable parents, followup answer rows are shared across instances.
         // Only clear local state for THIS instance's synthetic IDs — don't delete
         // backend rows, which would wipe other instances' followup answers.
-        console.log('Repeatable parent: clearing local followup state for instance', instanceIndex, 'ids:', idsToDelete)
         const syntheticIdsToDelete = idsToDelete.map(id => instanceIndex > 0 ? id * 100000 + instanceIndex : id)
         setAnswers(prev => {
           const updated = { ...prev }
@@ -411,7 +421,6 @@ const InputForms: React.FC = () => {
         })
       } else {
         // Non-repeatable: delete from backend and clear local state
-        console.log('Deleting outgoing conditional followup answers:', idsToDelete)
         try {
           await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
         } catch (err) {
@@ -563,7 +572,6 @@ const InputForms: React.FC = () => {
       if (question.repeatable) {
         // For repeatable parents, followup answer rows are shared across instances.
         // Only clear local state for THIS instance's synthetic IDs.
-        console.log('handleAnswerBlur: Repeatable parent, clearing local followup state for instance', blurInstanceIndex, 'ids:', idsToDelete)
         const syntheticIdsToDelete = idsToDelete.map(id => blurInstanceIndex > 0 ? id * 100000 + blurInstanceIndex : id)
         setAnswers(prev => {
           const updated = { ...prev }
@@ -588,7 +596,6 @@ const InputForms: React.FC = () => {
         })
       } else {
         // Non-repeatable: delete from backend and clear local state
-        console.log('handleAnswerBlur: Deleting outgoing conditional followup answers:', idsToDelete)
         try {
           await sessionService.deleteAnswers(sessionData.session_id, idsToDelete)
         } catch (err) {
@@ -1286,26 +1293,6 @@ const InputForms: React.FC = () => {
           handleAnswerBlur(question.id, currentValue)
         }
 
-        const US_STATES = [
-          { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
-          { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
-          { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' }, { value: 'FL', label: 'Florida' },
-          { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' }, { value: 'ID', label: 'Idaho' },
-          { value: 'IL', label: 'Illinois' }, { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
-          { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' }, { value: 'LA', label: 'Louisiana' },
-          { value: 'ME', label: 'Maine' }, { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
-          { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' }, { value: 'MS', label: 'Mississippi' },
-          { value: 'MO', label: 'Missouri' }, { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
-          { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' }, { value: 'NJ', label: 'New Jersey' },
-          { value: 'NM', label: 'New Mexico' }, { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
-          { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' }, { value: 'OK', label: 'Oklahoma' },
-          { value: 'OR', label: 'Oregon' }, { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
-          { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
-          { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
-          { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
-          { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' }
-        ]
-
         return (
           <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
@@ -1796,26 +1783,6 @@ const InputForms: React.FC = () => {
           handleAnswerBlur(question.id, JSON.stringify(updatedArray))
         }
 
-        const US_STATES_BACKUP = [
-          { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
-          { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
-          { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' }, { value: 'FL', label: 'Florida' },
-          { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' }, { value: 'ID', label: 'Idaho' },
-          { value: 'IL', label: 'Illinois' }, { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
-          { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' }, { value: 'LA', label: 'Louisiana' },
-          { value: 'ME', label: 'Maine' }, { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
-          { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' }, { value: 'MS', label: 'Mississippi' },
-          { value: 'MO', label: 'Missouri' }, { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
-          { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' }, { value: 'NJ', label: 'New Jersey' },
-          { value: 'NM', label: 'New Mexico' }, { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
-          { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' }, { value: 'OK', label: 'Oklahoma' },
-          { value: 'OR', label: 'Oregon' }, { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
-          { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
-          { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
-          { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
-          { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' }
-        ]
-
         return (
           <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
@@ -1979,7 +1946,7 @@ const InputForms: React.FC = () => {
                       onBlur={savePersonBackupOnBlur}
                     >
                       <option value="">Select State</option>
-                      {US_STATES_BACKUP.map(state => (
+                      {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
                     </select>
@@ -2046,7 +2013,7 @@ const InputForms: React.FC = () => {
                       onBlur={savePersonBackupOnBlur}
                     >
                       <option value="">Select State</option>
-                      {US_STATES_BACKUP.map(state => (
+                      {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
                     </select>

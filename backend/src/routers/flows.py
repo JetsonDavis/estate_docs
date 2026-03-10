@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from ..database import get_db
-from ..middleware.auth_middleware import require_auth, require_admin
+from ..middleware.auth_middleware import require_auth, require_admin, get_user_id
 from ..schemas.flow import (
     DocumentFlowCreate,
     DocumentFlowUpdate,
@@ -36,7 +36,7 @@ async def create_flow(
     flow = FlowService.create_flow(
         db,
         flow_data,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     return DocumentFlowResponse.model_validate(flow)

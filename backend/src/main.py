@@ -7,8 +7,8 @@ app = FastAPI(
     title="Estate Doc(tor) API",
     description="RESTful API for estate document generation with document workflows",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
 )
 
 # CORS middleware
@@ -34,10 +34,7 @@ app.include_router(people.router, prefix="/api/v1")
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
-    return {
-        "status": "healthy",
-        "environment": settings.environment
-    }
+    return {"status": "healthy"}
 
 
 @app.get("/")

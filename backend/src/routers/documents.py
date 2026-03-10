@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import io
 
 from ..database import get_db
-from ..middleware.auth_middleware import require_auth
+from ..middleware.auth_middleware import require_auth, get_user_id
 from ..schemas.document import (
     GenerateDocumentRequest,
     GeneratedDocumentResponse,
@@ -39,7 +39,7 @@ async def generate_document(
     document = DocumentService.generate_document(
         db,
         request,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     return GeneratedDocumentResponse.model_validate(document)
@@ -65,7 +65,7 @@ async def preview_document(
         db,
         session_id,
         template_id,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     return DocumentPreviewResponse(**preview)
@@ -86,7 +86,7 @@ async def list_documents(
     """
     documents, total = DocumentService.list_documents(
         db,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         skip,
         limit
     )
@@ -118,7 +118,7 @@ async def get_document(
     document = DocumentService.get_document(
         db,
         document_id,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     if not document:
@@ -144,7 +144,7 @@ async def delete_document(
     success = DocumentService.delete_document(
         db,
         document_id,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     if not success:
@@ -180,7 +180,7 @@ async def merge_document(
             db,
             request.session_id,
             request.template_id,
-            int(current_user["sub"])
+            get_user_id(current_user)
         )
         
         return StreamingResponse(

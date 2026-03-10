@@ -103,6 +103,20 @@ async def require_auth(request: Request, db: Session = Depends(get_db)) -> dict:
     return user
 
 
+def get_user_id(current_user: dict) -> int:
+    """Extract and validate the user ID from the JWT payload.
+
+    Raises HTTP 401 if the 'sub' claim is missing or not a valid integer.
+    """
+    try:
+        return int(current_user["sub"])
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+
 async def require_admin(request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Dependency that requires admin role.

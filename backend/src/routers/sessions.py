@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from ..database import get_db
-from ..middleware.auth_middleware import require_auth
+from ..middleware.auth_middleware import require_auth, get_user_id
 from ..schemas.session import (
     InputFormCreate,
     InputFormResponse,
@@ -40,7 +40,7 @@ async def create_session(
     session = SessionService.create_session(
         db,
         session_data,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
     
     return InputFormResponse.model_validate(session)
@@ -61,7 +61,7 @@ async def list_sessions(
     """
     sessions, _ = SessionService.list_sessions(
         db,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         skip,
         limit
     )
@@ -91,14 +91,14 @@ async def get_session(
     
     - **session_id**: Session ID
     """
-    session = SessionService.get_session(db, session_id, int(current_user["sub"]))
+    session = SessionService.get_session(db, session_id, get_user_id(current_user))
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found"
         )
     
-    answers = SessionService.get_session_answers(db, session_id, int(current_user["sub"]))
+    answers = SessionService.get_session_answers(db, session_id, get_user_id(current_user))
     
     return InputFormWithAnswers(
         **session.to_dict(),
@@ -119,14 +119,14 @@ async def get_session_progress(
     
     Returns the current question group, next group ID, and completion status.
     """
-    session = SessionService.get_session(db, session_id, int(current_user["sub"]))
+    session = SessionService.get_session(db, session_id, get_user_id(current_user))
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found"
         )
     
-    answers = SessionService.get_session_answers(db, session_id, int(current_user["sub"]))
+    answers = SessionService.get_session_answers(db, session_id, get_user_id(current_user))
     
     # Get current group details
     current_group = None
@@ -167,7 +167,7 @@ async def submit_answers(
     session = SessionService.submit_answers(
         db,
         session_id,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         answers_data.answers
     )
     
@@ -185,7 +185,7 @@ async def delete_session(
     
     - **session_id**: Session ID
     """
-    success = SessionService.delete_session(db, session_id, int(current_user["sub"]))
+    success = SessionService.delete_session(db, session_id, get_user_id(current_user))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -209,7 +209,7 @@ async def get_session_questions(
     return SessionService.get_session_questions(
         db,
         session_id,
-        int(current_user["sub"])
+        get_user_id(current_user)
     )
 
 
@@ -229,7 +229,7 @@ async def save_answers(
     SessionService.save_answers(
         db,
         session_id,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         answers_data.answers
     )
 
@@ -251,7 +251,7 @@ async def delete_answers(
     SessionService.delete_answers(
         db,
         session_id,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         request_data.question_ids
     )
 
@@ -273,7 +273,7 @@ async def navigate_session(
     session = SessionService.navigate_session(
         db,
         session_id,
-        int(current_user["sub"]),
+        get_user_id(current_user),
         navigate_data.direction,
         navigate_data.answers
     )
@@ -292,7 +292,7 @@ async def get_session_identifiers(
 
     - **session_id**: Session ID
     """
-    identifiers = SessionService.get_session_identifiers(db, session_id, int(current_user["sub"]))
+    identifiers = SessionService.get_session_identifiers(db, session_id, get_user_id(current_user))
     if identifiers is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -313,7 +313,7 @@ async def copy_session(
 
     - **session_id**: Session ID to copy
     """
-    session = SessionService.copy_session(db, session_id, int(current_user["sub"]))
+    session = SessionService.copy_session(db, session_id, get_user_id(current_user))
 
     # Get the question group name if there's a current_group_id
     response = InputFormResponse.model_validate(session)
@@ -336,7 +336,7 @@ async def mark_session_complete(
 
     - **session_id**: Session ID to mark as complete
     """
-    session = SessionService.mark_session_complete(db, session_id, int(current_user["sub"]))
+    session = SessionService.mark_session_complete(db, session_id, get_user_id(current_user))
 
     # Get the question group name if there's a current_group_id
     response = InputFormResponse.model_validate(session)
