@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { TemplateCreate, TemplateType } from '../../types/template'
+import { useToast } from '../../hooks/useToast'
 import './Templates.css'
 
 const CreateTemplate: React.FC = () => {
@@ -13,6 +14,7 @@ const CreateTemplate: React.FC = () => {
   const [templateType, setTemplateType] = useState<TemplateType>('direct')
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const { toast } = useToast()
   const [uploadedFile, setUploadedFile] = useState(false)
   const [nameError, setNameError] = useState('')
   const [checkingName, setCheckingName] = useState(false)
@@ -81,7 +83,7 @@ const CreateTemplate: React.FC = () => {
                     imageExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
 
     if (isImage) {
-      alert('File type not yet implemented')
+      toast('File type not yet implemented', 'warning')
       e.target.value = '' // Reset the file input
       return
     }
@@ -97,7 +99,7 @@ const CreateTemplate: React.FC = () => {
       setUploadedFile(true)
     } catch (err: any) {
       console.error('Upload error:', err)
-      alert(err.response?.data?.detail || err.message || 'Failed to upload file')
+      toast(err.response?.data?.detail || err.message || 'Failed to upload file')
     } finally {
       setUploading(false)
       e.target.value = '' // Reset file input for re-upload
@@ -108,7 +110,7 @@ const CreateTemplate: React.FC = () => {
     e.preventDefault()
 
     if (!name || !markdownContent) {
-      alert('Please provide a name and content')
+      toast('Please provide a name and content', 'warning')
       return
     }
 
@@ -127,7 +129,7 @@ const CreateTemplate: React.FC = () => {
       console.error('Template creation error:', err)
       console.error('Error response:', err.response)
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to create template'
-      alert(errorMessage)
+      toast(errorMessage)
     } finally {
       setSubmitting(false)
     }

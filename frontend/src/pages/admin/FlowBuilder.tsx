@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { flowService } from '../../services/flowService'
 import { questionGroupService } from '../../services/questionService'
 import { QuestionGroup } from '../../types/question'
+import { useToast } from '../../hooks/useToast'
 import './Flows.css'
 
 interface FlowGroup {
@@ -29,6 +30,7 @@ const FlowBuilder: React.FC = () => {
   const [isDuplicateName, setIsDuplicateName] = useState(false)
   const [isCheckingName, setIsCheckingName] = useState(false)
   const nameCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const { toast } = useToast()
 
   // Drag state
   const [draggedItem, setDraggedItem] = useState<QuestionGroup | FlowGroup | null>(null)
@@ -232,7 +234,7 @@ const FlowBuilder: React.FC = () => {
       await loadData()
     } catch (err: any) {
       console.error('Failed to toggle group active status:', err)
-      alert(err.response?.data?.detail || 'Failed to update group status')
+      toast(err.response?.data?.detail || 'Failed to update group status')
     }
   }
 

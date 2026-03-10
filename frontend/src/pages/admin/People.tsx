@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { personService } from '../../services/personService'
 import { Person } from '../../types/person'
 import PersonFormModal from '../../components/common/PersonFormModal'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import './People.css'
 
 const People: React.FC = () => {
@@ -15,6 +16,7 @@ const People: React.FC = () => {
   const [editingPerson, setEditingPerson] = useState<Person | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
 
   const pageSize = 20
 
@@ -64,18 +66,21 @@ const People: React.FC = () => {
     loadPeople()
   }
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this person?')) {
-      return
-    }
+  const handleDelete = (id: number) => {
+    setDeleteTarget(id)
+  }
 
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
     try {
       setError('')
-      await personService.deletePerson(id)
+      await personService.deletePerson(deleteTarget)
       setSuccess('Person deleted successfully')
       loadPeople()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to delete person')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -273,6 +278,15 @@ const People: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         onSave={handlePersonSaved}
         editingPerson={editingPerson}
+      />
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Person"
+        message="Are you sure you want to delete this person?"
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   )

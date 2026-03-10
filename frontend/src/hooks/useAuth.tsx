@@ -33,6 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true)
   const hasCheckedAuth = useRef(false)
   const authCheckInFlight = useRef(false)
+  const checkAuthRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const isE2EMode =
     import.meta.env.VITE_E2E === '1' ||
     (typeof navigator !== 'undefined' && navigator.webdriver)
@@ -53,7 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const checkAuth = async () => {
+  const checkAuth = async (): Promise<void> => {
     // Public auth pages don't need session probing.
     if (isPublicAuthRoute) {
       setUser(null)
@@ -108,6 +109,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  // Keep ref in sync so polling always calls latest checkAuth
+  checkAuthRef.current = checkAuth
+
   useEffect(() => {
     // Initial auth check on mount and when route changes
     if (isE2EMode && hasCheckedAuth.current) {
@@ -141,9 +145,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return
     }
 
-    // Check auth every 30 seconds
+    // Check auth every 30 seconds (use ref to avoid stale closure)
     const authCheckInterval = setInterval(() => {
-      checkAuth()
+      checkAuthRef.current()
     }, 30000)
 
     // Proactively refresh token every 45 minutes (before 1 hour expiry)

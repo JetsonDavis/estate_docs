@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
+import { useToast } from '../../hooks/useToast'
 import './Templates.css'
 
 const EditTemplate: React.FC = () => {
@@ -17,6 +18,7 @@ const EditTemplate: React.FC = () => {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const { toast } = useToast()
 
   // Refs for auto-save to avoid stale closures
   const nameRef = useRef(name)
@@ -292,7 +294,7 @@ const EditTemplate: React.FC = () => {
       const result = await templateService.uploadFile(file)
       setMarkdownContent(result.markdown_content)
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to upload file')
+      toast(err.response?.data?.detail || 'Failed to upload file')
     } finally {
       setUploading(false)
     }
@@ -315,7 +317,7 @@ const EditTemplate: React.FC = () => {
       })
       navigate('/admin/templates')
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update template')
+      toast(err.response?.data?.detail || 'Failed to update template')
     } finally {
       setSubmitting(false)
     }
@@ -360,7 +362,7 @@ const EditTemplate: React.FC = () => {
           <button
             onClick={() => {
               if (blockErrors.length > 0) {
-                alert('Please fix the mismatched IF/FOREACH blocks before navigating away.')
+                toast('Please fix the mismatched IF/FOREACH blocks before navigating away.', 'warning')
                 return
               }
               navigate('/admin/templates')
@@ -513,7 +515,7 @@ const EditTemplate: React.FC = () => {
                 type="button"
                 onClick={() => {
                   if (blockErrors.length > 0) {
-                    alert('Please fix the mismatched IF/FOREACH blocks before navigating away.')
+                    toast('Please fix the mismatched IF/FOREACH blocks before navigating away.', 'warning')
                     return
                   }
                   navigate('/admin/templates')

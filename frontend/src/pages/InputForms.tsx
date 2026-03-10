@@ -5,6 +5,8 @@ import { InputForm, SessionQuestionsResponse, QuestionToDisplay, ConditionalFoll
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
+import { useToast } from '../hooks/useToast'
+import ConfirmDialog from '../components/common/ConfirmDialog'
 import './InputForms.css'
 
 const InputForms: React.FC = () => {
@@ -37,6 +39,8 @@ const InputForms: React.FC = () => {
   const [personSuggestions, setPersonSuggestions] = useState<Record<number, Person[]>>({})
   const personSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [copyingSessionId, setCopyingSessionId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<InputForm | null>(null)
+  const { toast } = useToast()
 
   // Ref for debouncing answer changes that might affect conditionals
   const conditionalRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -854,7 +858,7 @@ const InputForms: React.FC = () => {
       })
 
       if (missingAnswers.length > 0) {
-        alert('Please answer all required questions')
+        toast('Please answer all required questions', 'warning')
         return
       }
     }
@@ -909,7 +913,7 @@ const InputForms: React.FC = () => {
         setHasChanges(false)
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to navigate')
+      toast(err.response?.data?.detail || 'Failed to navigate')
     } finally {
       setSubmitting(false)
     }
@@ -1200,7 +1204,7 @@ const InputForms: React.FC = () => {
           />
         )
 
-      case 'person':
+      case 'person': {
         // Parse the current answer as JSON object with person fields
         let personData: Record<string, any> = {}
         try {
@@ -1569,8 +1573,9 @@ const InputForms: React.FC = () => {
             )}
           </div>
         )
+      }
 
-      case 'person_backup':
+      case 'person_backup': {
         // Parse the current answer as JSON object with person fields + replaces field
         let personBackupData: Record<string, any> = {}
         try {
@@ -2067,6 +2072,7 @@ const InputForms: React.FC = () => {
             )}
           </div>
         )
+      }
 
       case 'dropdown':
       case 'database_dropdown':
@@ -2184,7 +2190,7 @@ const InputForms: React.FC = () => {
                                   : s
                               ))
                             } catch (err: any) {
-                              alert('Failed to update session status: ' + (err.response?.data?.detail || err.message))
+                              toast('Failed to update session status: ' + (err.response?.data?.detail || err.message))
                             }
                           }}
                           style={{
@@ -2212,7 +2218,7 @@ const InputForms: React.FC = () => {
                                 })
                               })
                               .catch(err => {
-                                alert('Failed to copy form: ' + (err.response?.data?.detail || err.message))
+                                toast('Failed to copy form: ' + (err.response?.data?.detail || err.message))
                               })
                               .finally(() => {
                                 setCopyingSessionId(null)
@@ -2245,15 +2251,7 @@ const InputForms: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (window.confirm(`Are you sure you want to delete the form for "${session.client_identifier}"?`)) {
-                              sessionService.deleteSession(session.id)
-                                .then(() => {
-                                  setSessions(prev => prev.filter(s => s.id !== session.id))
-                                })
-                                .catch(err => {
-                                  alert('Failed to delete form: ' + (err.response?.data?.detail || err.message))
-                                })
-                            }
+                            setDeleteTarget(session)
                           }}
                           style={{
                             padding: '0.375rem',
@@ -3027,6 +3025,26 @@ const InputForms: React.FC = () => {
           }
           setPersonModalForQuestion(null)
         }}
+      />
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Form"
+        message={deleteTarget ? `Are you sure you want to delete the form for "${deleteTarget.client_identifier}"?` : ''}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (!deleteTarget) return
+          const id = deleteTarget.id
+          setDeleteTarget(null)
+          sessionService.deleteSession(id)
+            .then(() => {
+              setSessions(prev => prev.filter(s => s.id !== id))
+            })
+            .catch(err => {
+              toast('Failed to delete form: ' + (err.response?.data?.detail || err.message))
+            })
+        }}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   )

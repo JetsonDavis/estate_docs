@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { flowService } from '../../services/flowService'
 import { DocumentFlow } from '../../types/flow'
+import { useToast } from '../../hooks/useToast'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import './Flows.css'
 
 const Flows: React.FC = () => {
@@ -11,6 +13,8 @@ const Flows: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     loadFlows()
@@ -39,16 +43,19 @@ const Flows: React.FC = () => {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this flow?')) {
-      return
-    }
+  const handleDelete = (id: number) => {
+    setDeleteTarget(id)
+  }
 
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
     try {
-      await flowService.deleteFlow(id)
+      await flowService.deleteFlow(deleteTarget)
       loadFlows()
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete flow')
+      toast(err.response?.data?.detail || 'Failed to delete flow')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -203,6 +210,15 @@ const Flows: React.FC = () => {
         )}
 
       </div>
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Flow"
+        message="Are you sure you want to delete this flow?"
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

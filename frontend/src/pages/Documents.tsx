@@ -5,6 +5,8 @@ import { templateService } from '../services/templateService'
 import { GeneratedDocument, DocumentPreview } from '../types/document'
 import { InputForm } from '../types/session'
 import { Template } from '../types/template'
+import { useToast } from '../hooks/useToast'
+import ConfirmDialog from '../components/common/ConfirmDialog'
 import './Documents.css'
 
 const Documents: React.FC = () => {
@@ -20,6 +22,8 @@ const Documents: React.FC = () => {
   const [documentName, setDocumentName] = useState('')
   const [preview, setPreview] = useState<DocumentPreview | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     loadDocuments()
@@ -47,7 +51,7 @@ const Documents: React.FC = () => {
       setSessions(sessionsData.filter(s => s.is_completed))
       setTemplates(templatesData.templates)
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to load sessions and templates')
+      toast(err.response?.data?.detail || 'Failed to load sessions and templates')
     }
   }
 
@@ -58,7 +62,7 @@ const Documents: React.FC = () => {
 
   const handlePreview = async () => {
     if (!selectedSession || !selectedTemplate) {
-      alert('Please select both a session and a template')
+      toast('Please select both a session and a template', 'warning')
       return
     }
 
@@ -67,13 +71,13 @@ const Documents: React.FC = () => {
       setPreview(previewData)
       setShowPreviewModal(true)
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to preview document')
+      toast(err.response?.data?.detail || 'Failed to preview document')
     }
   }
 
   const handleGenerate = async () => {
     if (!selectedSession || !selectedTemplate) {
-      alert('Please select both a session and a template')
+      toast('Please select both a session and a template', 'warning')
       return
     }
 
@@ -92,22 +96,25 @@ const Documents: React.FC = () => {
       setPreview(null)
       loadDocuments()
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to generate document')
+      toast(err.response?.data?.detail || 'Failed to generate document')
     } finally {
       setGenerating(false)
     }
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this document?')) {
-      return
-    }
+    setDeleteTarget(id)
+  }
 
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
     try {
-      await documentService.deleteDocument(id)
+      await documentService.deleteDocument(deleteTarget)
       loadDocuments()
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete document')
+      toast(err.response?.data?.detail || 'Failed to delete document')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -266,6 +273,15 @@ const Documents: React.FC = () => {
             </div>
           </div>
         )}
+        <ConfirmDialog
+          isOpen={deleteTarget !== null}
+          title="Delete Document"
+          message="Are you sure you want to delete this document?"
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { userService } from '../../services/userService'
 import { User, UserCreate, UserUpdate } from '../../types/user'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import './Users.css'
 
 const Users: React.FC = () => {
@@ -13,6 +14,7 @@ const Users: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [formData, setFormData] = useState<UserCreate | UserUpdate>({
@@ -109,17 +111,20 @@ const Users: React.FC = () => {
     }
   }
 
-  const handleDelete = async (userId: number) => {
-    if (!confirm('Are you sure you want to deactivate this user?')) {
-      return
-    }
+  const handleDelete = (userId: number) => {
+    setDeleteTarget(userId)
+  }
 
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
     try {
-      await userService.deleteUser(userId)
+      await userService.deleteUser(deleteTarget)
       setSuccess('User deactivated successfully')
       loadUsers()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to deactivate user')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -389,6 +394,15 @@ const Users: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Deactivate User"
+        message="Are you sure you want to deactivate this user?"
+        confirmLabel="Deactivate"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

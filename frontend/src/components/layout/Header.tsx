@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useToast } from '../../hooks/useToast'
 import './Header.css'
 
 const Header: React.FC = () => {
   const { isAuthenticated, isAdmin, user, logout } = useAuth()
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
+  const { toast } = useToast()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -107,7 +109,7 @@ const Header: React.FC = () => {
                           className="dropdown-item"
                           onClick={() => {
                             setShowDropdown(false)
-                            alert('Coming soon')
+                            toast('Coming soon', 'info')
                           }}
                         >
                           Settings

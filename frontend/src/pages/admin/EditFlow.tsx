@@ -6,6 +6,7 @@ import { personService } from '../../services/personService'
 import { DocumentFlowUpdate } from '../../types/flow'
 import { QuestionGroup, QuestionGroupDetail } from '../../types/question'
 import { Person } from '../../types/person'
+import { useToast } from '../../hooks/useToast'
 import './Flows.css'
 
 interface FlowStep {
@@ -35,6 +36,7 @@ const EditFlow: React.FC = () => {
   const [people, setPeople] = useState<Person[]>([])
   const [personSearch, setPersonSearch] = useState<string>('')
   const nameCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const { toast } = useToast()
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const originalNameRef = useRef<string>('')
   const personSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -121,7 +123,7 @@ const EditFlow: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load flow:', err)
-      alert('Failed to load flow')
+      toast('Failed to load flow')
       navigate('/admin/flows')
     } finally {
       setLoading(false)

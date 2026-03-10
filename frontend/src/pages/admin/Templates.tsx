@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template, TemplateCreate, TemplateType } from '../../types/template'
+import { useToast } from '../../hooks/useToast'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import './Templates.css'
 
 const Templates: React.FC = () => {
@@ -11,6 +13,8 @@ const Templates: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     loadTemplates()
@@ -38,16 +42,19 @@ const Templates: React.FC = () => {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this template?')) {
-      return
-    }
+  const handleDelete = (id: number) => {
+    setDeleteTarget(id)
+  }
 
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
     try {
-      await templateService.deleteTemplate(id)
+      await templateService.deleteTemplate(deleteTarget)
       loadTemplates()
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete template')
+      toast(err.response?.data?.detail || 'Failed to delete template')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -199,6 +206,15 @@ const Templates: React.FC = () => {
       )}
 
       </div>
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Template"
+        message="Are you sure you want to delete this template?"
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

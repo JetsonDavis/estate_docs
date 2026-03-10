@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
 import { InputForm } from '../types/session'
 import { Template } from '../types/template'
+import { useToast } from '../hooks/useToast'
 import './MergeDocuments.css'
 
 const MergeDocuments: React.FC = () => {
@@ -24,6 +25,7 @@ const MergeDocuments: React.FC = () => {
   const [sessionIdentifiers, setSessionIdentifiers] = useState<string[]>([])
   const [templateIdentifiers, setTemplateIdentifiers] = useState<string[]>([])
   const [loadingIdentifiers, setLoadingIdentifiers] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     loadData()
@@ -130,7 +132,7 @@ const MergeDocuments: React.FC = () => {
 
   // Sort identifiers so matching ones line up between the two columns
   // Returns { sessionSorted, templateSorted } where matching identifiers are at the same index
-  const getSortedIdentifiers = () => {
+  const { sessionSorted, templateSorted } = useMemo(() => {
     // Find identifiers that exist in both lists
     const inBoth = sessionIdentifiers.filter(id => templateIdentifiers.includes(id)).sort()
     
@@ -143,33 +145,33 @@ const MergeDocuments: React.FC = () => {
     // Build aligned lists:
     // - First, matching identifiers (same in both)
     // - Then, non-matching ones with placeholders to align
-    const sessionSorted: (string | null)[] = []
-    const templateSorted: (string | null)[] = []
+    const sSorted: (string | null)[] = []
+    const tSorted: (string | null)[] = []
     
     // Add matching identifiers first
     for (const id of inBoth) {
-      sessionSorted.push(id)
-      templateSorted.push(id)
+      sSorted.push(id)
+      tSorted.push(id)
     }
     
     // Add session-only identifiers with null placeholders in template
     for (const id of onlyInSession) {
-      sessionSorted.push(id)
-      templateSorted.push(null)
+      sSorted.push(id)
+      tSorted.push(null)
     }
     
     // Add template-only identifiers with null placeholders in session
     for (const id of onlyInTemplate) {
-      sessionSorted.push(null)
-      templateSorted.push(id)
+      sSorted.push(null)
+      tSorted.push(id)
     }
     
-    return { sessionSorted, templateSorted }
-  }
+    return { sessionSorted: sSorted, templateSorted: tSorted }
+  }, [sessionIdentifiers, templateIdentifiers])
 
   const handleMergeDocuments = async () => {
     if (!selectedSessionId || !selectedTemplateId) {
-      alert('Please select both a document session and a template')
+      toast('Please select both a document session and a template', 'warning')
       return
     }
 
@@ -202,7 +204,7 @@ const MergeDocuments: React.FC = () => {
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
     } catch (err: any) {
-      alert(err.message || 'Failed to merge documents')
+      toast(err.message || 'Failed to merge documents')
     } finally {
       setLoadingIdentifiers(false)
     }
@@ -373,47 +375,40 @@ const MergeDocuments: React.FC = () => {
                   <div className="loading-state">Loading identifiers...</div>
                 ) : (
                   <div className="identifiers-columns">
-                    {(() => {
-                      const { sessionSorted, templateSorted } = getSortedIdentifiers()
-                      return (
-                        <>
-                          <div className="identifiers-column">
-                            <h3 className="column-title">Input Form Identifiers</h3>
-                            {sessionIdentifiers.length === 0 ? (
-                              <div className="empty-list">No session selected or no identifiers found</div>
-                            ) : (
-                              <ul className="identifier-items">
-                                {sessionSorted.map((identifier, index) => (
-                                  <li
-                                    key={identifier || `placeholder-${index}`}
-                                    className={`identifier-item ${identifier === null ? 'placeholder' : (!templateIdentifiers.includes(identifier) ? 'missing' : '')}`}
-                                  >
-                                    {identifier || '\u00A0'}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                          <div className="identifiers-column">
-                            <h3 className="column-title">Template Identifiers</h3>
-                            {templateIdentifiers.length === 0 ? (
-                              <div className="empty-list">No template selected or no identifiers found</div>
-                            ) : (
-                              <ul className="identifier-items">
-                                {templateSorted.map((identifier, index) => (
-                                  <li
-                                    key={identifier || `placeholder-${index}`}
-                                    className={`identifier-item ${identifier === null ? 'placeholder' : (!sessionIdentifiers.includes(identifier) ? 'missing' : '')}`}
-                                  >
-                                    {identifier || '\u00A0'}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </>
-                      )
-                    })()}
+                    <div className="identifiers-column">
+                      <h3 className="column-title">Input Form Identifiers</h3>
+                      {sessionIdentifiers.length === 0 ? (
+                        <div className="empty-list">No session selected or no identifiers found</div>
+                      ) : (
+                        <ul className="identifier-items">
+                          {sessionSorted.map((identifier, index) => (
+                            <li
+                              key={identifier || `placeholder-${index}`}
+                              className={`identifier-item ${identifier === null ? 'placeholder' : (!templateIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                            >
+                              {identifier || '\u00A0'}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="identifiers-column">
+                      <h3 className="column-title">Template Identifiers</h3>
+                      {templateIdentifiers.length === 0 ? (
+                        <div className="empty-list">No template selected or no identifiers found</div>
+                      ) : (
+                        <ul className="identifier-items">
+                          {templateSorted.map((identifier, index) => (
+                            <li
+                              key={identifier || `placeholder-${index}`}
+                              className={`identifier-item ${identifier === null ? 'placeholder' : (!sessionIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                            >
+                              {identifier || '\u00A0'}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

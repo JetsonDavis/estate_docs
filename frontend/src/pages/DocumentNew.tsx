@@ -6,6 +6,7 @@ import { Person } from '../types/person'
 import { QuestionGroup } from '../types/question'
 import PersonTypeahead from '../components/common/PersonTypeahead'
 import PersonFormModal from '../components/common/PersonFormModal'
+import { useToast } from '../hooks/useToast'
 import './InputForms.css'
 
 const DocumentNew: React.FC = () => {
@@ -19,6 +20,7 @@ const DocumentNew: React.FC = () => {
   const [loadingGroups, setLoadingGroups] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showNewPersonModal, setShowNewPersonModal] = useState(false)
+  const { toast } = useToast()
 
   // Fetch question groups on mount
   useEffect(() => {
@@ -44,7 +46,7 @@ const DocumentNew: React.FC = () => {
     e.preventDefault()
 
     if (!documentFor.trim() || !documentName.trim() || !selectedGroupId) {
-      alert('Please fill in all fields')
+      toast('Please fill in all fields', 'warning')
       return
     }
 
@@ -56,7 +58,7 @@ const DocumentNew: React.FC = () => {
       })
       navigate(`/document?session=${session.id}`)
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create session')
+      toast(err.response?.data?.detail || 'Failed to create session')
     } finally {
       setSubmitting(false)
     }

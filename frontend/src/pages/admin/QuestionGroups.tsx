@@ -4,6 +4,8 @@ import { Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { questionGroupService } from '../../services/questionService'
 import { QuestionGroup, QuestionType, QuestionOption, QuestionLogicItem } from '../../types/question'
 import PersonTypeahead from '../../components/common/PersonTypeahead'
+import { useToast } from '../../hooks/useToast'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import './QuestionGroups.css'
 
 const QuestionGroups: React.FC = () => {
@@ -25,6 +27,8 @@ const QuestionGroups: React.FC = () => {
   const [success, setSuccess] = useState('')
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
   const [copyingGroupId, setCopyingGroupId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  const { toast } = useToast()
 
   const pageSize = 20
 
@@ -48,10 +52,14 @@ const QuestionGroups: React.FC = () => {
     }
   }
 
-  const handleDelete = async (groupId: number) => {
-    if (!confirm('Are you sure you want to delete this question group?')) {
-      return
-    }
+  const handleDelete = (groupId: number) => {
+    setDeleteTarget(groupId)
+  }
+
+  const confirmDelete = async () => {
+    const groupId = deleteTarget
+    if (groupId === null) return
+    setDeleteTarget(null)
 
     // Calculate pagination state before deletion
     const itemsOnCurrentPage = groups.length
@@ -244,7 +252,7 @@ const QuestionGroups: React.FC = () => {
                       />
                       <span
                         onClick={() => navigate(`/admin/question-groups/${group.id}/edit`)}
-                        style={{ cursor: 'pointer', color: '#2563eb', fontSize: '0.875rem', fontWeight: '400' }}
+                        style={GROUP_NAME_LINK_STYLE}
                       >
                         {group.name}
                       </span>
@@ -292,7 +300,7 @@ const QuestionGroups: React.FC = () => {
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
-                            style={{ width: '1rem', height: '1rem' }}
+                            style={ICON_SM_STYLE}
                           >
                             <path
                               strokeLinecap="round"
@@ -325,7 +333,7 @@ const QuestionGroups: React.FC = () => {
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
-                            style={{ width: '1rem', height: '1rem' }}
+                            style={ICON_SM_STYLE}
                           >
                             <path
                               strokeLinecap="round"
@@ -391,35 +399,16 @@ const QuestionGroups: React.FC = () => {
                           Question Identifiers
                         </button>
                         {expandedGroups.has(group.id) && (
-                          <div style={{
-                            marginTop: '0.5rem',
-                            paddingLeft: '1.5rem',
-                            fontSize: '0.875rem',
-                            color: '#4b5563'
-                          }}>
+                          <div style={IDENTIFIERS_PANEL_STYLE}>
                             {group.questions.map((q: any, idx: number) => (
-                              <div key={idx} style={{ marginBottom: '0.25rem' }}>
-                                <code style={{
-                                  backgroundColor: '#f3f4f6',
-                                  padding: '0.125rem 0.375rem',
-                                  borderRadius: '0.25rem',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.8125rem'
-                                }}>
+                              <div key={idx} style={ITEM_SPACING_STYLE}>
+                                <code style={IDENTIFIER_CODE_STYLE}>
                                   {stripIdentifierNamespace(q.identifier)}
                                 </code>
-                                <span style={{
-                                  marginLeft: '0.5rem',
-                                  padding: '0.125rem 0.375rem',
-                                  backgroundColor: '#dbeafe',
-                                  color: '#1e40af',
-                                  borderRadius: '0.25rem',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '500'
-                                }}>
+                                <span style={IDENTIFIER_TYPE_BADGE_STYLE}>
                                   {q.question_type}
                                 </span>
-                                <span style={{ marginLeft: '0.5rem', color: '#9ca3af' }}>
+                                <span style={IDENTIFIER_TEXT_STYLE}>
                                   {q.question_text}
                                 </span>
                               </div>
@@ -460,6 +449,15 @@ const QuestionGroups: React.FC = () => {
         </>
       )}
       </div>
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Question Group"
+        message="Are you sure you want to delete this question group?"
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
@@ -494,6 +492,234 @@ const stripIdentifierNamespace = (identifier: string): string => {
   const dotIndex = identifier.indexOf('.')
   return dotIndex >= 0 ? identifier.substring(dotIndex + 1) : identifier
 }
+
+/**
+ * Pure normalizer: transforms raw API group data into the component state shape.
+ * Returns { questions, questionLogic, collapsedItems, wasFixed } without any side-effects.
+ */
+function normalizeGroupData(groupData: any): {
+  questions: QuestionFormData[]
+  questionLogic: QuestionLogicItem[]
+  collapsedItems: Set<string> | null
+  wasFixed: boolean
+} {
+  // Map raw questions to QuestionFormData
+  const questions: QuestionFormData[] =
+    groupData.questions && groupData.questions.length > 0
+      ? groupData.questions.map((q: any) => ({
+          id: q.id.toString(),
+          dbId: q.id,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          identifier: stripIdentifierNamespace(q.identifier),
+          repeatable: q.repeatable || false,
+          repeatable_group_id: q.repeatable_group_id || undefined,
+          is_required: q.is_required,
+          options: q.options || [],
+          person_display_mode: q.person_display_mode || undefined,
+          include_time: q.include_time || false,
+          lastSaved: new Date(),
+        }))
+      : []
+
+  // Collapsed items
+  const collapsedItems =
+    groupData.collapsed_items && groupData.collapsed_items.length > 0
+      ? new Set<string>(groupData.collapsed_items)
+      : null
+
+  // If no logic, return early
+  if (!groupData.question_logic || groupData.question_logic.length === 0) {
+    return { questions, questionLogic: [], collapsedItems, wasFixed: false }
+  }
+
+  const validQuestionIds = new Set(questions.map(q => q.dbId))
+
+  const dbIdToQuestion = new Map<number, QuestionFormData>()
+  for (const q of questions) {
+    if (q.dbId) dbIdToQuestion.set(q.dbId, q)
+  }
+
+  // Collect all questionIds already assigned in logic items
+  const collectAssignedIds = (items: any[]): Set<number> => {
+    const ids = new Set<number>()
+    for (const item of items) {
+      if (item.type === 'question' && item.questionId) ids.add(item.questionId)
+      if (item.type === 'conditional' && item.conditional?.nestedItems) {
+        for (const id of collectAssignedIds(item.conditional.nestedItems)) ids.add(id)
+      }
+    }
+    return ids
+  }
+  const assignedIds = collectAssignedIds(groupData.question_logic)
+
+  // Sync localQuestionId -> question.id for items that DO have questionId
+  const syncQuestionIds = (items: any[]) => {
+    for (const item of items) {
+      if (item.type === 'question' && item.questionId && item.localQuestionId) {
+        const q = dbIdToQuestion.get(item.questionId)
+        if (q) q.id = item.localQuestionId
+      }
+      if (item.type === 'conditional' && item.conditional?.nestedItems) {
+        syncQuestionIds(item.conditional.nestedItems)
+      }
+    }
+  }
+  syncQuestionIds(groupData.question_logic)
+
+  // For items WITHOUT questionId, find unassigned questions and patch
+  const unassignedDbIds = questions.filter(q => q.dbId && !assignedIds.has(q.dbId)).map(q => q.dbId!)
+  let unassignedIdx = 0
+
+  const fixUndefinedQuestionIds = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+    return items.map(item => {
+      if (item.type === 'question' && !item.questionId) {
+        const localId = (item as any).localQuestionId
+        if (localId && unassignedIdx < unassignedDbIds.length) {
+          const dbId = unassignedDbIds[unassignedIdx++]
+          const q = dbIdToQuestion.get(dbId)
+          if (q) q.id = localId
+          return { ...item, questionId: dbId }
+        }
+      }
+      if (item.type === 'conditional' && item.conditional?.nestedItems) {
+        return {
+          ...item,
+          conditional: {
+            ...item.conditional,
+            nestedItems: fixUndefinedQuestionIds(item.conditional.nestedItems),
+          },
+        }
+      }
+      return item
+    })
+  }
+
+  // Strip namespace prefixes from conditional ifIdentifier values
+  const stripConditionalNamespaces = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+    return items.map(item => {
+      if (item.type === 'conditional' && item.conditional) {
+        return {
+          ...item,
+          conditional: {
+            ...item.conditional,
+            ifIdentifier: item.conditional.ifIdentifier
+              ? stripIdentifierNamespace(item.conditional.ifIdentifier)
+              : item.conditional.ifIdentifier,
+            nestedItems: item.conditional.nestedItems
+              ? stripConditionalNamespaces(item.conditional.nestedItems)
+              : item.conditional.nestedItems,
+          },
+        }
+      }
+      return item
+    })
+  }
+
+  // Fix undefined questionIds then strip namespaces
+  let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
+  fixedLogic = stripConditionalNamespaces(fixedLogic)
+
+  // Recursively clean orphaned question items from logic
+  const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
+    return items
+      .filter(item => {
+        if (item.type === 'question') {
+          if (item.questionId && validQuestionIds.has(item.questionId)) return true
+          const localId = (item as any).localQuestionId
+          if (!item.questionId && localId) return true
+          return false
+        }
+        return true
+      })
+      .map(item => {
+        if (item.type === 'conditional' && item.conditional?.nestedItems) {
+          return {
+            ...item,
+            conditional: {
+              ...item.conditional,
+              nestedItems: cleanOrphanedItems(item.conditional.nestedItems),
+            },
+          }
+        }
+        return item
+      })
+  }
+
+  let cleanedLogic = cleanOrphanedItems(fixedLogic)
+
+  // Find questions that exist in DB but are missing from question_logic
+  const getQuestionIdsFromLogic = (items: QuestionLogicItem[]): Set<number> => {
+    const ids = new Set<number>()
+    for (const item of items) {
+      if (item.type === 'question' && item.questionId) ids.add(item.questionId)
+      if (item.type === 'conditional' && item.conditional?.nestedItems) {
+        getQuestionIdsFromLogic(item.conditional.nestedItems).forEach(id => ids.add(id))
+      }
+    }
+    return ids
+  }
+
+  const countQuestionSlotsInLogic = (items: QuestionLogicItem[]): number => {
+    let count = 0
+    for (const item of items) {
+      if (item.type === 'question') count++
+      if (item.type === 'conditional' && item.conditional?.nestedItems) {
+        count += countQuestionSlotsInLogic(item.conditional.nestedItems)
+      }
+    }
+    return count
+  }
+
+  const wasFixed =
+    JSON.stringify(groupData.question_logic) !== JSON.stringify(fixedLogic)
+
+  const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
+  const totalSlots = countQuestionSlotsInLogic(cleanedLogic)
+  const orphanedQuestions = questions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
+
+  if (orphanedQuestions.length > 0) {
+    const unfilledSlots = totalSlots - questionIdsInLogic.size
+    if (unfilledSlots < orphanedQuestions.length) {
+      console.warn(
+        'WARNING: Found orphaned questions in DB but not in logic:',
+        orphanedQuestions.map(q => q.identifier)
+      )
+      for (const orphan of orphanedQuestions) {
+        cleanedLogic.push({
+          id: `restored_${orphan.dbId}_${Date.now()}`,
+          type: 'question',
+          questionId: orphan.dbId,
+          depth: 0,
+        })
+      }
+    }
+  }
+
+  return { questions, questionLogic: cleanedLogic, collapsedItems, wasFixed }
+}
+
+// Extracted style constants to avoid re-creating objects on every render
+const SUMMARY_ROW_STYLE: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }
+const REPEATABLE_BADGE_STYLE: React.CSSProperties = { backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '0 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 600 }
+const IDENTIFIER_STYLE: React.CSSProperties = { fontWeight: 600, color: '#1f2937' }
+const SEPARATOR_STYLE: React.CSSProperties = { color: '#9ca3af' }
+const TEXT_MUTED_STYLE: React.CSSProperties = { color: '#6b7280' }
+const TYPE_LABEL_STYLE: React.CSSProperties = { color: '#2563eb', fontWeight: 500 }
+const OPTION_LABEL_STYLE: React.CSSProperties = { color: '#6b7280', fontStyle: 'italic' }
+const COND_IF_STYLE: React.CSSProperties = { fontWeight: 500 }
+const COND_IDENTIFIER_STYLE: React.CSSProperties = { fontWeight: 600, color: '#7c3aed' }
+const COND_VALUE_STYLE: React.CSSProperties = { fontWeight: 600, color: '#1f2937' }
+const COND_COUNT_STYLE: React.CSSProperties = { color: '#6b7280', fontSize: '0.75rem' }
+const ICON_SM_STYLE: React.CSSProperties = { width: '1rem', height: '1rem' }
+const ICON_BUTTON_STYLE: React.CSSProperties = { background: 'none', border: 'none', padding: '0.25rem', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }
+const GROUP_NAME_LINK_STYLE: React.CSSProperties = { cursor: 'pointer', color: '#2563eb', fontSize: '0.875rem', fontWeight: '400' }
+const CHECKBOX_STYLE: React.CSSProperties = { width: '1rem', height: '1rem', marginRight: '0.5rem', cursor: 'pointer' }
+const IDENTIFIERS_PANEL_STYLE: React.CSSProperties = { marginTop: '0.5rem', paddingLeft: '1.5rem', fontSize: '0.875rem', color: '#4b5563' }
+const IDENTIFIER_CODE_STYLE: React.CSSProperties = { backgroundColor: '#f3f4f6', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontSize: '0.8rem' }
+const IDENTIFIER_TYPE_BADGE_STYLE: React.CSSProperties = { marginLeft: '0.5rem', padding: '0.125rem 0.375rem', backgroundColor: '#dbeafe', color: '#1d4ed8', borderRadius: '0.25rem', fontSize: '0.7rem' }
+const IDENTIFIER_TEXT_STYLE: React.CSSProperties = { marginLeft: '0.5rem', color: '#9ca3af' }
+const ITEM_SPACING_STYLE: React.CSSProperties = { marginBottom: '0.25rem' }
 
 // Color scheme for different nesting depths
 const getDepthBackgroundColor = (depth: number): string => {
@@ -549,9 +775,19 @@ const getDepthTextColor = (depth: number): string => {
 
 const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ groupId }) => {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [questions, setQuestions] = useState<QuestionFormData[]>([])
+  const [questions, setQuestionsState] = useState<QuestionFormData[]>([])
+  const questionsRef = useRef<QuestionFormData[]>([])
+  // Keep ref in sync and expose a single setter
+  const setQuestions: typeof setQuestionsState = (action) => {
+    setQuestionsState(prev => {
+      const next = typeof action === 'function' ? action(prev) : action
+      questionsRef.current = next
+      return next
+    })
+  }
   const [questionLogic, setQuestionLogic] = useState<QuestionLogicItem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [openDisplayModeDropdown, setOpenDisplayModeDropdown] = useState<string | null>(null)
@@ -743,19 +979,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       !prevQuestion || !prevQuestion.repeatable || prevQuestion.repeatable_group_id !== q.repeatable_group_id
     )
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
+      <div style={SUMMARY_ROW_STYLE}>
         {q.repeatable && (
-          <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '0 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 600 }}>{isNewRepeatableGroup ? 'New Repeatable' : 'Repeatable'}</span>
+          <span style={REPEATABLE_BADGE_STYLE}>{isNewRepeatableGroup ? 'New Repeatable' : 'Repeatable'}</span>
         )}
-        <span style={{ fontWeight: 600, color: '#1f2937' }}>{q.identifier || '(no identifier)'}</span>
-        <span style={{ color: '#9ca3af' }}>|</span>
-        <span style={{ color: '#6b7280' }}>{q.question_text || '(no text)'}</span>
-        <span style={{ color: '#9ca3af' }}>|</span>
-        <span style={{ color: '#2563eb', fontWeight: 500 }}>{typeLabel}</span>
+        <span style={IDENTIFIER_STYLE}>{q.identifier || '(no identifier)'}</span>
+        <span style={SEPARATOR_STYLE}>|</span>
+        <span style={TEXT_MUTED_STYLE}>{q.question_text || '(no text)'}</span>
+        <span style={SEPARATOR_STYLE}>|</span>
+        <span style={TYPE_LABEL_STYLE}>{typeLabel}</span>
         {hasOptions && optionLabels && (
           <>
-            <span style={{ color: '#9ca3af' }}>:</span>
-            <span style={{ color: '#6b7280', fontStyle: 'italic' }}>{optionLabels}</span>
+            <span style={SEPARATOR_STYLE}>:</span>
+            <span style={OPTION_LABEL_STYLE}>{optionLabels}</span>
           </>
         )}
       </div>
@@ -778,13 +1014,13 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     const nestedCount = cond?.nestedItems?.length || 0
     const questionCount = cond?.nestedItems?.filter(i => i.type === 'question').length || 0
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#374151', lineHeight: 1.4 }}>
-        <span style={{ fontWeight: 500 }}>If</span>
-        <span style={{ fontWeight: 600, color: '#7c3aed' }}>{identifier}</span>
-        <span style={{ color: '#6b7280' }}>{opLabel[op] || op}</span>
-        <span style={{ fontWeight: 600, color: '#1f2937' }}>"{val}"</span>
+      <div style={SUMMARY_ROW_STYLE}>
+        <span style={COND_IF_STYLE}>If</span>
+        <span style={COND_IDENTIFIER_STYLE}>{identifier}</span>
+        <span style={TEXT_MUTED_STYLE}>{opLabel[op] || op}</span>
+        <span style={COND_VALUE_STYLE}>"{val}"</span>
         {questionCount > 0 && (
-          <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>({questionCount} question{questionCount !== 1 ? 's' : ''} inside)</span>
+          <span style={COND_COUNT_STYLE}>({questionCount} question{questionCount !== 1 ? 's' : ''} inside)</span>
         )}
       </div>
     )
@@ -842,245 +1078,29 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           setSavedGroupId(groupId)
           savedGroupIdRef.current = groupId
 
-          // Load questions if they exist
-          const loadedQuestions: QuestionFormData[] = groupData.questions && groupData.questions.length > 0
-            ? groupData.questions.map(q => {
-                return {
-                  id: q.id.toString(),
-                  dbId: q.id,
-                  question_text: q.question_text,
-                  question_type: q.question_type,
-                  identifier: stripIdentifierNamespace(q.identifier),
-                  repeatable: q.repeatable || false,
-                  repeatable_group_id: q.repeatable_group_id || undefined,
-                  is_required: q.is_required,
-                  options: q.options || [],
-                  person_display_mode: q.person_display_mode || undefined,
-                  include_time: q.include_time || false,
-                  lastSaved: new Date()
-                }
-              })
-            : []
-          setQuestions(loadedQuestions)
+          const normalized = normalizeGroupData(groupData)
 
-          // Load collapsed items from DB
-          if (groupData.collapsed_items && groupData.collapsed_items.length > 0) {
-            setCollapsedItems(new Set(groupData.collapsed_items))
+          setQuestions(normalized.questions)
+          if (normalized.collapsedItems) {
+            setCollapsedItems(normalized.collapsedItems)
+          }
+          if (normalized.questionLogic.length > 0) {
+            setQuestionLogic(normalized.questionLogic)
           }
 
-          // Load question logic if it exists, and clean up orphaned items
-          if (groupData.question_logic && groupData.question_logic.length > 0) {
-            // Create a set of valid question IDs
-            const validQuestionIds = new Set(loadedQuestions.map(q => q.dbId))
-            
-            // First pass: Sync question IDs between logic items and loaded questions.
-            // Logic items reference questions via questionId (DB id) or localQuestionId (timestamp).
-            // When loading from DB, question.id = dbId.toString(), which doesn't match localQuestionId.
-            // We need to:
-            // 1. For logic items WITH questionId: update the matching question's id to localQuestionId
-            // 2. For logic items WITHOUT questionId: find the matching question and patch questionId
-            const dbIdToQuestion = new Map<number, typeof loadedQuestions[0]>()
-            for (const q of loadedQuestions) {
-              if (q.dbId) dbIdToQuestion.set(q.dbId, q)
-            }
-            
-            // Collect all questionIds already assigned in logic items
-            const collectAssignedIds = (items: any[]): Set<number> => {
-              const ids = new Set<number>()
-              for (const item of items) {
-                if (item.type === 'question' && item.questionId) ids.add(item.questionId)
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  for (const id of collectAssignedIds(item.conditional.nestedItems)) ids.add(id)
-                }
-              }
-              return ids
-            }
-            const assignedIds = collectAssignedIds(groupData.question_logic)
-
-            // Sync localQuestionId -> question.id for items that DO have questionId
-            const syncQuestionIds = (items: any[]) => {
-              for (const item of items) {
-                if (item.type === 'question' && item.questionId && item.localQuestionId) {
-                  const q = dbIdToQuestion.get(item.questionId)
-                  if (q) q.id = item.localQuestionId
-                }
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  syncQuestionIds(item.conditional.nestedItems)
-                }
-              }
-            }
-            syncQuestionIds(groupData.question_logic)
-
-            // For items WITHOUT questionId, find unassigned questions and patch
-            const unassignedDbIds = Array.from(
-              loadedQuestions.filter(q => q.dbId && !assignedIds.has(q.dbId)).map(q => q.dbId!)
-            )
-            let unassignedIdx = 0
-
-            const fixUndefinedQuestionIds = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-              return items.map(item => {
-                if (item.type === 'question' && !item.questionId) {
-                  const localId = (item as any).localQuestionId
-                  if (localId && unassignedIdx < unassignedDbIds.length) {
-                    const dbId = unassignedDbIds[unassignedIdx++]
-                    const q = dbIdToQuestion.get(dbId)
-                    if (q) q.id = localId  // sync question.id to localQuestionId
-                    return { ...item, questionId: dbId }
-                  }
-                }
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  return {
-                    ...item,
-                    conditional: {
-                      ...item.conditional,
-                      nestedItems: fixUndefinedQuestionIds(item.conditional.nestedItems)
-                    }
-                  }
-                }
-                return item
+          // If we fixed undefined questionIds, save the corrected logic to the server
+          if (normalized.wasFixed) {
+            try {
+              await questionGroupService.updateQuestionGroup(groupId, {
+                question_logic: normalized.questionLogic
               })
-            }
-            
-            // Strip namespace prefixes from conditional ifIdentifier values
-            // (they're stored with full namespace in DB but questions are stripped on load)
-            const stripConditionalNamespaces = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-              return items.map(item => {
-                if (item.type === 'conditional' && item.conditional) {
-                  return {
-                    ...item,
-                    conditional: {
-                      ...item.conditional,
-                      ifIdentifier: item.conditional.ifIdentifier
-                        ? stripIdentifierNamespace(item.conditional.ifIdentifier)
-                        : item.conditional.ifIdentifier,
-                      nestedItems: item.conditional.nestedItems
-                        ? stripConditionalNamespaces(item.conditional.nestedItems)
-                        : item.conditional.nestedItems
-                    }
-                  }
-                }
-                return item
-              })
-            }
-
-            // Fix undefined questionIds first
-            let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
-            
-            // Strip namespace prefixes from conditional ifIdentifiers
-            fixedLogic = stripConditionalNamespaces(fixedLogic)
-
-            // Recursively clean orphaned question items from logic
-            // Now we only remove items that have invalid questionIds (not in DB)
-            const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
-              return items.filter(item => {
-                if (item.type === 'question') {
-                  // Keep if questionId exists in valid questions
-                  // Also keep if questionId is undefined but has localQuestionId (might be unsaved)
-                  if (item.questionId && validQuestionIds.has(item.questionId)) {
-                    return true
-                  }
-                  // If still undefined after fix attempt, check if it has a localQuestionId
-                  // that might correspond to a question that hasn't been saved yet
-                  const localId = (item as any).localQuestionId
-                  if (!item.questionId && localId) {
-                    return true
-                  }
-                  return false
-                }
-                return true // Keep conditionals
-              }).map(item => {
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  return {
-                    ...item,
-                    conditional: {
-                      ...item.conditional,
-                      nestedItems: cleanOrphanedItems(item.conditional.nestedItems)
-                    }
-                  }
-                }
-                return item
-              })
-            }
-
-            let cleanedLogic = cleanOrphanedItems(fixedLogic)
-            
-            // Find questions that exist in DB but are missing from question_logic (orphaned questions)
-            // Also count how many question slots exist in the logic (including those with undefined questionId)
-            const getQuestionIdsFromLogic = (items: QuestionLogicItem[]): Set<number> => {
-              const ids = new Set<number>()
-              for (const item of items) {
-                if (item.type === 'question' && item.questionId) {
-                  ids.add(item.questionId)
-                }
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  const nestedIds = getQuestionIdsFromLogic(item.conditional.nestedItems)
-                  nestedIds.forEach(id => ids.add(id))
-                }
-              }
-              return ids
-            }
-            
-            // Count total question slots in logic (including those with undefined questionId)
-            // This helps us understand if there are "placeholder" slots for unsaved questions
-            const countQuestionSlotsInLogic = (items: QuestionLogicItem[]): number => {
-              let count = 0
-              for (const item of items) {
-                if (item.type === 'question') {
-                  count++
-                }
-                if (item.type === 'conditional' && item.conditional?.nestedItems) {
-                  count += countQuestionSlotsInLogic(item.conditional.nestedItems)
-                }
-              }
-              return count
-            }
-            
-            // Check if we fixed any undefined questionIds (compare fixedLogic to original)
-            const logicBeforeFix = JSON.stringify(groupData.question_logic)
-            const logicAfterFix = JSON.stringify(fixedLogic)
-            const wasFixed = logicBeforeFix !== logicAfterFix
-            
-            const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
-            const totalSlots = countQuestionSlotsInLogic(cleanedLogic)
-            
-            const orphanedQuestions = loadedQuestions.filter(q => q.dbId && !questionIdsInLogic.has(q.dbId))
-            
-            // Only add orphaned questions if they are truly missing from the logic
-            // AND there are no empty slots that could be filled
-            if (orphanedQuestions.length > 0) {
-              // Check if there are unfilled slots in the logic that could hold these questions
-              const unfilledSlots = totalSlots - questionIdsInLogic.size
-              if (unfilledSlots < orphanedQuestions.length) {
-                console.warn('WARNING: Found orphaned questions in DB but not in logic:', orphanedQuestions.map(q => q.identifier))
-                console.warn('These questions exist in the database but are not in the question_logic. They will be added at the root level for display only.')
-                for (const orphan of orphanedQuestions) {
-                  cleanedLogic.push({
-                    id: `restored_${orphan.dbId}_${Date.now()}`,
-                    type: 'question',
-                    questionId: orphan.dbId,
-                    depth: 0
-                  })
-                }
-              }
-            }
-            
-            setQuestionLogic(cleanedLogic)
-
-            // If we fixed undefined questionIds, save the corrected logic to the server
-            // This ensures nested questions maintain their correct position after refresh
-            if (wasFixed) {
-              try {
-                await questionGroupService.updateQuestionGroup(groupId, {
-                  question_logic: cleanedLogic
-                })
-              } catch (err) {
-                console.error('Failed to save corrected question_logic:', err)
-              }
+            } catch (err) {
+              console.error('Failed to save corrected question_logic:', err)
             }
           }
         } catch (error) {
           console.error('Failed to load group data:', error)
-          alert('Failed to load question group data')
+          toast('Failed to load question group data')
         } finally {
           setLoading(false)
         }
@@ -1264,16 +1284,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }
 
         // First check against other questions in the current form
-        // Use a promise to get current state since we're in an async callback
-        let localDuplicate = false
-        setQuestions(prev => {
-          localDuplicate = prev.some(q =>
-            q.id !== question.id &&
-            q.identifier.trim() !== '' &&
-            q.identifier.toLowerCase() === question.identifier.toLowerCase()
-          )
-          return prev // Don't modify, just read
-        })
+        const localDuplicate = questionsRef.current.some(q =>
+          q.id !== question.id &&
+          q.identifier.trim() !== '' &&
+          q.identifier.toLowerCase() === question.identifier.toLowerCase()
+        )
 
         if (localDuplicate) {
           setQuestions(prev => prev.map(q =>
@@ -1330,14 +1345,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Auto-save if identifier is present, or if question text is present
     if (hasIdentifier || hasQuestionText) {
       autoSaveTimeoutRefs.current[question.id] = setTimeout(() => {
-        // Get the latest version of the question from state
-        setQuestions(prev => {
-          const latestQuestion = prev.find(q => q.id === question.id)
-          if (latestQuestion) {
-            autoSaveQuestion(latestQuestion)
-          }
-          return prev // Don't modify state, just read it
-        })
+        // Get the latest version of the question from ref (synchronous read)
+        const latestQuestion = questionsRef.current.find(q => q.id === question.id)
+        if (latestQuestion) {
+          autoSaveQuestion(latestQuestion)
+        }
       }, 300) // 300ms debounce
     }
   }
@@ -1496,13 +1508,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       // If another save was queued while we were saving, trigger it now
       if (pendingSaveRefs.current[question.id]) {
         pendingSaveRefs.current[question.id] = false
-        setQuestions(prev => {
-          const latestQuestion = prev.find(q => q.id === question.id)
-          if (latestQuestion) {
-            autoSaveQuestion(latestQuestion)
-          }
-          return prev
-        })
+        const latestQuestion = questionsRef.current.find(q => q.id === question.id)
+        if (latestQuestion) {
+          autoSaveQuestion(latestQuestion)
+        }
       }
     }
   }
@@ -3592,12 +3601,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
   const handleSaveGroupInfo = async () => {
     if (!name) {
-      alert('Please provide a name')
+      toast('Please provide a name', 'warning')
       return
     }
 
     if (!isNameUnique) {
-      alert('A question group with this name already exists. Please use a unique name.')
+      toast('A question group with this name already exists. Please use a unique name.', 'warning')
       return
     }
 
@@ -3626,7 +3635,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         }, 0)
       }
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to save question group')
+      toast(err.response?.data?.detail || 'Failed to save question group')
     } finally {
       setSubmitting(false)
     }
@@ -3636,7 +3645,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     if (!savedGroupId) return
 
     if (!question.question_text || !question.identifier) {
-      alert('Please provide question text and identifier')
+      toast('Please provide question text and identifier', 'warning')
       return
     }
 
@@ -3653,9 +3662,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         person_display_mode: question.question_type === 'person' ? question.person_display_mode : undefined,
         include_time: question.question_type === 'date' ? question.include_time : undefined
       })
-      alert('Question saved successfully')
+      toast('Question saved successfully', 'success')
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to save question')
+      toast(err.response?.data?.detail || 'Failed to save question')
     }
   }
 
