@@ -7,10 +7,17 @@ set -e
 CONTAINER_NAME="estate-doctor"
 IMAGE_NAME="jetsondavis/estate-doctor"
 DOCUMENT_UPLOADS_DIR="/home/ubuntu/document_uploads"
+IMAGE_HASH="$1"
 
 echo "=========================================="
 echo "Estate Doctor Deployment Script"
 echo "=========================================="
+
+if [ -n "$IMAGE_HASH" ]; then
+    echo "Deploying specific image: $IMAGE_NAME@$IMAGE_HASH"
+else
+    echo "Deploying latest :amd tag"
+fi
 
 # Create document uploads directory if it doesn't exist
 echo "Checking document uploads directory..."
@@ -38,22 +45,34 @@ if docker ps -aq -f name="$CONTAINER_NAME" | grep -q .; then
     echo "Container removed."
 fi
 
-# Pull the latest image from Docker Hub
+# Pull the image from Docker Hub
 echo ""
-echo "Pulling latest image from Docker Hub..."
-docker pull "$IMAGE_NAME":amd
+if [ -n "$IMAGE_HASH" ]; then
+    echo "Pulling image by digest from Docker Hub..."
+    docker pull "$IMAGE_NAME@$IMAGE_HASH"
+else
+    echo "Pulling latest image from Docker Hub..."
+    docker pull "$IMAGE_NAME":amd
+fi
 
 # Run the container
 echo ""
 echo "Starting container..."
+if [ -n "$IMAGE_HASH" ]; then
+    RUN_IMAGE="$IMAGE_NAME@$IMAGE_HASH"
+else
+    RUN_IMAGE="$IMAGE_NAME:amd"
+fi
+
 docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     -p 80:80 \
     -e DATABASE_URL="${DATABASE_URL:-postgresql://jeff:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs?sslmode=require}" \
     -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
+    -e COOKIE_SECURE="${COOKIE_SECURE:-false}" \
     -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
-    "$IMAGE_NAME":amd
+    "$RUN_IMAGE"
 
 echo ""
 echo "Container started successfully!"
