@@ -49,7 +49,11 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "http://localhost:3005"]
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost:3005,https://www.estate-doctor.com"
+    
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",")]
 
 
 settings = Settings()
