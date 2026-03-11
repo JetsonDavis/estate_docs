@@ -121,8 +121,14 @@ set -e\n\
 \n\
 echo "Starting Estate Docs application..."\n\
 \n\
+# Replace DOMAIN placeholder in nginx config if DOMAIN env var is set\n\
+if [ -n "$DOMAIN" ]; then\n\
+    echo "Configuring SSL for domain: $DOMAIN"\n\
+    sed -i "s|DOMAIN|$DOMAIN|g" /etc/nginx/nginx.conf\n\
+fi\n\
+\n\
 # Start nginx as root\n\
-echo "Starting nginx on port 80..."\n\
+echo "Starting nginx..."\n\
 nginx\n\
 echo "Nginx started"\n\
 \n\

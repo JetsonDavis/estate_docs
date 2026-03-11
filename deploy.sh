@@ -7,7 +7,9 @@ set -e
 CONTAINER_NAME="estate-doctor"
 IMAGE_NAME="jetsondavis/estate-doctor"
 DOCUMENT_UPLOADS_DIR="/home/ubuntu/document_uploads"
+SSL_CERTS_DIR="/etc/letsencrypt"
 IMAGE_HASH="$1"
+DOMAIN="${2:-}"
 
 echo "=========================================="
 echo "Estate Doctor Deployment Script"
@@ -17,6 +19,21 @@ if [ -n "$IMAGE_HASH" ]; then
     echo "Deploying specific image: $IMAGE_NAME@$IMAGE_HASH"
 else
     echo "Deploying latest :amd tag"
+fi
+
+# Check for SSL certificate setup
+if [ -d "$SSL_CERTS_DIR/live" ] && [ "$(ls -A $SSL_CERTS_DIR/live 2>/dev/null)" ]; then
+    SSL_ENABLED=true
+    echo "SSL certificates found - HTTPS will be enabled"
+    if [ -z "$DOMAIN" ]; then
+        # Auto-detect domain from certificate (only directories, not README file)
+        DOMAIN=$(find "$SSL_CERTS_DIR/live" -maxdepth 1 -type d ! -name live 2>/dev/null | head -1 | xargs basename)
+        echo "Auto-detected domain: $DOMAIN"
+    fi
+else
+    SSL_ENABLED=false
+    echo "No SSL certificates found - running in HTTP mode"
+    echo "To enable HTTPS, run: sudo ./scripts/setup-ssl.sh <domain> <email>"
 fi
 
 # Create document uploads directory if it doesn't exist
@@ -64,15 +81,36 @@ else
     RUN_IMAGE="$IMAGE_NAME:amd"
 fi
 
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    -p 80:80 \
-    -e DATABASE_URL="${DATABASE_URL:-postgresql://jeff:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs?sslmode=require}" \
-    -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
-    -e COOKIE_SECURE="${COOKIE_SECURE:-false}" \
-    -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
-    "$RUN_IMAGE"
+# Build Docker run command based on SSL availability
+if [ "$SSL_ENABLED" = true ]; then
+    echo "Configuring for HTTPS (port 443)..."
+    echo "Using SSL certificates for domain: $DOMAIN"
+
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p 80:80 \
+        -p 443:443 \
+        -e DOMAIN="$DOMAIN" \
+        -e DATABASE_URL="${DATABASE_URL:-postgresql://jeff:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs?sslmode=require}" \
+        -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
+        -e COOKIE_SECURE="${COOKIE_SECURE:-true}" \
+        -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
+        -v "$SSL_CERTS_DIR:/etc/letsencrypt:ro" \
+        "$RUN_IMAGE"
+
+else
+    echo "Configuring for HTTP (port 80 only)..."
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p 80:80 \
+        -e DATABASE_URL="${DATABASE_URL:-postgresql://jeff:YOUR_PASSWORD@estate-doctor.c3wee6y883xl.us-east-2.rds.amazonaws.com:5432/estate_docs?sslmode=require}" \
+        -e JWT_SECRET_KEY="${JWT_SECRET_KEY:-CHANGE_THIS_TO_SECURE_KEY}" \
+        -e COOKIE_SECURE="${COOKIE_SECURE:-false}" \
+        -v "$DOCUMENT_UPLOADS_DIR:/app/document_uploads" \
+        "$RUN_IMAGE"
+fi
 
 echo ""
 echo "Container started successfully!"
