@@ -8,18 +8,14 @@ CONTAINER_NAME="estate-doctor"
 IMAGE_NAME="jetsondavis/estate-doctor"
 DOCUMENT_UPLOADS_DIR="/home/ubuntu/document_uploads"
 SSL_CERTS_DIR="/etc/letsencrypt"
-IMAGE_HASH="$1"
+IMAGE_TAG="${1:-latest}"
 DOMAIN="${2:-}"
 
 echo "=========================================="
 echo "Estate Doctor Deployment Script"
 echo "=========================================="
 
-if [ -n "$IMAGE_HASH" ]; then
-    echo "Deploying specific image: $IMAGE_NAME@$IMAGE_HASH"
-else
-    echo "Deploying latest :amd tag"
-fi
+echo "Deploying image tag: $IMAGE_TAG"
 
 # Check for SSL certificate setup
 if [ -d "$SSL_CERTS_DIR/live" ] && [ "$(ls -A $SSL_CERTS_DIR/live 2>/dev/null)" ]; then
@@ -64,22 +60,13 @@ fi
 
 # Pull the image from Docker Hub
 echo ""
-if [ -n "$IMAGE_HASH" ]; then
-    echo "Pulling image by digest from Docker Hub..."
-    docker pull "$IMAGE_NAME@$IMAGE_HASH"
-else
-    echo "Pulling latest image from Docker Hub..."
-    docker pull "$IMAGE_NAME":amd
-fi
+echo "Pulling image from Docker Hub..."
+docker pull "$IMAGE_NAME:$IMAGE_TAG"
 
 # Run the container
 echo ""
 echo "Starting container..."
-if [ -n "$IMAGE_HASH" ]; then
-    RUN_IMAGE="$IMAGE_NAME@$IMAGE_HASH"
-else
-    RUN_IMAGE="$IMAGE_NAME:amd"
-fi
+RUN_IMAGE="$IMAGE_NAME:$IMAGE_TAG"
 
 # Build Docker run command based on SSL availability
 if [ "$SSL_ENABLED" = true ]; then
