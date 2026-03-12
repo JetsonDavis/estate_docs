@@ -4,6 +4,7 @@ import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
 import RichTextEditor from '../../components/common/RichTextEditor'
+import 'react-quill/dist/quill.snow.css'
 import './Templates.css'
 
 const EditTemplate: React.FC = () => {
@@ -474,6 +475,7 @@ const EditTemplate: React.FC = () => {
                     pageScrollRef.current = window.scrollY
                     setIsEditing(true)
                   }}
+                  className="ql-editor"
                   style={{
                     width: '100%',
                     height: '600px',
@@ -481,17 +483,14 @@ const EditTemplate: React.FC = () => {
                     border: '2px solid #d1d5db',
                     borderRadius: '0.75rem',
                     fontSize: '1rem',
-                    fontFamily: "'Courier New', monospace",
                     boxSizing: 'border-box',
                     overflowY: 'auto',
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
                     backgroundColor: 'white',
                     color: '#111827',
                     cursor: 'text'
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: formatContent(markdownContent)
+                    __html: markdownContent
                   }}
                 />
               )}
