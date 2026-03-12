@@ -1,8 +1,445 @@
 import React, { useState, useEffect } from 'react'
+import styled, { keyframes } from 'styled-components'
 import { userService } from '../../services/userService'
 import { User, UserCreate, UserUpdate } from '../../types/user'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import './Users.css'
+
+const UsersContainer = styled.div`
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const UsersHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+`
+
+const UsersTitle = styled.h1`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+`
+
+const UsersSubtitle = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const CreateButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`
+
+const AlertContainer = styled.div`
+  margin-bottom: 1rem;
+`
+
+const Alert = styled.div<{ $variant?: 'error' | 'success' }>`
+  padding: 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  ${({ $variant }) => $variant === 'error' ? `
+    background-color: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  ` : `
+    background-color: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+  `}
+`
+
+const AlertClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 1rem;
+`
+
+const FiltersCard = styled.div`
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+`
+
+const FiltersGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  @media (min-width: 768px) {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+`
+
+const FilterInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const FilterSelect = styled.select`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
+
+const LoadingState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+`
+
+const LoadingSpinner = styled.div`
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: ${spin} 0.8s linear infinite;
+`
+
+const LoadingText = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const UsersTableContainer = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+`
+
+const UsersTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  thead {
+    background-color: #f9fafb;
+  }
+  th {
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    &:last-child {
+      text-align: left;
+    }
+  }
+  td {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    font-size: 0.875rem;
+  }
+`
+
+const UserName = styled.div`
+  font-weight: 600;
+  color: #111827;
+`
+
+const UserFullname = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.125rem;
+`
+
+const UserEmail = styled.div`
+  color: #374151;
+`
+
+const Badge = styled.span<{ $variant: 'admin' | 'user' | 'active' | 'inactive' }>`
+  display: inline-flex;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  line-height: 1.25rem;
+  ${({ $variant }) => {
+    switch ($variant) {
+      case 'admin': return 'background-color: #ede9fe; color: #6b21a8;'
+      case 'user': return 'background-color: #dcfce7; color: #166534;'
+      case 'active': return 'background-color: #dcfce7; color: #166534;'
+      case 'inactive': return 'background-color: #fee2e2; color: #991b1b;'
+    }
+  }}
+`
+
+const UserActions = styled.div`
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  align-items: center;
+`
+
+const ActionButton = styled.button<{ $variant: 'edit' | 'delete' }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 0.375rem;
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  ${({ $variant }) => $variant === 'edit' ? `
+    color: #2563eb;
+    &:hover {
+      background-color: #eff6ff;
+      color: #1d4ed8;
+    }
+  ` : `
+    color: #dc2626;
+    &:hover {
+      background-color: #fef2f2;
+      color: #991b1b;
+    }
+  `}
+`
+
+const Pagination = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+`
+
+const PaginationInfo = styled.div`
+  font-size: 0.875rem;
+  color: #374151;
+`
+
+const PaginationButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`
+
+const PaginationButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover:not(:disabled) {
+    background-color: #f9fafb;
+    border-color: #9ca3af;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+`
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+`
+
+const ModalTitle = styled.h2`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+`
+
+const ModalClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0.25rem;
+  &:hover {
+    color: #111827;
+  }
+`
+
+const FormGroup = styled.div`
+  margin-bottom: 1.5rem;
+`
+
+const FormLabel = styled.label`
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+`
+
+const FormInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const FormSelect = styled.select`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const FormHelper = styled.p`
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+`
+
+const CheckboxGroup = styled.div`
+  display: flex;
+  align-items: center;
+`
+
+const CheckboxInput = styled.input`
+  width: 1rem;
+  height: 1rem;
+  color: #2563eb;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const CheckboxLabel = styled.label`
+  margin-left: 0.5rem;
+  font-size: 0.875rem;
+  color: #111827;
+`
+
+const ModalActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+`
+
+const CancelButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: white;
+  color: #374151;
+  &:hover {
+    background-color: #f9fafb;
+  }
+`
+
+const SubmitButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #2563eb;
+  color: white;
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([])
@@ -131,40 +568,40 @@ const Users: React.FC = () => {
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <div className="users-container">
-      <div className="users-header">
+    <UsersContainer>
+      <UsersHeader>
         <div>
-          <h1 className="users-title">User Management</h1>
-          <p className="users-subtitle">
+          <UsersTitle>User Management</UsersTitle>
+          <UsersSubtitle>
             Manage system users and their roles
-          </p>
+          </UsersSubtitle>
         </div>
-        <button onClick={handleCreate} className="create-button">
+        <CreateButton onClick={handleCreate}>
           Create User
-        </button>
-      </div>
+        </CreateButton>
+      </UsersHeader>
 
       {error && (
-        <div className="alert-container">
-          <div className="alert alert-error">
+        <AlertContainer>
+          <Alert $variant="error">
             <span>{error}</span>
-            <button onClick={() => setError('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setError('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
       {success && (
-        <div className="alert-container">
-          <div className="alert alert-success">
+        <AlertContainer>
+          <Alert $variant="success">
             <span>{success}</span>
-            <button onClick={() => setSuccess('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setSuccess('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
-      <div className="filters-card">
-        <div className="filters-grid">
-          <input
+      <FiltersCard>
+        <FiltersGrid>
+          <FilterInput
             type="text"
             placeholder="Search by username, email, or name..."
             value={searchTerm}
@@ -172,44 +609,41 @@ const Users: React.FC = () => {
               setSearchTerm(e.target.value)
               setPage(1)
             }}
-            className="search-input"
           />
-          <select
+          <FilterSelect
             value={roleFilter}
             onChange={(e) => {
               setRoleFilter(e.target.value as 'all' | 'admin' | 'user')
               setPage(1)
             }}
-            className="filter-select"
           >
             <option value="all">All Roles</option>
             <option value="admin">Admin</option>
             <option value="user">User</option>
-          </select>
-          <select
+          </FilterSelect>
+          <FilterSelect
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')
               setPage(1)
             }}
-            className="filter-select"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
+          </FilterSelect>
+        </FiltersGrid>
+      </FiltersCard>
 
       {loading ? (
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">Loading users...</p>
-        </div>
+        <LoadingState>
+          <LoadingSpinner />
+          <LoadingText>Loading users...</LoadingText>
+        </LoadingState>
       ) : (
         <>
-          <div className="users-table-container">
-            <table className="users-table">
+          <UsersTableContainer>
+            <UsersTable>
               <thead>
                 <tr>
                   <th>User Name</th>
@@ -225,174 +659,165 @@ const Users: React.FC = () => {
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td>
-                      <div className="user-name">{user.username}</div>
+                      <UserName>{user.username}</UserName>
                     </td>
                     <td>
-                      <div className="user-fullname">{user.full_name || '-'}</div>
+                      <UserFullname>{user.full_name || '-'}</UserFullname>
                     </td>
                     <td>
-                      <div className="user-email">{user.email}</div>
+                      <UserEmail>{user.email}</UserEmail>
                     </td>
                     <td>
-                      <span className={`badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
+                      <Badge $variant={user.role === 'admin' ? 'admin' : 'user'}>
                         {user.role}
-                      </span>
+                      </Badge>
                     </td>
                     <td>
-                      <span className={`badge ${user.is_active ? 'badge-active' : 'badge-inactive'}`}>
+                      <Badge $variant={user.is_active ? 'active' : 'inactive'}>
                         {user.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      </Badge>
                     </td>
                     <td>
                       {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
                     </td>
                     <td>
-                      <div className="user-actions">
-                        <button onClick={() => handleEdit(user)} className="action-button edit-button" title="Edit">
+                      <UserActions>
+                        <ActionButton $variant="edit" onClick={() => handleEdit(user)} title="Edit">
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
-                        </button>
+                        </ActionButton>
                         {user.is_active && (
-                          <button onClick={() => handleDelete(user.id)} className="action-button delete-button" title="Deactivate">
+                          <ActionButton $variant="delete" onClick={() => handleDelete(user.id)} title="Deactivate">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                             </svg>
-                          </button>
+                          </ActionButton>
                         )}
-                      </div>
+                      </UserActions>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </UsersTable>
+          </UsersTableContainer>
 
           {totalPages > 1 && (
-            <div className="pagination">
-              <div className="pagination-info">
+            <Pagination>
+              <PaginationInfo>
                 Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} users
-              </div>
-              <div className="pagination-buttons">
-                <button
+              </PaginationInfo>
+              <PaginationButtons>
+                <PaginationButton
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
-                  className="pagination-button"
                 >
                   Previous
-                </button>
-                <button
+                </PaginationButton>
+                <PaginationButton
                   onClick={() => setPage(page + 1)}
                   disabled={page === totalPages}
-                  className="pagination-button"
                 >
                   Next
-                </button>
-              </div>
-            </div>
+                </PaginationButton>
+              </PaginationButtons>
+            </Pagination>
           )}
         </>
       )}
 
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">{editingUser ? 'Edit User' : 'Create User'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="modal-close">&times;</button>
-            </div>
+        <ModalOverlay onClick={() => setIsModalOpen(false)}>
+          <ModalContent onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <ModalTitle>{editingUser ? 'Edit User' : 'Create User'}</ModalTitle>
+              <ModalClose onClick={() => setIsModalOpen(false)}>&times;</ModalClose>
+            </ModalHeader>
 
             <form onSubmit={handleSubmit}>
               {!editingUser && (
                 <>
-                  <div className="form-group">
-                    <label className="form-label">Username</label>
-                    <input
+                  <FormGroup>
+                    <FormLabel>Username</FormLabel>
+                    <FormInput
                       type="text"
                       value={(formData as UserCreate).username || ''}
                       onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                       required
                       placeholder="Enter username"
-                      className="form-input"
                     />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Password</label>
-                    <input
+                  </FormGroup>
+                  <FormGroup>
+                    <FormLabel>Password</FormLabel>
+                    <FormInput
                       type="password"
                       value={(formData as UserCreate).password || ''}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       required
                       placeholder="Enter password"
-                      className="form-input"
                     />
-                    <p className="form-helper">Min 8 chars, uppercase, lowercase, and digit</p>
-                  </div>
+                    <FormHelper>Min 8 chars, uppercase, lowercase, and digit</FormHelper>
+                  </FormGroup>
                 </>
               )}
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input
+              <FormGroup>
+                <FormLabel>Email</FormLabel>
+                <FormInput
                   type="email"
                   value={formData.email || ''}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
                   placeholder="user@example.com"
-                  className="form-input"
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Full Name</label>
-                <input
+              </FormGroup>
+              <FormGroup>
+                <FormLabel>Full Name</FormLabel>
+                <FormInput
                   type="text"
                   value={formData.full_name || ''}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   placeholder="Full name (optional)"
-                  className="form-input"
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Role</label>
-                <select
+              </FormGroup>
+              <FormGroup>
+                <FormLabel>Role</FormLabel>
+                <FormSelect
                   value={formData.role || 'user'}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
-                  className="form-select"
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
-                </select>
-              </div>
+                </FormSelect>
+              </FormGroup>
               {editingUser && (
-                <div className="form-group">
-                  <div className="checkbox-group">
-                    <input
+                <FormGroup>
+                  <CheckboxGroup>
+                    <CheckboxInput
                       type="checkbox"
                       id="is_active"
                       checked={(formData as UserUpdate).is_active !== false}
                       onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="checkbox-input"
                     />
-                    <label htmlFor="is_active" className="checkbox-label">
+                    <CheckboxLabel htmlFor="is_active">
                       Active
-                    </label>
-                  </div>
-                </div>
+                    </CheckboxLabel>
+                  </CheckboxGroup>
+                </FormGroup>
               )}
-              <div className="modal-actions">
-                <button
+              <ModalActions>
+                <CancelButton
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="cancel-button"
                 >
                   Cancel
-                </button>
-                <button type="submit" className="submit-button">
+                </CancelButton>
+                <SubmitButton type="submit">
                   {editingUser ? 'Update' : 'Create'}
-                </button>
-              </div>
+                </SubmitButton>
+              </ModalActions>
             </form>
-          </div>
-        </div>
+          </ModalContent>
+        </ModalOverlay>
       )}
       <ConfirmDialog
         isOpen={deleteTarget !== null}
@@ -403,7 +828,7 @@ const Users: React.FC = () => {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </UsersContainer>
   )
 }
 

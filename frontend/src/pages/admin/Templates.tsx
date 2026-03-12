@@ -1,10 +1,183 @@
 import React, { useState, useEffect } from 'react'
+import styled from 'styled-components'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template, TemplateCreate, TemplateType } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import './Templates.css'
+
+const TemplatesContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  padding: 3rem 1rem;
+`
+
+const TemplatesWrapper = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const TemplatesHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+  @media (max-width: 640px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+`
+
+const TemplatesTitle = styled.h1`
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  @media (max-width: 768px) {
+    font-size: 1.5rem;
+  }
+`
+
+const TemplatesActions = styled.div`
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  @media (max-width: 640px) {
+    flex-direction: column;
+    width: 100%;
+  }
+`
+
+const CreateButton = styled.button`
+  background-color: #2563eb;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  &:hover {
+    background-color: #1d4ed8;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+  @media (max-width: 640px) {
+    width: 100%;
+  }
+`
+
+const ButtonIcon = styled.svg`
+  width: 1.25rem;
+  height: 1.25rem;
+`
+
+const TemplatesTable = styled.div`
+  width: 100%;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead {
+    background-color: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  td {
+    padding: 1rem;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.875rem;
+    color: #374151;
+  }
+  tbody tr:hover {
+    background-color: #f9fafb;
+  }
+  @media (max-width: 768px) {
+    overflow-x: auto;
+    th, td {
+      padding: 0.75rem;
+      font-size: 0.8rem;
+    }
+  }
+`
+
+const TemplateName = styled.td`
+  font-weight: 600;
+  color: #111827;
+`
+
+const TypeBadge = styled.span<{ $type: TemplateType }>`
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  ${({ $type }) => {
+    switch ($type) {
+      case 'word': return 'background-color: #dbeafe; color: #1e40af;'
+      case 'pdf': return 'background-color: #fee2e2; color: #991b1b;'
+      case 'image': return 'background-color: #fef3c7; color: #92400e;'
+      case 'direct': return 'background-color: #d1fae5; color: #065f46;'
+      default: return ''
+    }
+  }}
+`
+
+const TemplateActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-start;
+`
+
+const ActionIconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  &:hover {
+    opacity: 0.7;
+  }
+`
+
+const StateMessage = styled.div<{ $variant?: 'error' | 'empty' }>`
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  font-size: 1rem;
+  ${({ $variant }) => $variant === 'error' ? `
+    color: #991b1b;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+  ` : ''}
+`
 
 const Templates: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -62,28 +235,12 @@ const Templates: React.FC = () => {
     navigate(`/admin/templates/${template.id}/edit`)
   }
 
-  const getTypeBadgeClass = (type: TemplateType): string => {
-    const baseClass = 'template-type-badge'
-    switch (type) {
-      case 'word':
-        return `${baseClass} template-type-word`
-      case 'pdf':
-        return `${baseClass} template-type-pdf`
-      case 'image':
-        return `${baseClass} template-type-image`
-      case 'direct':
-        return `${baseClass} template-type-direct`
-      default:
-        return baseClass
-    }
-  }
-
   return (
-    <div className="templates-container">
-      <div className="templates-wrapper">
-        <div className="templates-header">
-          <h1 className="templates-title">Document Templates</h1>
-          <div className="templates-actions">
+    <TemplatesContainer>
+      <TemplatesWrapper>
+        <TemplatesHeader>
+          <TemplatesTitle>Document Templates</TemplatesTitle>
+          <TemplatesActions>
             <div style={{
               position: 'relative',
               display: 'flex',
@@ -118,31 +275,28 @@ const Templates: React.FC = () => {
                 }}
               />
             </div>
-            <button
-              onClick={() => navigate('/admin/templates/create')}
-              className="create-button"
-            >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+            <CreateButton onClick={() => navigate('/admin/templates/create')}>
+              <ButtonIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              </ButtonIcon>
               Create Template
-            </button>
-          </div>
-        </div>
+            </CreateButton>
+          </TemplatesActions>
+        </TemplatesHeader>
 
-      {loading && <div className="loading-state">Loading templates...</div>}
+      {loading && <StateMessage>Loading templates...</StateMessage>}
       
-      {error && <div className="error-state">{error}</div>}
+      {error && <StateMessage $variant="error">{error}</StateMessage>}
       
       {!loading && !error && templates.length === 0 && (
-        <div className="empty-state">
+        <StateMessage>
           No templates found. Create your first template to get started.
-        </div>
+        </StateMessage>
       )}
 
       {!loading && !error && templates.length > 0 && (
         <>
-          <div className="templates-table">
+          <TemplatesTable>
             <table>
               <thead>
                 <tr>
@@ -156,7 +310,7 @@ const Templates: React.FC = () => {
               <tbody>
                 {templates.map((template) => (
                   <tr key={template.id}>
-                    <td className="template-name">
+                    <TemplateName>
                       <span
                         onClick={() => handleEdit(template)}
                         style={{ cursor: 'pointer', color: '#2563eb', textDecoration: 'none' }}
@@ -165,47 +319,45 @@ const Templates: React.FC = () => {
                       >
                         {template.name}
                       </span>
-                    </td>
+                    </TemplateName>
                     <td>
-                      <span className={getTypeBadgeClass(template.template_type)}>
+                      <TypeBadge $type={template.template_type}>
                         {template.template_type}
-                      </span>
+                      </TypeBadge>
                     </td>
                     <td>{template.description || '-'}</td>
                     <td>{new Date(template.created_at).toLocaleDateString()}</td>
                     <td>
-                      <div className="template-actions" style={{ justifyContent: 'flex-start' }}>
-                        <button
+                      <TemplateActions>
+                        <ActionIconButton
                           onClick={() => handleEdit(template)}
-                          className="action-icon-button"
                           title="Edit"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: '#2563eb' }}
+                          style={{ color: '#2563eb' }}
                         >
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
-                        </button>
-                        <button
+                        </ActionIconButton>
+                        <ActionIconButton
                           onClick={() => handleDelete(template.id)}
-                          className="action-icon-button"
                           title="Delete"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: '#dc2626' }}
+                          style={{ color: '#dc2626' }}
                         >
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1.25rem', height: '1.25rem' }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        </button>
-                      </div>
+                        </ActionIconButton>
+                      </TemplateActions>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TemplatesTable>
         </>
       )}
 
-      </div>
+      </TemplatesWrapper>
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         title="Delete Template"
@@ -215,7 +367,7 @@ const Templates: React.FC = () => {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </TemplatesContainer>
   )
 }
 

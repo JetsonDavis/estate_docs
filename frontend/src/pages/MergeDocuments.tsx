@@ -1,11 +1,289 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import styled from 'styled-components'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
 import { InputForm } from '../types/session'
 import { Template } from '../types/template'
 import { useToast } from '../hooks/useToast'
-import './MergeDocuments.css'
+
+const MergeContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  padding: 3rem 1rem;
+`
+
+const MergeWrapper = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const MergeHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+`
+
+const MergeTitle = styled.h1`
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+`
+
+const MergeContent = styled.div`
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 2rem;
+`
+
+const ListBoxContainer = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`
+
+const ListBox = styled.div`
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  overflow: hidden;
+`
+
+const ListBoxHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background-color: #2563eb;
+  border-bottom: 1px solid #1d4ed8;
+`
+
+const ListBoxTitle = styled.h2`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  cursor: pointer;
+`
+
+const ListBoxCount = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  background-color: #ffffff;
+  color: #2563eb;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+`
+
+const ListBoxContent = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  max-height: 600px;
+  margin-top: 0;
+`
+
+const ItemList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+`
+
+const Item = styled.li`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #f9fafb;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+`
+
+const ItemRadio = styled.div`
+  display: flex;
+  align-items: center;
+
+  input[type="radio"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    cursor: pointer;
+  }
+`
+
+const ItemContent = styled.div`
+  flex: 1;
+  cursor: pointer;
+`
+
+const ItemHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+`
+
+const ItemNameLink = styled.span`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+    color: #1d4ed8;
+  }
+`
+
+const ItemMeta = styled.div`
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+`
+
+const ItemDate = styled.span`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+`
+
+const StatusBadge = styled.span<{ $status: 'completed' | 'in-progress' }>`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  background-color: ${props => props.$status === 'completed' ? '#d1fae5' : '#fef3c7'};
+  color: ${props => props.$status === 'completed' ? '#065f46' : '#92400e'};
+`
+
+const EmptyList = styled.div`
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.875rem;
+`
+
+const StateMessage = styled.div<{ $variant?: 'error' }>`
+  text-align: center;
+  padding: 3rem 1rem;
+  background: ${props => props.$variant === 'error' ? '#fef2f2' : 'white'};
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  color: ${props => props.$variant === 'error' ? '#991b1b' : '#6b7280'};
+  ${props => props.$variant === 'error' ? 'border: 1px solid #fecaca;' : ''}
+`
+
+const MergeBtn = styled.button<{ $disabled?: boolean }>`
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: #2563eb;
+  color: white;
+  cursor: ${props => props.$disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.$disabled ? 0.5 : 1};
+  transition: background-color 0.2s;
+
+  &:hover:not(:disabled) {
+    background-color: #1d4ed8;
+  }
+`
+
+const IdentifiersSection = styled.div`
+  margin-top: 2rem;
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+`
+
+const IdentifiersTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 1.5rem 0;
+`
+
+const IdentifiersColumns = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`
+
+const IdentifiersColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+`
+
+const ColumnTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+`
+
+const IdentifierItems = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`
+
+const IdentifierItem = styled.li<{ $missing?: boolean; $placeholder?: boolean }>`
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  ${props => props.$placeholder ? `
+    background-color: transparent;
+    border: 1px dashed #e5e7eb;
+    color: transparent;
+  ` : props.$missing ? `
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+  ` : `
+    background-color: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+  `}
+`
 
 const MergeDocuments: React.FC = () => {
   const navigate = useNavigate()
@@ -211,58 +489,44 @@ const MergeDocuments: React.FC = () => {
   }
 
   return (
-    <div className="merge-documents-container">
-      <div className="merge-documents-wrapper">
-        <div className="merge-documents-header">
-          <h1 className="merge-documents-title">Merge Documents</h1>
-          <button
+    <MergeContainer>
+      <MergeWrapper>
+        <MergeHeader>
+          <MergeTitle>Merge Documents</MergeTitle>
+          <MergeBtn
             onClick={handleMergeDocuments}
             disabled={!selectedSessionId || !selectedTemplateId || loadingIdentifiers}
-            className="btn btn-primary"
-            style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 600,
-              borderRadius: '0.5rem',
-              border: 'none',
-              cursor: selectedSessionId && selectedTemplateId ? 'pointer' : 'not-allowed',
-              opacity: selectedSessionId && selectedTemplateId ? 1 : 0.5
-            }}
+            $disabled={!selectedSessionId || !selectedTemplateId}
           >
             Merge Documents
-          </button>
-        </div>
+          </MergeBtn>
+        </MergeHeader>
 
-        {loading && <div className="loading-state">Loading...</div>}
+        {loading && <StateMessage>Loading...</StateMessage>}
 
-        {error && <div className="error-state">{error}</div>}
+        {error && <StateMessage $variant="error">{error}</StateMessage>}
 
         {!loading && !error && (
-          <div className="merge-documents-content">
-            <div className="list-box-container">
-              <div className="list-box">
-                <div className="list-box-header">
-                  <h2
-                    className="list-box-title"
+          <MergeContent>
+            <ListBoxContainer>
+              <ListBox>
+                <ListBoxHeader>
+                  <ListBoxTitle
                     onClick={() => navigate('/document')}
-                    style={{ cursor: 'pointer' }}
                     title="Go to Input Forms"
                   >
                     Input Form
-                  </h2>
-                  <span className="list-box-count">{sessions.length}</span>
-                </div>
-                <div className="list-box-content">
+                  </ListBoxTitle>
+                  <ListBoxCount>{sessions.length}</ListBoxCount>
+                </ListBoxHeader>
+                <ListBoxContent>
                   {sessions.length === 0 ? (
-                    <div className="empty-list">No sessions found</div>
+                    <EmptyList>No sessions found</EmptyList>
                   ) : (
-                    <ul className="item-list">
+                    <ItemList>
                       {sessions.map((session) => (
-                        <li
-                          key={session.id}
-                          className="item"
-                        >
-                          <div className="item-radio">
+                        <Item key={session.id}>
+                          <ItemRadio>
                             <input
                               type="radio"
                               name="session"
@@ -270,21 +534,20 @@ const MergeDocuments: React.FC = () => {
                               onChange={() => handleSessionRadioChange(session.id)}
                               onClick={(e) => e.stopPropagation()}
                             />
-                          </div>
-                          <div className="item-content">
-                            <div className="item-header">
-                              <span
-                                className="item-name item-name-link"
+                          </ItemRadio>
+                          <ItemContent>
+                            <ItemHeader>
+                              <ItemNameLink
                                 onClick={(e) => { e.stopPropagation(); navigate(`/document?session=${session.id}`) }}
                                 title="Open input form"
-                              >{session.client_identifier}</span>
+                              >{session.client_identifier}</ItemNameLink>
                               {session.is_completed && (
-                                <span className="status-badge completed">Completed</span>
+                                <StatusBadge $status="completed">Completed</StatusBadge>
                               )}
                               {!session.is_completed && (
-                                <span className="status-badge in-progress">In Progress</span>
+                                <StatusBadge $status="in-progress">In Progress</StatusBadge>
                               )}
-                            </div>
+                            </ItemHeader>
                             {session.current_group_name && (
                               <div style={{ fontSize: '0.75rem', marginTop: '-4px' }}>
                                 <span
@@ -296,42 +559,37 @@ const MergeDocuments: React.FC = () => {
                                 >{session.current_group_name}</span>
                               </div>
                             )}
-                            <div className="item-meta">
-                              <span className="item-date">
+                            <ItemMeta>
+                              <ItemDate>
                                 Created: {new Date(session.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                        </li>
+                              </ItemDate>
+                            </ItemMeta>
+                          </ItemContent>
+                        </Item>
                       ))}
-                    </ul>
+                    </ItemList>
                   )}
-                </div>
-              </div>
+                </ListBoxContent>
+              </ListBox>
 
-              <div className="list-box">
-                <div className="list-box-header">
-                  <h2
-                    className="list-box-title"
+              <ListBox>
+                <ListBoxHeader>
+                  <ListBoxTitle
                     onClick={() => navigate('/admin/templates')}
-                    style={{ cursor: 'pointer' }}
                     title="Go to Templates"
                   >
                     Templates
-                  </h2>
-                  <span className="list-box-count">{templates.length}</span>
-                </div>
-                <div className="list-box-content">
+                  </ListBoxTitle>
+                  <ListBoxCount>{templates.length}</ListBoxCount>
+                </ListBoxHeader>
+                <ListBoxContent>
                   {templates.length === 0 ? (
-                    <div className="empty-list">No templates found</div>
+                    <EmptyList>No templates found</EmptyList>
                   ) : (
-                    <ul className="item-list">
+                    <ItemList>
                       {templates.map((template) => (
-                        <li
-                          key={template.id}
-                          className="item"
-                        >
-                          <div className="item-radio">
+                        <Item key={template.id}>
+                          <ItemRadio>
                             <input
                               type="radio"
                               name="template"
@@ -339,84 +597,85 @@ const MergeDocuments: React.FC = () => {
                               onChange={() => handleTemplateRadioChange(template.id)}
                               onClick={(e) => e.stopPropagation()}
                             />
-                          </div>
-                          <div className="item-content">
-                            <div className="item-header">
-                              <span
-                                className="item-name item-name-link"
+                          </ItemRadio>
+                          <ItemContent>
+                            <ItemHeader>
+                              <ItemNameLink
                                 onClick={(e) => { e.stopPropagation(); navigate(`/admin/templates/${template.id}/edit`) }}
                                 title="Open template"
-                              >{template.name}</span>
+                              >{template.name}</ItemNameLink>
                               {template.is_active && (
-                                <span className="status-badge completed">Active</span>
+                                <StatusBadge $status="completed">Active</StatusBadge>
                               )}
                               {!template.is_active && (
-                                <span className="status-badge in-progress">Inactive</span>
+                                <StatusBadge $status="in-progress">Inactive</StatusBadge>
                               )}
-                            </div>
-                            <div className="item-meta">
-                              <span className="item-date">
+                            </ItemHeader>
+                            <ItemMeta>
+                              <ItemDate>
                                 Created: {new Date(template.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                        </li>
+                              </ItemDate>
+                            </ItemMeta>
+                          </ItemContent>
+                        </Item>
                       ))}
-                    </ul>
+                    </ItemList>
                   )}
-                </div>
-              </div>
-            </div>
+                </ListBoxContent>
+              </ListBox>
+            </ListBoxContainer>
 
             {(selectedSessionId || selectedTemplateId) && (
-              <div className="identifiers-section">
-                <h2 className="identifiers-title">Identifiers</h2>
+              <IdentifiersSection>
+                <IdentifiersTitle>Identifiers</IdentifiersTitle>
                 {loadingIdentifiers ? (
-                  <div className="loading-state">Loading identifiers...</div>
+                  <StateMessage>Loading identifiers...</StateMessage>
                 ) : (
-                  <div className="identifiers-columns">
-                    <div className="identifiers-column">
-                      <h3 className="column-title">Input Form Identifiers</h3>
+                  <IdentifiersColumns>
+                    <IdentifiersColumn>
+                      <ColumnTitle>Input Form Identifiers</ColumnTitle>
                       {sessionIdentifiers.length === 0 ? (
-                        <div className="empty-list">No session selected or no identifiers found</div>
+                        <EmptyList>No session selected or no identifiers found</EmptyList>
                       ) : (
-                        <ul className="identifier-items">
+                        <IdentifierItems>
                           {sessionSorted.map((identifier, index) => (
-                            <li
+                            <IdentifierItem
                               key={identifier || `placeholder-${index}`}
-                              className={`identifier-item ${identifier === null ? 'placeholder' : (!templateIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                              $placeholder={identifier === null}
+                              $missing={identifier !== null && !templateIdentifiers.includes(identifier)}
                             >
                               {identifier || '\u00A0'}
-                            </li>
+                            </IdentifierItem>
                           ))}
-                        </ul>
+                        </IdentifierItems>
                       )}
-                    </div>
-                    <div className="identifiers-column">
-                      <h3 className="column-title">Template Identifiers</h3>
+                    </IdentifiersColumn>
+                    <IdentifiersColumn>
+                      <ColumnTitle>Template Identifiers</ColumnTitle>
                       {templateIdentifiers.length === 0 ? (
-                        <div className="empty-list">No template selected or no identifiers found</div>
+                        <EmptyList>No template selected or no identifiers found</EmptyList>
                       ) : (
-                        <ul className="identifier-items">
+                        <IdentifierItems>
                           {templateSorted.map((identifier, index) => (
-                            <li
+                            <IdentifierItem
                               key={identifier || `placeholder-${index}`}
-                              className={`identifier-item ${identifier === null ? 'placeholder' : (!sessionIdentifiers.includes(identifier) ? 'missing' : '')}`}
+                              $placeholder={identifier === null}
+                              $missing={identifier !== null && !sessionIdentifiers.includes(identifier)}
                             >
                               {identifier || '\u00A0'}
-                            </li>
+                            </IdentifierItem>
                           ))}
-                        </ul>
+                        </IdentifierItems>
                       )}
-                    </div>
-                  </div>
+                    </IdentifiersColumn>
+                  </IdentifiersColumns>
                 )}
-              </div>
+              </IdentifiersSection>
             )}
-          </div>
+          </MergeContent>
         )}
-      </div>
-    </div>
+      </MergeWrapper>
+    </MergeContainer>
   )
 }
 

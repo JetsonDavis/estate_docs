@@ -1,7 +1,211 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import styled from 'styled-components'
 import { useAuth } from '../hooks/useAuth'
-import './Login.css'
+
+const LoginContainer = styled.div`
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  padding: 3rem 1rem;
+`
+
+const LoginCard = styled.div`
+  max-width: 28rem;
+  width: 100%;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 3rem;
+`
+
+const LoginHeader = styled.div`
+  margin-bottom: 2rem;
+  text-align: center;
+`
+
+const LoginTitle = styled.h2`
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #2563eb;
+  margin-bottom: 0.5rem;
+  line-height: 1.1;
+`
+
+const LoginSubtitle = styled.p`
+  font-size: 0.875rem;
+  color: #2563eb;
+`
+
+const LoginForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`
+
+const ErrorMessage = styled.div`
+  padding: 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  color: #991b1b;
+  font-size: 0.875rem;
+`
+
+const FormGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+`
+
+const FormLabel = styled.label`
+  display: block;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 0.5rem;
+`
+
+const FormInput = styled.input`
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`
+
+const PasswordWrapper = styled.div`
+  position: relative;
+`
+
+const PasswordToggle = styled.button`
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    color: #4b5563;
+  }
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+`
+
+const CheckboxWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`
+
+const CheckboxInput = styled.input`
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+`
+
+const CheckboxLabel = styled.label`
+  font-size: 1rem;
+  color: #374151;
+  cursor: pointer;
+`
+
+const TermsText = styled.div`
+  text-align: center;
+  font-size: 0.875rem;
+  color: #4b5563;
+`
+
+const TermsLink = styled(Link)`
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+
+  &:hover {
+    color: #1d4ed8;
+  }
+`
+
+const SubmitButton = styled.button`
+  width: 100%;
+  background-color: #2563eb;
+  color: white;
+  font-weight: 600;
+  font-size: 1.125rem;
+  padding: 1rem 1.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  &:hover {
+    background-color: #1d4ed8;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const ForgotPassword = styled.div`
+  text-align: center;
+`
+
+const ForgotLink = styled(Link)`
+  font-size: 0.875rem;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+
+  &:hover {
+    color: #1d4ed8;
+  }
+`
+
+const SignupText = styled.div`
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #4b5563;
+`
+
+const SignupLink = styled(Link)`
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+
+  &:hover {
+    color: #1d4ed8;
+  }
+`
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('')
@@ -29,25 +233,25 @@ const Login: React.FC = () => {
   }
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
-          <h2 className="login-title">Estate-Doc(tor)</h2>
-          <p className="login-subtitle">Sign in to your account.</p>
-        </div>
+    <LoginContainer>
+      <LoginCard>
+        <LoginHeader>
+          <LoginTitle>Estate-Doc(tor)</LoginTitle>
+          <LoginSubtitle>Sign in to your account.</LoginSubtitle>
+        </LoginHeader>
 
-        <form onSubmit={handleSubmit} className="login-form">
+        <LoginForm onSubmit={handleSubmit}>
           {error && (
-            <div className="error-message">
+            <ErrorMessage>
               {error}
-            </div>
+            </ErrorMessage>
           )}
 
-          <div className="form-group">
-            <label htmlFor="username" className="form-label">
+          <FormGroup>
+            <FormLabel htmlFor="username">
               Email Address or Username
-            </label>
-            <input
+            </FormLabel>
+            <FormInput
               id="username"
               type="text"
               value={username}
@@ -55,16 +259,15 @@ const Login: React.FC = () => {
               required
               autoComplete="username"
               placeholder="Email Address or Username"
-              className="form-input"
             />
-          </div>
+          </FormGroup>
 
-          <div className="form-group">
-            <label htmlFor="password" className="form-label">
+          <FormGroup>
+            <FormLabel htmlFor="password">
               Password
-            </label>
-            <div className="password-wrapper">
-              <input
+            </FormLabel>
+            <PasswordWrapper>
+              <FormInput
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
@@ -72,12 +275,10 @@ const Login: React.FC = () => {
                 required
                 autoComplete="current-password"
                 placeholder="Password"
-                className="form-input"
               />
-              <button
+              <PasswordToggle
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="password-toggle"
               >
                 {showPassword ? (
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,54 +290,52 @@ const Login: React.FC = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                 )}
-              </button>
-            </div>
-          </div>
+              </PasswordToggle>
+            </PasswordWrapper>
+          </FormGroup>
 
-          <div className="checkbox-wrapper">
-            <input
+          <CheckboxWrapper>
+            <CheckboxInput
               id="remember-me"
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="checkbox-input"
             />
-            <label htmlFor="remember-me" className="checkbox-label">
+            <CheckboxLabel htmlFor="remember-me">
               Keep me signed in
-            </label>
-          </div>
+            </CheckboxLabel>
+          </CheckboxWrapper>
 
-          <div className="terms-text">
+          <TermsText>
             By continuing, you agree to our{' '}
-            <Link to="/terms" className="terms-link">
+            <TermsLink to="/terms">
               terms of service
-            </Link>
+            </TermsLink>
             .
-          </div>
+          </TermsText>
 
-          <button
+          <SubmitButton
             type="submit"
             disabled={loading}
-            className="submit-button"
           >
             {loading ? 'Signing in...' : 'Sign in'}
-          </button>
+          </SubmitButton>
 
-          <div className="forgot-password">
-            <Link to="/forgot-password" className="forgot-link">
+          <ForgotPassword>
+            <ForgotLink to="/forgot-password">
               Forgot your password?
-            </Link>
-          </div>
-        </form>
+            </ForgotLink>
+          </ForgotPassword>
+        </LoginForm>
 
-        <div className="signup-text">
+        <SignupText>
           Don't have an account?{' '}
-          <Link to="/register" className="signup-link">
+          <SignupLink to="/register">
             Create one now
-          </Link>
-        </div>
-      </div>
-    </div>
+          </SignupLink>
+        </SignupText>
+      </LoginCard>
+    </LoginContainer>
   )
 }
 

@@ -1,9 +1,354 @@
 import React, { useState, useEffect } from 'react'
+import styled, { keyframes } from 'styled-components'
 import { personService } from '../../services/personService'
 import { Person } from '../../types/person'
 import PersonFormModal from '../../components/common/PersonFormModal'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import './People.css'
+
+const PeopleContainer = styled.div`
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const PeopleHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+`
+
+const PeopleTitle = styled.h1`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+`
+
+const PeopleSubtitle = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const CreateButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`
+
+const ButtonIcon = styled.svg`
+  width: 1.25rem;
+  height: 1.25rem;
+`
+
+const AlertContainer = styled.div`
+  margin-bottom: 1rem;
+`
+
+const Alert = styled.div<{ $variant: 'error' | 'success' }>`
+  padding: 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  ${({ $variant }) => $variant === 'error' ? `
+    background-color: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  ` : `
+    background-color: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+  `}
+`
+
+const AlertClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 1rem;
+`
+
+const FiltersContainer = styled.div`
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+`
+
+const SearchBox = styled.div`
+  flex: 1;
+  min-width: 300px;
+  position: relative;
+`
+
+const SearchIcon = styled.svg`
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #9ca3af;
+  pointer-events: none;
+`
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.875rem 0.625rem 2.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const FilterGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`
+
+const FilterLabel = styled.label`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+`
+
+const FilterSelect = styled.select`
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background-color: white;
+  cursor: pointer;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
+
+const LoadingState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+`
+
+const LoadingSpinner = styled.div`
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: ${spin} 0.8s linear infinite;
+`
+
+const LoadingText = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+`
+
+const EmptyStateIcon = styled.svg`
+  width: 3rem;
+  height: 3rem;
+  color: #9ca3af;
+  margin: 0 auto;
+`
+
+const EmptyStateTitle = styled.h3`
+  margin-top: 1rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+`
+
+const EmptyStateDescription = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const TableContainer = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+`
+
+const PeopleTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+  thead {
+    background-color: #f9fafb;
+  }
+  th {
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle !important;
+  }
+  td {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    font-size: 0.875rem;
+    color: #374151;
+    vertical-align: middle !important;
+  }
+`
+
+const PersonNameCell = styled.div`
+  display: inline;
+`
+
+const PersonName = styled.span`
+  font-weight: 600;
+  color: #111827;
+  margin-right: 0.5rem;
+`
+
+const SsnBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #fef3c7;
+  color: #92400e;
+  border-radius: 9999px;
+  vertical-align: middle;
+`
+
+const StatusBadge = styled.span<{ $active: boolean }>`
+  display: inline-flex;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  line-height: 1.25rem;
+  ${({ $active }) => $active ? `
+    background-color: #dcfce7;
+    color: #166534;
+  ` : `
+    background-color: #fee2e2;
+    color: #991b1b;
+  `}
+`
+
+const ActionButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: -2px;
+  margin-left: -44px;
+`
+
+const ActionButton = styled.button<{ $variant: 'edit' | 'delete' }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 0.375rem;
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  ${({ $variant }) => $variant === 'edit' ? `
+    color: #2563eb;
+    &:hover {
+      background-color: #eff6ff;
+      color: #1d4ed8;
+    }
+  ` : `
+    color: #dc2626;
+    &:hover {
+      background-color: #fef2f2;
+      color: #991b1b;
+    }
+  `}
+`
+
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+`
+
+const PaginationInfo = styled.span`
+  font-size: 0.875rem;
+  color: #374151;
+`
+
+const PaginationButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover:not(:disabled) {
+    background-color: #f9fafb;
+    border-color: #9ca3af;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
 
 const People: React.FC = () => {
   const [people, setPeople] = useState<Person[]>([])
@@ -101,77 +446,74 @@ const People: React.FC = () => {
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <div className="people-container">
-      <div className="people-header">
+    <PeopleContainer>
+      <PeopleHeader>
         <div>
-          <h1 className="people-title">People Management</h1>
-          <p className="people-subtitle">
+          <PeopleTitle>People Management</PeopleTitle>
+          <PeopleSubtitle>
             Manage people and their information
-          </p>
+          </PeopleSubtitle>
         </div>
-        <button onClick={handleCreate} className="create-button">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+        <CreateButton onClick={handleCreate}>
+          <ButtonIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+          </ButtonIcon>
           Add Person
-        </button>
-      </div>
+        </CreateButton>
+      </PeopleHeader>
 
       {error && (
-        <div className="alert-container">
-          <div className="alert alert-error">
+        <AlertContainer>
+          <Alert $variant="error">
             <span>{error}</span>
-            <button onClick={() => setError('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setError('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
       {success && (
-        <div className="alert-container">
-          <div className="alert alert-success">
+        <AlertContainer>
+          <Alert $variant="success">
             <span>{success}</span>
-            <button onClick={() => setSuccess('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setSuccess('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
-      <div className="filters-container">
-        <div className="search-box">
-          <svg className="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <FiltersContainer>
+        <SearchBox>
+          <SearchIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
+          </SearchIcon>
+          <SearchInput
             type="text"
             placeholder="Search by name, email, or employer..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
           />
-        </div>
+        </SearchBox>
 
-        <div className="filter-group">
-          <label className="filter-label">Status:</label>
-          <select
+        <FilterGroup>
+          <FilterLabel>Status:</FilterLabel>
+          <FilterSelect
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="filter-select"
           >
             <option value="all">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
+          </FilterSelect>
+        </FilterGroup>
+      </FiltersContainer>
 
       {loading ? (
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">Loading people...</p>
-        </div>
+        <LoadingState>
+          <LoadingSpinner />
+          <LoadingText>Loading people...</LoadingText>
+        </LoadingState>
       ) : people.length === 0 ? (
-        <div className="empty-state">
-          <svg
-            className="empty-state-icon"
+        <EmptyState>
+          <EmptyStateIcon
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -182,16 +524,16 @@ const People: React.FC = () => {
               strokeWidth="2"
               d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
             />
-          </svg>
-          <h3 className="empty-state-title">No people found</h3>
-          <p className="empty-state-description">
+          </EmptyStateIcon>
+          <EmptyStateTitle>No people found</EmptyStateTitle>
+          <EmptyStateDescription>
             Get started by adding a new person.
-          </p>
-        </div>
+          </EmptyStateDescription>
+        </EmptyState>
       ) : (
         <>
-          <div className="table-container">
-            <table className="people-table">
+          <TableContainer>
+            <PeopleTable>
               <thead>
                 <tr>
                   <th>Name</th>
@@ -206,69 +548,67 @@ const People: React.FC = () => {
                 {people.map((person) => (
                   <tr key={person.id}>
                     <td>
-                      <div className="person-name-cell">
-                        <span className="person-name">{person.name}</span>
+                      <PersonNameCell>
+                        <PersonName>{person.name}</PersonName>
                         {person.has_ssn && (
-                          <span className="ssn-badge" title="SSN on file">🔒 SSN</span>
+                          <SsnBadge title="SSN on file">🔒 SSN</SsnBadge>
                         )}
-                      </div>
+                      </PersonNameCell>
                     </td>
                     <td>{person.email || 'N/A'}</td>
                     <td>{person.phone_number || 'N/A'}</td>
                     <td>{formatDate(person.date_of_birth)}</td>
                     <td>
-                      <span className={`status-badge ${person.is_active ? 'status-active' : 'status-inactive'}`}>
+                      <StatusBadge $active={person.is_active}>
                         {person.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      </StatusBadge>
                     </td>
                     <td>
-                      <div className="action-buttons">
-                        <button
+                      <ActionButtons>
+                        <ActionButton
+                          $variant="edit"
                           onClick={() => handleEdit(person)}
-                          className="action-button action-edit"
                           title="Edit"
                         >
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                        </button>
-                        <button
+                        </ActionButton>
+                        <ActionButton
+                          $variant="delete"
                           onClick={() => handleDelete(person.id)}
-                          className="action-button action-delete"
                           title="Delete"
                         >
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        </button>
-                      </div>
+                        </ActionButton>
+                      </ActionButtons>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </PeopleTable>
+          </TableContainer>
 
           {totalPages > 1 && (
-            <div className="pagination">
-              <button
+            <PaginationContainer>
+              <PaginationButton
                 onClick={() => setPage(page - 1)}
                 disabled={page === 1}
-                className="pagination-button"
               >
                 Previous
-              </button>
-              <span className="pagination-info">
+              </PaginationButton>
+              <PaginationInfo>
                 Page {page} of {totalPages} ({total} total)
-              </span>
-              <button
+              </PaginationInfo>
+              <PaginationButton
                 onClick={() => setPage(page + 1)}
                 disabled={page === totalPages}
-                className="pagination-button"
               >
                 Next
-              </button>
-            </div>
+              </PaginationButton>
+            </PaginationContainer>
           )}
         </>
       )}
@@ -288,7 +628,7 @@ const People: React.FC = () => {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </PeopleContainer>
   )
 }
 

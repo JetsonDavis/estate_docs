@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import styled, { keyframes } from 'styled-components'
 import { sessionService } from '../services/sessionService'
 import { InputForm, SessionQuestionsResponse, QuestionToDisplay, ConditionalFollowupQuestion } from '../types/session'
 import { Person } from '../types/person'
@@ -7,7 +8,354 @@ import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
 import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import './InputForms.css'
+
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`
+
+const SessionsContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  padding: 3rem 1rem;
+`
+
+const SessionsWrapper = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const SessionsContent = styled.div`
+  max-width: 900px;
+  margin: 0 auto;
+`
+
+const SessionsCard = styled.div`
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 2.5rem;
+  margin-bottom: 2rem;
+`
+
+const SessionsHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+`
+
+const SessionsTitle = styled.h1`
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+`
+
+const SessionsSubtitle = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const GroupHeader = styled.div`
+  margin-bottom: 2rem;
+`
+
+const GroupName = styled.h2`
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 0.5rem;
+`
+
+const ProgressInfo = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: -6px;
+`
+
+const QuestionList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-bottom: 2rem;
+`
+
+const QuestionItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`
+
+const QuestionLabel = styled.label`
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`
+
+const RequiredIndicator = styled.span`
+  color: #dc2626;
+`
+
+const QuestionInput = styled.input`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  &[type="date"],
+  &[type="datetime-local"] {
+    appearance: auto;
+    -webkit-appearance: auto;
+  }
+
+  &[type="date"]::-webkit-calendar-picker-indicator,
+  &[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 1;
+  }
+`
+
+const QuestionTextarea = styled.textarea`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  min-height: 120px;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const QuestionSelect = styled.select`
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const RadioGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+`
+
+const RadioOption = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #2563eb;
+    background-color: #eff6ff;
+  }
+
+  input {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+  }
+
+  label {
+    flex: 1;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #374151;
+  }
+`
+
+const ActionButtons = styled.div`
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+`
+
+const Btn = styled.button`
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+`
+
+const BtnPrimary = styled(Btn)`
+  background-color: #2563eb;
+  color: white;
+
+  &:hover {
+    background-color: #1d4ed8;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const BtnSecondary = styled(Btn)`
+  background-color: #f3f4f6;
+  color: #374151;
+
+  &:hover {
+    background-color: #e5e7eb;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const CompletionCard = styled(SessionsCard)`
+  text-align: center;
+  padding: 3rem 2rem;
+`
+
+const CompletionIcon = styled.div`
+  font-size: 4rem;
+  margin-bottom: 1rem;
+`
+
+const CompletionTitle = styled.h1`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 1rem;
+`
+
+const CompletionMessage = styled.p`
+  font-size: 1rem;
+  color: #6b7280;
+  margin-bottom: 2rem;
+`
+
+const SessionList = styled.div`
+  display: grid;
+  gap: 1rem;
+`
+
+const SessionCard = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+`
+
+const SessionCardHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+`
+
+const SessionName = styled.div`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+`
+
+const SessionStatus = styled.span<{ $completed?: boolean }>`
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  background-color: ${props => props.$completed ? '#d1fae5' : '#dbeafe'};
+  color: ${props => props.$completed ? '#065f46' : '#1e40af'};
+  transition: all 0.2s;
+
+  ${props => !props.$completed && `
+    &:hover {
+      background-color: #bfdbfe;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      transform: scale(1.05);
+    }
+  `}
+`
+
+const SessionDate = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const StateMessage = styled.div<{ $variant?: 'error' }>`
+  text-align: center;
+  padding: 3rem 1rem;
+  color: ${props => props.$variant === 'error' ? '#991b1b' : '#6b7280'};
+`
+
+const QuestionHelp = styled.p`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: -0.5rem;
+  font-style: italic;
+`
+
+const NavButtons = styled.div`
+  display: flex;
+  gap: 0.75rem;
+`
+
+const FormInput = styled.input`
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
 
 const US_STATES = [
   { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
@@ -1131,12 +1479,12 @@ const InputForms: React.FC = () => {
     switch (question.question_type) {
       case 'multiple_choice':
         return (
-          <div className="radio-group">
+          <RadioGroup>
             {question.options?.map((option, index) => {
               // Use label as value if value is empty
               const optionValue = option.value || option.label
               return (
-                <div key={index} className="radio-option">
+                <RadioOption key={index}>
                   <input
                     type="radio"
                     id={`q${question.id}-${instanceIndex}-${index}`}
@@ -1151,16 +1499,15 @@ const InputForms: React.FC = () => {
                     }}
                   />
                   <label htmlFor={`q${question.id}-${instanceIndex}-${index}`}>{option.label}</label>
-                </div>
+                </RadioOption>
               )
             })}
-          </div>
+          </RadioGroup>
         )
 
       case 'free_text':
         return (
-          <textarea
-            className="question-textarea"
+          <QuestionTextarea
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
             onBlur={(e) => {
@@ -1186,9 +1533,8 @@ const InputForms: React.FC = () => {
 
       case 'date':
         return (
-          <input
+          <QuestionInput
             type={question.include_time ? 'datetime-local' : 'date'}
-            className="question-input"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
             onBlur={(e) => {
@@ -1294,13 +1640,12 @@ const InputForms: React.FC = () => {
         }
 
         return (
-          <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
             {question.repeatable && instanceIndex > 0 && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#7c3aed' }}>Relationship to Previous Entry</label>
-                <select
-                  className="question-select"
+                <QuestionSelect
                   value={personData.conjunction || 'and'}
                   onChange={(e) => updatePersonField('conjunction', e.target.value)}
                   onBlur={savePersonOnBlur}
@@ -1309,16 +1654,15 @@ const InputForms: React.FC = () => {
                   <option value="and">And</option>
                   <option value="or">Or</option>
                   <option value="then">Then</option>
-                </select>
+                </QuestionSelect>
               </div>
             )}
 
             {/* Name with type-ahead from earlier form entries */}
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
-              <input
+              <QuestionInput
                 type="text"
-                className="question-input"
                 value={personData.name || ''}
                 onChange={(e) => updatePersonField('name', e.target.value)}
                 onBlur={savePersonOnBlur}
@@ -1349,9 +1693,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
-                    <input
+                    <QuestionInput
                       type="email"
-                      className="question-input"
                       value={personData.email || ''}
                       onChange={(e) => updatePersonField('email', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1360,9 +1703,8 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Phone Number</label>
-                    <input
+                    <QuestionInput
                       type="tel"
-                      className="question-input"
                       value={personData.phone_number || ''}
                       onChange={(e) => updatePersonField('phone_number', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1374,9 +1716,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Date of Birth</label>
-                    <input
+                    <QuestionInput
                       type="date"
-                      className="question-input"
                       value={personData.date_of_birth || ''}
                       onChange={(e) => updatePersonField('date_of_birth', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1384,9 +1725,8 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Social Security Number</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personData.ssn || ''}
                       onChange={(e) => updatePersonField('ssn', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1401,9 +1741,8 @@ const InputForms: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Employer</label>
-                <input
+                <QuestionInput
                   type="text"
-                  className="question-input"
                   value={personData.employer || ''}
                   onChange={(e) => updatePersonField('employer', e.target.value)}
                   onBlur={savePersonOnBlur}
@@ -1411,9 +1750,8 @@ const InputForms: React.FC = () => {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Occupation</label>
-                <input
+                <QuestionInput
                   type="text"
-                  className="question-input"
                   value={personData.occupation || ''}
                   onChange={(e) => updatePersonField('occupation', e.target.value)}
                   onBlur={savePersonOnBlur}
@@ -1427,9 +1765,8 @@ const InputForms: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personData.mailing_address?.line1 || ''}
                     onChange={(e) => updatePersonAddressField('mailing_address', 'line1', e.target.value)}
                     onBlur={savePersonOnBlur}
@@ -1438,9 +1775,8 @@ const InputForms: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personData.mailing_address?.line2 || ''}
                     onChange={(e) => updatePersonAddressField('mailing_address', 'line2', e.target.value)}
                     onBlur={savePersonOnBlur}
@@ -1450,9 +1786,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personData.mailing_address?.city || ''}
                       onChange={(e) => updatePersonAddressField('mailing_address', 'city', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1460,8 +1795,7 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
-                    <select
-                      className="question-select"
+                    <QuestionSelect
                       value={personData.mailing_address?.state || ''}
                       onChange={(e) => updatePersonAddressField('mailing_address', 'state', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1470,13 +1804,12 @@ const InputForms: React.FC = () => {
                       {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
-                    </select>
+                    </QuestionSelect>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personData.mailing_address?.zip || ''}
                       onChange={(e) => updatePersonAddressField('mailing_address', 'zip', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1494,9 +1827,8 @@ const InputForms: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personData.physical_address?.line1 || ''}
                     onChange={(e) => updatePersonAddressField('physical_address', 'line1', e.target.value)}
                     onBlur={savePersonOnBlur}
@@ -1505,9 +1837,8 @@ const InputForms: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personData.physical_address?.line2 || ''}
                     onChange={(e) => updatePersonAddressField('physical_address', 'line2', e.target.value)}
                     onBlur={savePersonOnBlur}
@@ -1517,9 +1848,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personData.physical_address?.city || ''}
                       onChange={(e) => updatePersonAddressField('physical_address', 'city', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1527,8 +1857,7 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
-                    <select
-                      className="question-select"
+                    <QuestionSelect
                       value={personData.physical_address?.state || ''}
                       onChange={(e) => updatePersonAddressField('physical_address', 'state', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1537,13 +1866,12 @@ const InputForms: React.FC = () => {
                       {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
-                    </select>
+                    </QuestionSelect>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personData.physical_address?.zip || ''}
                       onChange={(e) => updatePersonAddressField('physical_address', 'zip', e.target.value)}
                       onBlur={savePersonOnBlur}
@@ -1784,13 +2112,12 @@ const InputForms: React.FC = () => {
         }
 
         return (
-          <div className="person-form-inline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Conjunction dropdown for 2nd+ instances of repeatable questions */}
             {question.repeatable && instanceIndex > 0 && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#7c3aed' }}>Relationship to Previous Entry</label>
-                <select
-                  className="question-select"
+                <QuestionSelect
                   value={personBackupData.conjunction || 'and'}
                   onChange={(e) => updateAndSavePersonBackupField('conjunction', e.target.value)}
                   style={{ fontSize: '0.875rem' }}
@@ -1798,15 +2125,14 @@ const InputForms: React.FC = () => {
                   <option value="and">And</option>
                   <option value="or">Or</option>
                   <option value="then">Then</option>
-                </select>
+                </QuestionSelect>
               </div>
             )}
 
             {/* Replaces field - appears first for Person (Backup) */}
             <div style={{ borderBottom: '2px solid #3b82f6', paddingBottom: '1rem', marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Replaces (Person Being Replaced)</label>
-              <select
-                className="question-select"
+              <QuestionSelect
                 value={personBackupData.replaces || ''}
                 onChange={(e) => updateAndSavePersonBackupField('replaces', e.target.value)}
               >
@@ -1815,15 +2141,14 @@ const InputForms: React.FC = () => {
                 {replaceablePersons.map((name, idx) => (
                   <option key={idx} value={name}>{name}</option>
                 ))}
-              </select>
+              </QuestionSelect>
             </div>
 
             {/* Relationship Changes To dropdown - hidden when "Previous Group" is selected */}
             {personBackupData.replaces !== 'Previous Group' && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem', color: '#3b82f6' }}>Relationship Becomes</label>
-                <select
-                  className="question-select"
+                <QuestionSelect
                   value={personBackupData.relationship_changes_to || 'and'}
                   onChange={(e) => updateAndSavePersonBackupField('relationship_changes_to', e.target.value)}
                   style={{ fontSize: '0.875rem' }}
@@ -1831,16 +2156,15 @@ const InputForms: React.FC = () => {
                   <option value="and">And</option>
                   <option value="or">Or</option>
                   <option value="none">None</option>
-                </select>
+                </QuestionSelect>
               </div>
             )}
 
             {/* Name with type-ahead from earlier form entries */}
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
-              <input
+              <QuestionInput
                 type="text"
-                className="question-input"
                 value={personBackupData.name || ''}
                 onChange={(e) => updatePersonBackupField('name', e.target.value)}
                 onBlur={savePersonBackupOnBlur}
@@ -1870,9 +2194,8 @@ const InputForms: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
-                <input
+                <QuestionInput
                   type="email"
-                  className="question-input"
                   value={personBackupData.email || ''}
                   onChange={(e) => updatePersonBackupField('email', e.target.value)}
                   onBlur={savePersonBackupOnBlur}
@@ -1880,9 +2203,8 @@ const InputForms: React.FC = () => {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Phone</label>
-                <input
+                <QuestionInput
                   type="tel"
-                  className="question-input"
                   value={personBackupData.phone || ''}
                   onChange={(e) => updatePersonBackupField('phone', e.target.value)}
                   onBlur={savePersonBackupOnBlur}
@@ -1891,9 +2213,8 @@ const InputForms: React.FC = () => {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Occupation</label>
-              <input
+              <QuestionInput
                 type="text"
-                className="question-input"
                 value={personBackupData.occupation || ''}
                 onChange={(e) => updatePersonBackupField('occupation', e.target.value)}
                 onBlur={savePersonBackupOnBlur}
@@ -1906,9 +2227,8 @@ const InputForms: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personBackupData.mailing_address?.line1 || ''}
                     onChange={(e) => updatePersonBackupAddressField('mailing_address', 'line1', e.target.value)}
                     onBlur={savePersonBackupOnBlur}
@@ -1917,9 +2237,8 @@ const InputForms: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personBackupData.mailing_address?.line2 || ''}
                     onChange={(e) => updatePersonBackupAddressField('mailing_address', 'line2', e.target.value)}
                     onBlur={savePersonBackupOnBlur}
@@ -1929,9 +2248,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personBackupData.mailing_address?.city || ''}
                       onChange={(e) => updatePersonBackupAddressField('mailing_address', 'city', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -1939,8 +2257,7 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
-                    <select
-                      className="question-select"
+                    <QuestionSelect
                       value={personBackupData.mailing_address?.state || ''}
                       onChange={(e) => updatePersonBackupAddressField('mailing_address', 'state', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -1949,13 +2266,12 @@ const InputForms: React.FC = () => {
                       {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
-                    </select>
+                    </QuestionSelect>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personBackupData.mailing_address?.zip || ''}
                       onChange={(e) => updatePersonBackupAddressField('mailing_address', 'zip', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -1973,9 +2289,8 @@ const InputForms: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 1</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personBackupData.physical_address?.line1 || ''}
                     onChange={(e) => updatePersonBackupAddressField('physical_address', 'line1', e.target.value)}
                     onBlur={savePersonBackupOnBlur}
@@ -1984,9 +2299,8 @@ const InputForms: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Address Line 2</label>
-                  <input
+                  <QuestionInput
                     type="text"
-                    className="question-input"
                     value={personBackupData.physical_address?.line2 || ''}
                     onChange={(e) => updatePersonBackupAddressField('physical_address', 'line2', e.target.value)}
                     onBlur={savePersonBackupOnBlur}
@@ -1996,9 +2310,8 @@ const InputForms: React.FC = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>City</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personBackupData.physical_address?.city || ''}
                       onChange={(e) => updatePersonBackupAddressField('physical_address', 'city', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -2006,8 +2319,7 @@ const InputForms: React.FC = () => {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>State</label>
-                    <select
-                      className="question-select"
+                    <QuestionSelect
                       value={personBackupData.physical_address?.state || ''}
                       onChange={(e) => updatePersonBackupAddressField('physical_address', 'state', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -2016,13 +2328,12 @@ const InputForms: React.FC = () => {
                       {US_STATES.map(state => (
                         <option key={state.value} value={state.value}>{state.label}</option>
                       ))}
-                    </select>
+                    </QuestionSelect>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>ZIP Code</label>
-                    <input
+                    <QuestionInput
                       type="text"
-                      className="question-input"
                       value={personBackupData.physical_address?.zip || ''}
                       onChange={(e) => updatePersonBackupAddressField('physical_address', 'zip', e.target.value)}
                       onBlur={savePersonBackupOnBlur}
@@ -2044,8 +2355,7 @@ const InputForms: React.FC = () => {
       case 'dropdown':
       case 'database_dropdown':
         return (
-          <select
-            className="question-select"
+          <QuestionSelect
             value={value}
             onChange={(e) => {
               handleValueChange(e.target.value)
@@ -2056,14 +2366,13 @@ const InputForms: React.FC = () => {
             {question.options?.map((option, index) => (
               <option key={index} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </QuestionSelect>
         )
 
       default:
         return (
-          <input
+          <QuestionInput
             type="text"
-            className="question-input"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
             onBlur={(e) => handleAnswerBlur(question.id, e.target.value)}
@@ -2075,69 +2384,61 @@ const InputForms: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="document-sessions-container">
-        <div className="loading-state">Loading...</div>
-      </div>
+      <SessionsContainer>
+        <StateMessage>Loading...</StateMessage>
+      </SessionsContainer>
     )
   }
 
   if (error) {
     return (
-      <div className="document-sessions-container">
-        <div className="error-state">{error}</div>
-      </div>
+      <SessionsContainer>
+        <StateMessage $variant="error">{error}</StateMessage>
+      </SessionsContainer>
     )
   }
 
   // Show session list if no active session
   if (!sessionId) {
     return (
-      <div className="document-sessions-container">
-        <div className="document-sessions-wrapper">
-          <div className="document-sessions-header">
+      <SessionsContainer>
+        <SessionsWrapper>
+          <SessionsHeader>
             <div>
-              <h1 className="document-sessions-title">Input Form</h1>
-              <p className="document-sessions-subtitle">Start a new form or continue an existing one</p>
+              <SessionsTitle>Input Form</SessionsTitle>
+              <SessionsSubtitle>Start a new form or continue an existing one</SessionsSubtitle>
             </div>
-            <button
+            <BtnPrimary
               onClick={() => navigate('/document/new')}
-              className="btn btn-primary"
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                backgroundColor: '#2563eb',
-                color: 'white',
-                fontWeight: 600,
                 fontSize: '0.875rem',
                 padding: '0.625rem 1.25rem',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer'
               }}
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               New Document
-            </button>
-          </div>
+            </BtnPrimary>
+          </SessionsHeader>
 
-          <div className="session-list" style={{ background: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', padding: '1rem' }}>
+          <SessionList style={{ background: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', padding: '1rem' }}>
               {sessions.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#6b7280' }}>
                   No forms yet. Start a new one to get started.
                 </p>
               ) : (
                 sessions.map(session => (
-                  <div
+                  <SessionCard
                     key={session.id}
-                    className="session-card"
                     onClick={() => navigate(`/document?session=${session.id}`)}
                   >
-                    <div className="session-card-header">
+                    <SessionCardHeader>
                       <div>
-                        <div className="session-name">{session.client_identifier}</div>
+                        <SessionName>{session.client_identifier}</SessionName>
                         {session.current_group_name && (
                           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
                             <span style={{ fontWeight: 500 }}>Question Group:</span> {session.current_group_name}
@@ -2145,8 +2446,8 @@ const InputForms: React.FC = () => {
                         )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span
-                          className={`session-status ${session.is_completed ? 'status-completed' : 'status-in-progress'}`}
+                        <SessionStatus
+                          $completed={session.is_completed}
                           onClick={async (e) => {
                             e.stopPropagation()
                             try {
@@ -2166,7 +2467,7 @@ const InputForms: React.FC = () => {
                           title={session.is_completed ? 'Click to mark as In Progress' : 'Click to mark as Finished'}
                         >
                           {session.is_completed ? 'Completed' : 'In Progress'}
-                        </span>
+                        </SessionStatus>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -2238,16 +2539,16 @@ const InputForms: React.FC = () => {
                           </svg>
                         </button>
                       </div>
-                    </div>
-                    <div className="session-date">
+                    </SessionCardHeader>
+                    <SessionDate>
                       Started: {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
-                    </div>
-                  </div>
+                    </SessionDate>
+                  </SessionCard>
                 ))
               )}
-            </div>
-        </div>
-      </div>
+            </SessionList>
+        </SessionsWrapper>
+      </SessionsContainer>
     )
   }
 
@@ -2255,73 +2556,71 @@ const InputForms: React.FC = () => {
   // If questions are loaded, allow editing even for completed sessions
   if (isCompleted && sessionData && sessionData.questions.length === 0) {
     return (
-      <div className="document-sessions-container">
-        <div className="document-sessions-content">
-          <div className="document-sessions-card completion-card">
-            <div className="completion-icon">✅</div>
-            <h1 className="completion-title">Document Complete!</h1>
-            <p className="completion-message">
+      <SessionsContainer>
+        <SessionsContent>
+          <CompletionCard>
+            <CompletionIcon>✅</CompletionIcon>
+            <CompletionTitle>Document Complete!</CompletionTitle>
+            <CompletionMessage>
               You have successfully completed the document for {sessionData.client_identifier}.
-            </p>
-            <button
+            </CompletionMessage>
+            <BtnPrimary
               onClick={() => navigate('/document')}
-              className="btn btn-primary"
             >
               Back to Input Form
-            </button>
-          </div>
-        </div>
-      </div>
+            </BtnPrimary>
+          </CompletionCard>
+        </SessionsContent>
+      </SessionsContainer>
     )
   }
 
   // Handle orphaned sessions with no question group and no questions
   if (sessionData && sessionData.questions.length === 0 && !sessionData.current_group_id) {
     return (
-      <div className="document-sessions-container">
-        <div className="document-sessions-content">
-          <div className="document-sessions-card completion-card">
-            <div className="completion-icon">⚠️</div>
-            <h1 className="completion-title">No Question Group</h1>
-            <p className="completion-message">
+      <SessionsContainer>
+        <SessionsContent>
+          <CompletionCard>
+            <CompletionIcon>⚠️</CompletionIcon>
+            <CompletionTitle>No Question Group</CompletionTitle>
+            <CompletionMessage>
               This form ({sessionData.client_identifier}) does not have an assigned question group.
-            </p>
-            <button
+            </CompletionMessage>
+            <BtnPrimary
               onClick={() => navigate('/document')}
-              className="btn btn-primary"
             >
               Back to Input Form
-            </button>
-          </div>
-        </div>
-      </div>
+            </BtnPrimary>
+          </CompletionCard>
+        </SessionsContent>
+      </SessionsContainer>
     )
   }
 
   // Show current question group
   return (
-    <div className="document-sessions-container">
-      <div className="document-sessions-content">
-        <div className="document-sessions-card">
-          <div className="document-sessions-header">
-            <h1 className="document-sessions-title">
+    <SessionsContainer>
+      <SessionsContent>
+        <SessionsCard>
+          <SessionsHeader>
+            <SessionsTitle>
               {sessionData?.client_identifier}
-            </h1>
+            </SessionsTitle>
             {sessionData?.flow_name && (
-              <p className="document-sessions-subtitle">{sessionData.flow_name}</p>
+              <SessionsSubtitle>{sessionData.flow_name}</SessionsSubtitle>
             )}
-          </div>
+          </SessionsHeader>
 
           {sessionData && sessionData.questions.length > 0 && (
             <div>
-              <div className="group-header">
-                <h2 className="group-name">{sessionData.current_group_name}</h2>
-                <div className="progress-info">
+              <GroupHeader>
+                <GroupName>{sessionData.current_group_name}</GroupName>
+                <ProgressInfo>
                   <span>Group {sessionData.current_group_index + 1} of {sessionData.total_groups}</span>
-                </div>
-              </div>
+                </ProgressInfo>
+              </GroupHeader>
 
-              <div className="question-list">
+              <QuestionList>
                 {(() => {
                   // Find the index of the question that triggered the conditional loading
                   const triggerIndex = conditionalLoading && conditionalLoadingQuestionId
@@ -2372,7 +2671,6 @@ const InputForms: React.FC = () => {
                           {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
                             <div
                               key={`instance-${instanceIdx}`}
-                              className="repeatable-instance"
                               style={{
                                 padding: '1rem',
                                 borderBottom: instanceIdx < instanceCount - 1 ? '1px solid #e5e7eb' : 'none',
@@ -2420,14 +2718,14 @@ const InputForms: React.FC = () => {
 
                                 return (
                                   <React.Fragment key={setQuestion.id}>
-                                    <div className="question-item" style={{ marginBottom: matchingFollowups.length > 0 ? '0.25rem' : '0.75rem' }}>
-                                      <label className="question-label">
+                                    <div  style={{ marginBottom: matchingFollowups.length > 0 ? '0.25rem' : '0.75rem' }}>
+                                      <label >
                                         <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{setQLabel}.</span>
                                         {replaceLoopToken(setQuestion.question_text, instanceIdx)}
-                                        {setQuestion.is_required && <span className="required-indicator">*</span>}
+                                        {setQuestion.is_required && <span >*</span>}
                                       </label>
                                       {setQuestion.help_text && (
-                                        <p className="question-help">{replaceLoopToken(setQuestion.help_text, instanceIdx)}</p>
+                                        <p >{replaceLoopToken(setQuestion.help_text, instanceIdx)}</p>
                                       )}
                                       {renderQuestion(setQuestion, instanceIdx)}
                                     </div>
@@ -2513,14 +2811,14 @@ const InputForms: React.FC = () => {
                                                       const rVirtualQ = { ...rQ, id: rSid } as unknown as QuestionToDisplay
                                                       return (
                                                         <React.Fragment key={`${nfqKey}-rq-${rQ.id}-${rIdx}`}>
-                                                          <div className="question-item" style={{ marginBottom: '0.75rem' }}>
-                                                            <label className="question-label">
+                                                          <div  style={{ marginBottom: '0.75rem' }}>
+                                                            <label >
                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                               {replaceLoopToken(rQ.question_text, rIdx)}
-                                                              {rQ.is_required && <span className="required-indicator">*</span>}
+                                                              {rQ.is_required && <span >*</span>}
                                                             </label>
                                                             {rQ.help_text && (
-                                                              <p className="question-help">{replaceLoopToken(rQ.help_text, rIdx)}</p>
+                                                              <p >{replaceLoopToken(rQ.help_text, rIdx)}</p>
                                                             )}
                                                             {renderQuestion(rVirtualQ, rIdx)}
                                                           </div>
@@ -2561,17 +2859,17 @@ const InputForms: React.FC = () => {
                                           const nfqWithEffId = { ...nfq, id: nfqEffectiveId }
                                           return (
                                             <React.Fragment key={nfqKey}>
-                                              <div className="question-item" style={{
+                                              <div  style={{
                                                 marginBottom: '0.75rem', marginLeft: `${depth}rem`,
                                                 borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
                                               }}>
-                                                <label className="question-label">
+                                                <label >
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                   {replaceLoopToken(nfq.question_text, parentInstanceIdx)}
-                                                  {nfq.is_required && <span className="required-indicator">*</span>}
+                                                  {nfq.is_required && <span >*</span>}
                                                 </label>
                                                 {nfq.help_text && (
-                                                  <p className="question-help">{replaceLoopToken(nfq.help_text, parentInstanceIdx)}</p>
+                                                  <p >{replaceLoopToken(nfq.help_text, parentInstanceIdx)}</p>
                                                 )}
                                                 {renderQuestion(nfqVirtual, 0)}
                                               </div>
@@ -2596,14 +2894,14 @@ const InputForms: React.FC = () => {
                                           const fqWithEffId = { ...fq, id: fqEffectiveId }
                                           return (
                                             <React.Fragment key={`fu-${fq.id}-${instanceIdx}`}>
-                                              <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
-                                                <label className="question-label">
+                                              <div  style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
+                                                <label >
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuLabel}.</span>
                                                   {replaceLoopToken(fq.question_text, instanceIdx)}
-                                                  {fq.is_required && <span className="required-indicator">*</span>}
+                                                  {fq.is_required && <span >*</span>}
                                                 </label>
                                                 {fq.help_text && (
-                                                  <p className="question-help">{replaceLoopToken(fq.help_text, instanceIdx)}</p>
+                                                  <p >{replaceLoopToken(fq.help_text, instanceIdx)}</p>
                                                 )}
                                                 {renderQuestion(fqVirtual, 0)}
                                               </div>
@@ -2685,14 +2983,14 @@ const InputForms: React.FC = () => {
 
                                                   return (
                                                     <React.Fragment key={`fuq-${fuQ.id}-${fuIdx}`}>
-                                                      <div className="question-item" style={{ marginBottom: fuQIdx < fuSetQuestions.length - 1 && nestedFollowups.length === 0 ? '0.75rem' : 0 }}>
-                                                        <label className="question-label">
+                                                      <div  style={{ marginBottom: fuQIdx < fuSetQuestions.length - 1 && nestedFollowups.length === 0 ? '0.75rem' : 0 }}>
+                                                        <label >
                                                           <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuRepLabel}.</span>
                                                           {replaceLoopToken(fuQ.question_text, fuIdx)}
-                                                          {fuQ.is_required && <span className="required-indicator">*</span>}
+                                                          {fuQ.is_required && <span >*</span>}
                                                         </label>
                                                         {fuQ.help_text && (
-                                                          <p className="question-help">{replaceLoopToken(fuQ.help_text, fuIdx)}</p>
+                                                          <p >{replaceLoopToken(fuQ.help_text, fuIdx)}</p>
                                                         )}
                                                         {renderQuestion(virtualQ, fuIdx)}
                                                       </div>
@@ -2759,14 +3057,14 @@ const InputForms: React.FC = () => {
                                                                       const nfqVirtualQ = { ...nfqQ, id: nfqSid } as unknown as QuestionToDisplay
                                                                       return (
                                                                         <React.Fragment key={`${nfqKey}-rq-${nfqQ.id}-${nfqRIdx}`}>
-                                                                          <div className="question-item" style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
-                                                                            <label className="question-label">
+                                                                          <div  style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
+                                                                            <label >
                                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
                                                                               {replaceLoopToken(nfqQ.question_text, nfqRIdx)}
-                                                                              {nfqQ.is_required && <span className="required-indicator">*</span>}
+                                                                              {nfqQ.is_required && <span >*</span>}
                                                                             </label>
                                                                             {nfqQ.help_text && (
-                                                                              <p className="question-help">{replaceLoopToken(nfqQ.help_text, nfqRIdx)}</p>
+                                                                              <p >{replaceLoopToken(nfqQ.help_text, nfqRIdx)}</p>
                                                                             )}
                                                                             {renderQuestion(nfqVirtualQ, nfqRIdx)}
                                                                           </div>
@@ -2803,17 +3101,17 @@ const InputForms: React.FC = () => {
                                                           // Non-repeatable nested followup
                                                           return (
                                                             <React.Fragment key={nfqKey}>
-                                                              <div className="question-item" style={{
+                                                              <div  style={{
                                                                 marginBottom: '0.75rem', marginLeft: '1rem',
                                                                 borderLeft: '2px solid #d1d5db', paddingLeft: '1rem'
                                                               }}>
-                                                                <label className="question-label">
+                                                                <label >
                                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
                                                                   {replaceLoopToken(nfq.question_text, fuIdx)}
-                                                                  {nfq.is_required && <span className="required-indicator">*</span>}
+                                                                  {nfq.is_required && <span >*</span>}
                                                                 </label>
                                                                 {nfq.help_text && (
-                                                                  <p className="question-help">{replaceLoopToken(nfq.help_text, fuIdx)}</p>
+                                                                  <p >{replaceLoopToken(nfq.help_text, fuIdx)}</p>
                                                                 )}
                                                                 {renderQuestion({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
                                                               </div>
@@ -2887,14 +3185,14 @@ const InputForms: React.FC = () => {
                     const nonRepQLabel = question.hierarchical_number || '1'
                     return (
                       <React.Fragment key={question.id}>
-                        <div className="question-item">
-                          <label className="question-label">
+                        <div >
+                          <label >
                             <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nonRepQLabel}.</span>
                             {question.question_text}
-                            {question.is_required && <span className="required-indicator">*</span>}
+                            {question.is_required && <span >*</span>}
                           </label>
                           {question.help_text && (
-                            <p className="question-help">{question.help_text}</p>
+                            <p >{question.help_text}</p>
                           )}
                           {renderQuestion(question)}
                         </div>
@@ -2937,39 +3235,37 @@ const InputForms: React.FC = () => {
                     )
                   })
                 })()}
-              </div>
+              </QuestionList>
 
-              <div className="action-buttons">
-                <div className="nav-buttons">
+              <ActionButtons>
+                <NavButtons>
                   {sessionData.can_go_back && (
-                    <button
+                    <BtnSecondary
                       type="button"
                       onClick={() => handleNavigate('backward')}
                       disabled={submitting}
-                      className="btn btn-secondary"
                     >
                       ← Back
-                    </button>
+                    </BtnSecondary>
                   )}
 
-                  <button
+                  <BtnPrimary
                     type="button"
                     onClick={() => handleNavigate('forward')}
                     disabled={submitting}
-                    className="btn btn-primary"
                   >
                     {submitting ? 'Saving...' : (
                       sessionData.is_last_group
                         ? 'Exit'
                         : 'Next →'
                     )}
-                  </button>
-                </div>
-              </div>
+                  </BtnPrimary>
+                </NavButtons>
+              </ActionButtons>
             </div>
           )}
-        </div>
-      </div>
+        </SessionsCard>
+      </SessionsContent>
 
       {/* Person modal for adding new person from question */}
       <PersonFormModal
@@ -3013,7 +3309,7 @@ const InputForms: React.FC = () => {
         }}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </SessionsContainer>
   )
 }
 

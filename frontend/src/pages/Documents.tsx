@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import styled from 'styled-components'
 import { documentService } from '../services/documentService'
 import { sessionService } from '../services/sessionService'
 import { templateService } from '../services/templateService'
@@ -7,7 +8,267 @@ import { InputForm } from '../types/session'
 import { Template } from '../types/template'
 import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import './Documents.css'
+
+const DocumentsContainer = styled.div`
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const DocumentsContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+`
+
+const DocumentsHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`
+
+const DocumentsTitle = styled.h1`
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+`
+
+const DocumentsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+`
+
+const DocumentCard = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+
+  &:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+`
+
+const DocumentHeaderRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+`
+
+const DocumentName = styled.h3`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+`
+
+const DocumentDate = styled.span`
+  font-size: 0.75rem;
+  color: #6b7280;
+`
+
+const DocumentPreviewText = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  max-height: 100px;
+  overflow: hidden;
+`
+
+const DocumentActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`
+
+const Btn = styled.button<{ $variant?: 'primary' | 'secondary' | 'danger'; $sm?: boolean }>`
+  padding: ${props => props.$sm ? '0.375rem 0.75rem' : '0.5rem 1rem'};
+  border: none;
+  border-radius: 0.5rem;
+  font-size: ${props => props.$sm ? '0.75rem' : '0.875rem'};
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  background-color: ${props => {
+    switch (props.$variant) {
+      case 'danger': return '#fef2f2'
+      case 'secondary': return '#f3f4f6'
+      default: return '#2563eb'
+    }
+  }};
+  color: ${props => {
+    switch (props.$variant) {
+      case 'danger': return '#991b1b'
+      case 'secondary': return '#374151'
+      default: return 'white'
+    }
+  }};
+
+  &:hover {
+    background-color: ${props => {
+      switch (props.$variant) {
+        case 'danger': return '#fee2e2'
+        case 'secondary': return '#e5e7eb'
+        default: return '#1d4ed8'
+      }
+    }};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const StateMessage = styled.div<{ $variant?: 'error' }>`
+  text-align: center;
+  padding: 3rem 1rem;
+  color: ${props => props.$variant === 'error' ? '#991b1b' : '#6b7280'};
+`
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`
+
+const ModalContent = styled.div<{ $large?: boolean }>`
+  background: white;
+  border-radius: 0.75rem;
+  padding: 2rem;
+  max-width: ${props => props.$large ? '900px' : '600px'};
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+`
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+`
+
+const ModalTitle = styled.h2`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+`
+
+const ModalClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0.25rem;
+
+  &:hover {
+    color: #111827;
+  }
+`
+
+const FormGroup = styled.div`
+  margin-bottom: 1.5rem;
+`
+
+const FormLabel = styled.label`
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+`
+
+const FormInput = styled.input`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const FormSelect = styled.select`
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+`
+
+const ModalActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+`
+
+const PreviewInfo = styled.div`
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+
+  p {
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+    color: #374151;
+  }
+`
+
+const WarningBox = styled.div`
+  background-color: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+`
+
+const PreviewContent = styled.div`
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+
+  pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #374151;
+  }
+`
 
 const Documents: React.FC = () => {
   const [documents, setDocuments] = useState<GeneratedDocument[]>([])
@@ -119,40 +380,42 @@ const Documents: React.FC = () => {
   }
 
   return (
-    <div className="documents-container">
-      <div className="documents-content">
-        <div className="documents-header">
-          <h1 className="documents-title">My Documents</h1>
-          <button onClick={handleGenerateClick} className="btn btn-primary">
+    <DocumentsContainer>
+      <DocumentsContent>
+        <DocumentsHeader>
+          <DocumentsTitle>My Documents</DocumentsTitle>
+          <Btn onClick={handleGenerateClick}>
             Generate New Document
-          </button>
-        </div>
+          </Btn>
+        </DocumentsHeader>
 
-        {loading && <div className="loading-state">Loading documents...</div>}
+        {loading && <StateMessage>Loading documents...</StateMessage>}
         
-        {error && <div className="error-state">{error}</div>}
+        {error && <StateMessage $variant="error">{error}</StateMessage>}
         
         {!loading && !error && documents.length === 0 && (
-          <div className="empty-state">
+          <StateMessage>
             No documents generated yet. Generate your first document to get started.
-          </div>
+          </StateMessage>
         )}
 
         {!loading && !error && documents.length > 0 && (
-          <div className="documents-grid">
+          <DocumentsGrid>
             {documents.map(doc => (
-              <div key={doc.id} className="document-card">
-                <div className="document-header">
-                  <h3 className="document-name">{doc.document_name}</h3>
-                  <span className="document-date">
+              <DocumentCard key={doc.id}>
+                <DocumentHeaderRow>
+                  <DocumentName>{doc.document_name}</DocumentName>
+                  <DocumentDate>
                     {new Date(doc.generated_at).toLocaleDateString()} {new Date(doc.generated_at).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="document-preview">
+                  </DocumentDate>
+                </DocumentHeaderRow>
+                <DocumentPreviewText>
                   {doc.markdown_content.substring(0, 200)}...
-                </div>
-                <div className="document-actions">
-                  <button
+                </DocumentPreviewText>
+                <DocumentActions>
+                  <Btn
+                    $variant="secondary"
+                    $sm
                     onClick={() => {
                       const blob = new Blob([doc.markdown_content], { type: 'text/markdown' })
                       const url = URL.createObjectURL(blob)
@@ -161,34 +424,33 @@ const Documents: React.FC = () => {
                       a.download = `${doc.document_name}.md`
                       a.click()
                     }}
-                    className="btn btn-secondary btn-sm"
                   >
                     Download
-                  </button>
-                  <button
+                  </Btn>
+                  <Btn
+                    $variant="danger"
+                    $sm
                     onClick={() => handleDelete(doc.id)}
-                    className="btn btn-danger btn-sm"
                   >
                     Delete
-                  </button>
-                </div>
-              </div>
+                  </Btn>
+                </DocumentActions>
+              </DocumentCard>
             ))}
-          </div>
+          </DocumentsGrid>
         )}
 
         {showGenerateModal && (
-          <div className="modal-overlay" onClick={() => setShowGenerateModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Generate Document</h2>
-                <button onClick={() => setShowGenerateModal(false)} className="modal-close">&times;</button>
-              </div>
+          <ModalOverlay onClick={() => setShowGenerateModal(false)}>
+            <ModalContent onClick={(e) => e.stopPropagation()}>
+              <ModalHeader>
+                <ModalTitle>Generate Document</ModalTitle>
+                <ModalClose onClick={() => setShowGenerateModal(false)}>&times;</ModalClose>
+              </ModalHeader>
 
-              <div className="form-group">
-                <label className="form-label">Select Completed Session</label>
-                <select
-                  className="form-select"
+              <FormGroup>
+                <FormLabel>Select Completed Session</FormLabel>
+                <FormSelect
                   value={selectedSession || ''}
                   onChange={(e) => setSelectedSession(Number(e.target.value))}
                 >
@@ -198,13 +460,12 @@ const Documents: React.FC = () => {
                       {session.client_identifier} - {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
                     </option>
                   ))}
-                </select>
-              </div>
+                </FormSelect>
+              </FormGroup>
 
-              <div className="form-group">
-                <label className="form-label">Select Template</label>
-                <select
-                  className="form-select"
+              <FormGroup>
+                <FormLabel>Select Template</FormLabel>
+                <FormSelect
                   value={selectedTemplate || ''}
                   onChange={(e) => setSelectedTemplate(Number(e.target.value))}
                 >
@@ -214,64 +475,63 @@ const Documents: React.FC = () => {
                       {template.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </FormSelect>
+              </FormGroup>
 
-              <div className="form-group">
-                <label className="form-label">Document Name (Optional)</label>
-                <input
+              <FormGroup>
+                <FormLabel>Document Name (Optional)</FormLabel>
+                <FormInput
                   type="text"
-                  className="form-input"
                   value={documentName}
                   onChange={(e) => setDocumentName(e.target.value)}
                   placeholder="Leave blank for auto-generated name"
                 />
-              </div>
+              </FormGroup>
 
-              <div className="modal-actions">
-                <button onClick={handlePreview} className="btn btn-secondary">
+              <ModalActions>
+                <Btn $variant="secondary" onClick={handlePreview}>
                   Preview
-                </button>
-                <button onClick={handleGenerate} disabled={generating} className="btn btn-primary">
+                </Btn>
+                <Btn onClick={handleGenerate} disabled={generating}>
                   {generating ? 'Generating...' : 'Generate'}
-                </button>
-              </div>
-            </div>
-          </div>
+                </Btn>
+              </ModalActions>
+            </ModalContent>
+          </ModalOverlay>
         )}
 
         {showPreviewModal && preview && (
-          <div className="modal-overlay" onClick={() => setShowPreviewModal(false)}>
-            <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title">Document Preview</h2>
-                <button onClick={() => setShowPreviewModal(false)} className="modal-close">&times;</button>
-              </div>
+          <ModalOverlay onClick={() => setShowPreviewModal(false)}>
+            <ModalContent $large onClick={(e) => e.stopPropagation()}>
+              <ModalHeader>
+                <ModalTitle>Document Preview</ModalTitle>
+                <ModalClose onClick={() => setShowPreviewModal(false)}>&times;</ModalClose>
+              </ModalHeader>
 
-              <div className="preview-info">
+              <PreviewInfo>
                 <p><strong>Template:</strong> {preview.template_name}</p>
                 <p><strong>Client:</strong> {preview.session_client}</p>
                 {preview.missing_identifiers.length > 0 && (
-                  <div className="warning-box">
+                  <WarningBox>
                     <strong>Missing Identifiers:</strong> {preview.missing_identifiers.join(', ')}
-                  </div>
+                  </WarningBox>
                 )}
-              </div>
+              </PreviewInfo>
 
-              <div className="preview-content">
+              <PreviewContent>
                 <pre>{preview.markdown_content}</pre>
-              </div>
+              </PreviewContent>
 
-              <div className="modal-actions">
-                <button onClick={() => setShowPreviewModal(false)} className="btn btn-secondary">
+              <ModalActions>
+                <Btn $variant="secondary" onClick={() => setShowPreviewModal(false)}>
                   Close
-                </button>
-                <button onClick={handleGenerate} disabled={generating} className="btn btn-primary">
+                </Btn>
+                <Btn onClick={handleGenerate} disabled={generating}>
                   {generating ? 'Generating...' : 'Generate Document'}
-                </button>
-              </div>
-            </div>
-          </div>
+                </Btn>
+              </ModalActions>
+            </ModalContent>
+          </ModalOverlay>
         )}
         <ConfirmDialog
           isOpen={deleteTarget !== null}
@@ -282,8 +542,8 @@ const Documents: React.FC = () => {
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
         />
-      </div>
-    </div>
+      </DocumentsContent>
+    </DocumentsContainer>
   )
 }
 
