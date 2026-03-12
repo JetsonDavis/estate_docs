@@ -17,7 +17,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 }) => {
   const modules = useMemo(() => ({
     toolbar: [
-      [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+      [{ 'size': ['small', false, 'large', 'huge'] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
       [{ 'indent': '-1'}, { 'indent': '+1' }],
@@ -28,7 +28,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }), [])
 
   const formats = [
-    'header',
+    'size',
     'bold', 'italic', 'underline', 'strike',
     'list', 'bullet',
     'indent',
@@ -47,6 +47,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         placeholder={placeholder}
         style={{ height: `calc(${height} - 42px)` }}
       />
+      <style>{`
+        .ql-container.ql-snow {
+          background-color: white !important;
+        }
+        .ql-editor {
+          background-color: white !important;
+        }
+      `}</style>
     </div>
   )
 }
