@@ -86,6 +86,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         }
         .ql-editor {
           background-color: white !important;
+          font-size: 14px !important;
         }
         .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
         .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before {
