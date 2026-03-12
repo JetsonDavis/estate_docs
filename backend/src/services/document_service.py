@@ -75,6 +75,18 @@ class HTMLToWordConverter(HTMLParser):
             style_dict = {}
             if 'style' in attrs_dict:
                 style_dict = self._parse_inline_style(attrs_dict['style'])
+            
+            # Handle Quill class-based font sizes (ql-size-*)
+            if 'class' in attrs_dict:
+                classes = attrs_dict['class'].split()
+                for cls in classes:
+                    if cls.startswith('ql-size-'):
+                        size_str = cls.replace('ql-size-', '')
+                        # Quill uses size values like '10px', '12px', etc.
+                        match = re.match(r'(\d+)px', size_str)
+                        if match:
+                            style_dict['font_size'] = float(match.group(1))
+            
             self.style_stack.append(style_dict)
             
         elif tag in ('ul', 'ol'):
