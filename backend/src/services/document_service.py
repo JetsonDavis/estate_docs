@@ -1356,8 +1356,14 @@ class DocumentService:
         # The merged_content now contains HTML from the rich text editor
         html_content = merged_content
         
-        # Log the HTML content for debugging
-        _logger.info(f"HTML content before processing: {html_content[:500]}")
+        # Write HTML to debug file for inspection
+        try:
+            with open('/tmp/quill_html_debug.html', 'w') as f:
+                f.write("=== BEFORE PROCESSING ===\n")
+                f.write(html_content)
+                f.write("\n\n")
+        except:
+            pass
         
         # Remove Quill editor wrapper divs if present
         html_content = re.sub(r'<div class="ql-editor[^"]*"[^>]*>', '', html_content)
@@ -1376,7 +1382,13 @@ class DocumentService:
         if not html_content.strip().startswith('<p'):
             html_content = f'<p>{html_content}</p>'
         
-        _logger.info(f"HTML content after processing: {html_content[:500]}")
+        # Write processed HTML to debug file
+        try:
+            with open('/tmp/quill_html_debug.html', 'a') as f:
+                f.write("=== AFTER PROCESSING ===\n")
+                f.write(html_content)
+        except:
+            pass
         
         # Parse HTML and convert to Word with custom parser
         parser = HTMLToWordConverter(doc)
