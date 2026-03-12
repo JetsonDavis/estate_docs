@@ -730,14 +730,14 @@ class DocumentService:
 
         def _replace(match):
             identifier = match.group(1).lower()
-            array_index_str = match.group(2)  # Array index like [0], [1], etc.
+            array_index_str = match.group(2)  # Array index like [1], [2], etc.
             field_name = match.group(3)  # Field name after dot or array index
             
-            # Convert array index to integer (0-based)
-            array_index = int(array_index_str) if array_index_str else None
+            # Convert array index to integer (1-based, so subtract 1 for 0-based array access)
+            array_index = int(array_index_str) - 1 if array_index_str else None
 
             # Handle array indexing with optional field access
-            # e.g., <<identifier[0]>>, <<identifier[0].name>>
+            # e.g., <<identifier[1]>>, <<identifier[1].name>>
             if array_index is not None:
                 raw_json = _raw_map.get(identifier, '') or ''
                 formatted = answer_map.get(identifier, '')
@@ -747,7 +747,7 @@ class DocumentService:
                     try:
                         data = json.loads(raw_json)
                         if isinstance(data, list):
-                            # Check if index is valid (convert to 0-based)
+                            # Check if index is valid (array_index is already 0-based after conversion)
                             if 0 <= array_index < len(data):
                                 item = data[array_index]
                                 
