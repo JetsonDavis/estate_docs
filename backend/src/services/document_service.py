@@ -15,6 +15,7 @@ import io
 import json
 import re
 from html.parser import HTMLParser
+from .s3_service import s3_service
 
 _logger = logging.getLogger(__name__)
 
@@ -335,17 +336,24 @@ class DocumentService:
         # Generate document name if not provided
         document_name = request.document_name or f"{template.name} - {session.client_identifier}"
 
-        # Create generated document
+        # Create generated document with placeholder S3 key
         document = GeneratedDocument(
             session_id=request.session_id,
             template_id=request.template_id,
             document_name=document_name,
-            markdown_content=merged_content,
+            s3_key="",  # Will be updated after upload
+            markdown_content=None,  # No longer storing in DB
             generated_by=user_id,
             generated_at=datetime.utcnow()
         )
 
         db.add(document)
+        db.flush()  # Get the document ID without committing
+
+        # Upload markdown to S3
+        s3_key = s3_service.upload_markdown(merged_content, document.id, user_id)
+        document.s3_key = s3_key
+
         db.commit()
         db.refresh(document)
 
@@ -1300,6 +1308,15 @@ class DocumentService:
         total = query.count()
         documents = query.order_by(GeneratedDocument.generated_at.desc()).offset(skip).limit(limit).all()
         
+        # Download markdown content from S3 for each document
+        for doc in documents:
+            if doc.s3_key:
+                try:
+                    doc.markdown_content = s3_service.download_markdown(doc.s3_key)
+                except Exception as e:
+                    _logger.error(f"Failed to download markdown from S3 for document {doc.id}: {e}")
+                    doc.markdown_content = "[Error loading document content]"
+        
         return documents, total
     
     @staticmethod
@@ -1322,6 +1339,14 @@ class DocumentService:
         document = DocumentService.get_document(db, document_id, user_id)
         if not document:
             return False
+        
+        # Delete from S3 if s3_key exists
+        if document.s3_key:
+            try:
+                s3_service.delete_document(document.s3_key)
+            except Exception as e:
+                _logger.error(f"Failed to delete document from S3: {e}")
+                # Continue with database deletion even if S3 deletion fails
         
         db.delete(document)
         db.commit()

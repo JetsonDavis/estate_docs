@@ -14,10 +14,11 @@ class GeneratedDocument(Base, TimestampMixin):
     template_id = Column(Integer, ForeignKey("templates.id", ondelete="SET NULL"), nullable=True)
     document_name = Column(String(255), nullable=False)
     
-    # Merged content
-    markdown_content = Column(Text, nullable=False)
+    # S3 storage location for markdown content
+    s3_key = Column(String(500), nullable=False)
     
-    # PDF storage (optional - can be generated on demand)
+    # Legacy fields (deprecated - keeping for backward compatibility during migration)
+    markdown_content = Column(Text, nullable=True)
     pdf_content = Column(LargeBinary, nullable=True)
     pdf_file_path = Column(String(500), nullable=True)
     
@@ -40,7 +41,8 @@ class GeneratedDocument(Base, TimestampMixin):
             "session_id": self.session_id,
             "template_id": self.template_id,
             "document_name": self.document_name,
-            "markdown_content": self.markdown_content,
+            "s3_key": self.s3_key,
+            "markdown_content": self.markdown_content,  # Legacy field
             "pdf_file_path": self.pdf_file_path,
             "generated_by": self.generated_by,
             "generated_at": self.generated_at.isoformat(),
