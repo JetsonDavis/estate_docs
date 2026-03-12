@@ -35,6 +35,7 @@ const EditTemplate: React.FC = () => {
   const pageScrollRef = useRef<number>(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const formattedDivRef = useRef<HTMLDivElement | null>(null)
+  const editorContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
@@ -88,6 +89,24 @@ const EditTemplate: React.FC = () => {
       })
     }
   }, [isEditing])
+
+  // Handle click outside to exit edit mode
+  useEffect(() => {
+    if (!isEditing) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (editorContainerRef.current && !editorContainerRef.current.contains(target)) {
+        setIsEditing(false)
+        setBlockErrors(validateBlocks(markdownContent))
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isEditing, markdownContent])
 
   // Format content with bold for {{ }} and << >> patterns, and color coding for IF/FOREACH
   const formatContent = (text: string) => {
@@ -436,17 +455,7 @@ const EditTemplate: React.FC = () => {
                 </div>
               )}
               {isEditing ? (
-                <div
-                  onMouseDown={(e) => {
-                    // If clicking outside the editor, exit edit mode
-                    const target = e.target as HTMLElement
-                    const isClickInsideEditor = target.closest('.ql-container') || target.closest('.ql-toolbar')
-                    if (!isClickInsideEditor) {
-                      setIsEditing(false)
-                      setBlockErrors(validateBlocks(markdownContent))
-                    }
-                  }}
-                >
+                <div ref={editorContainerRef}>
                   <RichTextEditor
                     value={markdownContent}
                     onChange={setMarkdownContent}
@@ -485,7 +494,6 @@ const EditTemplate: React.FC = () => {
                     pageScrollRef.current = window.scrollY
                     setIsEditing(true)
                   }}
-                  className="ql-editor"
                   style={{
                     width: '100%',
                     height: '600px',
@@ -497,10 +505,12 @@ const EditTemplate: React.FC = () => {
                     overflowY: 'auto',
                     backgroundColor: 'white',
                     color: '#111827',
-                    cursor: 'text'
+                    cursor: 'text',
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word'
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: markdownContent
+                    __html: formatContent(markdownContent)
                   }}
                 />
               )}
