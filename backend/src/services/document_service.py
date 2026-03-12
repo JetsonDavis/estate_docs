@@ -161,7 +161,14 @@ class HTMLToWordConverter(HTMLParser):
             if 'underline' in style_dict:
                 run.underline = style_dict['underline']
             if 'font_size' in style_dict:
-                run.font.size = Pt(style_dict['font_size'])
+                font_size = style_dict['font_size']
+                run.font.size = Pt(font_size)
+                # Debug: write to file
+                try:
+                    with open('/tmp/quill_html_debug.html', 'a') as f:
+                        f.write(f"\nApplying font size: {font_size}pt to text\n")
+                except:
+                    pass
             if 'color' in style_dict:
                 run.font.color.rgb = style_dict['color']
                 
@@ -182,7 +189,14 @@ class HTMLToWordConverter(HTMLParser):
                 # Remove 'px', 'pt', or other units
                 value_clean = value.replace('px', '').replace('pt', '').strip()
                 try:
-                    style_dict['font_size'] = float(value_clean)
+                    font_size_val = float(value_clean)
+                    style_dict['font_size'] = font_size_val
+                    # Debug: write to file
+                    try:
+                        with open('/tmp/quill_html_debug.html', 'a') as f:
+                            f.write(f"\nParsed font-size: {value} -> {font_size_val}\n")
+                    except:
+                        pass
                 except ValueError:
                     pass
                     
