@@ -695,22 +695,22 @@ class DocumentService:
         Returns:
             Text with counter tokens replaced
         """
-        # First, handle reset tokens #/A - replace with empty string and reset counter
-        def _reset_replacer(match):
-            global_counter[0] = 0
-            return ''
+        # Process text sequentially to handle resets and counters in order
+        # Combine both patterns to process in sequence
+        combined_pattern = re.compile(r'(#/A)|(###|##%|##A|##)(?:\+(\d*))?')
         
-        text = DocumentService._COUNTER_RESET_RE.sub(_reset_replacer, text)
-        
-        # Then handle counter tokens
         def _replacer(match):
-            token = match.group(1)
-            plus_str = match.group(2)
-            inc = int(plus_str) if plus_str else 1
-            global_counter[0] += inc
-            return DocumentService._counter_to_str(token, global_counter[0])
-
-        return DocumentService._COUNTER_RE.sub(_replacer, text)
+            if match.group(1):  # Reset token #/A
+                global_counter[0] = 0
+                return ''
+            else:  # Counter token
+                token = match.group(2)
+                plus_str = match.group(3)
+                inc = int(plus_str) if plus_str else 1
+                global_counter[0] += inc
+                return DocumentService._counter_to_str(token, global_counter[0])
+        
+        return combined_pattern.sub(_replacer, text)
 
     @staticmethod
     def _replace_identifiers(text: str, answer_map: dict, raw_answer_map: dict,
