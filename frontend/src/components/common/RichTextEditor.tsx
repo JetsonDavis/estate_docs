@@ -4,7 +4,7 @@ import 'react-quill/dist/quill.snow.css'
 
 // Register custom font sizes
 const Size = Quill.import('attributors/style/size') as any
-Size.whitelist = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px']
+Size.whitelist = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px', '36px', '40px', '48px', '64px']
 Quill.register(Size, true)
 
 interface RichTextEditorProps {
@@ -50,7 +50,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const modules = useMemo(() => ({
     toolbar: [
-      [{ 'size': ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px'] }],
+      [{ 'size': ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px', '36px', '40px', '48px', '64px'] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
       [{ 'indent': '-1'}, { 'indent': '+1' }],
@@ -119,6 +119,22 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="32px"]::before,
         .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="32px"]::before {
           content: '32px';
+        }
+        .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="36px"]::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="36px"]::before {
+          content: '36px';
+        }
+        .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="40px"]::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="40px"]::before {
+          content: '40px';
+        }
+        .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="48px"]::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="48px"]::before {
+          content: '48px';
+        }
+        .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="64px"]::before,
+        .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="64px"]::before {
+          content: '64px';
         }
         .ql-snow .ql-picker.ql-size .ql-picker-label::before,
         .ql-snow .ql-picker.ql-size .ql-picker-item::before {
