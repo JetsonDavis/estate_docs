@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect, useState } from 'react'
 import ReactQuill, { Quill } from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 
@@ -14,12 +14,40 @@ interface RichTextEditorProps {
   height?: string
 }
 
+// Escape template identifiers so they don't get stripped by Quill
+const escapeIdentifiers = (html: string): string => {
+  return html
+    .replace(/<<([^>]+)>>/g, '&lt;&lt;$1&gt;&gt;')
+    .replace(/\{\{([^}]+)\}\}/g, '&#123;&#123;$1&#125;&#125;')
+}
+
+// Unescape template identifiers when saving
+const unescapeIdentifiers = (html: string): string => {
+  return html
+    .replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<<$1>>')
+    .replace(/&#123;&#123;([^&]+)&#125;&#125;/g, '{{$1}}')
+}
+
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
   placeholder = 'Enter your template content here...',
   height = '600px'
 }) => {
+  // Escape identifiers for display in editor
+  const [editorValue, setEditorValue] = useState(escapeIdentifiers(value))
+
+  // Update editor value when prop value changes
+  useEffect(() => {
+    setEditorValue(escapeIdentifiers(value))
+  }, [value])
+
+  const handleChange = (content: string) => {
+    setEditorValue(content)
+    // Unescape identifiers before passing to parent
+    onChange(unescapeIdentifiers(content))
+  }
+
   const modules = useMemo(() => ({
     toolbar: [
       [{ 'size': ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px'] }],
@@ -45,8 +73,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     <div style={{ height }}>
       <ReactQuill
         theme="snow"
-        value={value}
-        onChange={onChange}
+        value={editorValue}
+        onChange={handleChange}
         modules={modules}
         formats={formats}
         placeholder={placeholder}
