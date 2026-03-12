@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { TemplateCreate, TemplateType } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
+import RichTextEditor from '../../components/common/RichTextEditor'
 import './Templates.css'
 
 const CreateTemplate: React.FC = () => {
@@ -230,23 +231,15 @@ const CreateTemplate: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', paddingTop: '16px' }}>
                 Text (Use {'<<identifier>>'} for placeholders)
               </label>
-              <textarea
+              <RichTextEditor
                 value={markdownContent}
-                onChange={(e) => setMarkdownContent(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '600px',
-                  padding: '0.875rem 1rem',
-                  border: '2px solid #d1d5db',
-                  borderRadius: '0.75rem',
-                  fontSize: '1rem',
-                  fontFamily: "'Courier New', monospace",
-                  boxSizing: 'border-box',
-                  overflowY: 'scroll',
-                  resize: 'vertical'
-                }}
-                placeholder="Enter your template content here...&#10;&#10;Example:&#10;Name: <<client_name>>&#10;Date of Birth: <<dob>>"
-                required
+                onChange={setMarkdownContent}
+                placeholder="Enter your template content here...
+
+Example:
+Name: <<client_name>>
+Date of Birth: <<dob>>"
+                height="600px"
               />
             </div>
 

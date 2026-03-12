@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
+import RichTextEditor from '../../components/common/RichTextEditor'
 import './Templates.css'
 
 const EditTemplate: React.FC = () => {
@@ -434,49 +435,17 @@ const EditTemplate: React.FC = () => {
                 </div>
               )}
               {isEditing ? (
-                <textarea
-                  ref={textareaRefCallback}
-                  value={markdownContent}
-                  onChange={(e) => setMarkdownContent(e.target.value)}
-                  onBlur={(e) => {
-                    const el = e.currentTarget
-                    const maxScroll = el.scrollHeight - el.clientHeight
-                    scrollRatioRef.current = maxScroll > 0 ? el.scrollTop / maxScroll : 0
-                    pageScrollRef.current = window.scrollY
-                    textareaInitializedRef.current = false
-                    setIsEditing(false)
-                    setBlockErrors(validateBlocks(markdownContent))
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Tab') {
-                      e.preventDefault()
-                      const start = e.currentTarget.selectionStart
-                      const end = e.currentTarget.selectionEnd
-                      const value = e.currentTarget.value
-                      setMarkdownContent(value.substring(0, start) + '\t' + value.substring(end))
-                      setTimeout(() => {
-                        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 1
-                      }, 0)
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    height: '600px',
-                    padding: '0.875rem 1rem',
-                    border: '2px solid #d1d5db',
-                    borderRadius: '0.75rem',
-                    fontSize: '1rem',
-                    fontFamily: "'Courier New', monospace",
-                    boxSizing: 'border-box',
-                    overflowY: 'auto',
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
-                    backgroundColor: 'white',
-                    color: '#111827',
-                    outline: 'none',
-                    resize: 'vertical'
-                  }}
-                />
+                <div onBlur={() => {
+                  setIsEditing(false)
+                  setBlockErrors(validateBlocks(markdownContent))
+                }}>
+                  <RichTextEditor
+                    value={markdownContent}
+                    onChange={setMarkdownContent}
+                    placeholder="Enter your template content here..."
+                    height="600px"
+                  />
+                </div>
               ) : (
                 <div
                   ref={formattedDivRef}
