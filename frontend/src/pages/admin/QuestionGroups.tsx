@@ -3363,8 +3363,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {!collapsedItems.has(`nq-${nestedQuestion.id}`) && <>
               {/* Identifier */}
               <div className="form-group">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem', flexWrap: 'nowrap' }}>
+                  <label className="form-label" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>Identifier *</label>
                   {(() => {
                     // Find the previous repeatable question within this nested context (same nesting level only)
                     let prevRepeatableNestedQuestion: QuestionFormData | null = null
@@ -4522,8 +4522,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               {!collapsedItems.has(`q-${question.id}`) && <QuestionBuilderContent>
                 <div className="form-group">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
-                    <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem', flexWrap: 'nowrap' }}>
+                    <label className="form-label" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>Identifier *</label>
                     {(() => {
                       // Find the previous repeatable question by checking the actual order in questionLogic
                       // This handles cases where there's a conditional between questions
