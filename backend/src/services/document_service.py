@@ -1122,11 +1122,62 @@ class DocumentService:
         return DocumentService._IDENTIFIER_RE.sub(_replace, text)
 
     @staticmethod
+    def _process_macros(template_content: str) -> str:
+        """
+        Process macro definitions and usages in template content.
+        
+        Macro syntax:
+        - Definition: @@ macro_name @@ macro content with <<identifiers>> @@
+        - Usage: @ macro_name @
+        
+        Definitions are extracted and removed from the template.
+        Usages are replaced with the macro definition content.
+        
+        Args:
+            template_content: Template content with macro definitions and usages
+            
+        Returns:
+            Template content with macros expanded and definitions removed
+        """
+        # Regex to match macro definitions: @@ name @@ content @@
+        # Captures: (1) macro name, (2) macro content
+        macro_def_pattern = r'@@\s*(\w+)\s*@@\s*(.*?)\s*@@'
+        
+        # Extract all macro definitions
+        macros = {}
+        for match in re.finditer(macro_def_pattern, template_content, re.DOTALL):
+            macro_name = match.group(1).strip()
+            macro_content = match.group(2).strip()
+            macros[macro_name] = macro_content
+            _logger.info(f"Defined macro: {macro_name}")
+        
+        # Remove all macro definitions from template
+        template_content = re.sub(macro_def_pattern, '', template_content, flags=re.DOTALL)
+        
+        # Replace macro usages with their definitions
+        # Regex to match macro usage: @ name @
+        macro_usage_pattern = r'@\s*(\w+)\s*@'
+        
+        def replace_macro(match):
+            macro_name = match.group(1).strip()
+            if macro_name in macros:
+                _logger.info(f"Expanding macro: {macro_name}")
+                return macros[macro_name]
+            else:
+                _logger.warning(f"Macro not found: {macro_name}")
+                return match.group(0)  # Return original if macro not defined
+        
+        template_content = re.sub(macro_usage_pattern, replace_macro, template_content)
+        
+        return template_content
+
+    @staticmethod
     def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
         """
         Merge template content with answer values.
 
-        Orchestrates five passes in order:
+        Orchestrates six passes in order:
+        0. Macros — extract and expand macro definitions
         1. FOREACH loops — expand repeatable blocks
         2. IF / ELSE conditionals — evaluate nested conditional blocks
         3. [[ ... ]] conditional sections — remove sections with empty identifiers
@@ -1146,9 +1197,12 @@ class DocumentService:
         raw_map = raw_answer_map if raw_answer_map else answer_map
         global_counter = [0]
 
+        # Pass 0: Process macros
+        merged = DocumentService._process_macros(template_content)
+
         # Pass 1: FOREACH loops
         merged = DocumentService._process_foreach_blocks(
-            template_content, answer_map, raw_map, global_counter
+            merged, answer_map, raw_map, global_counter
         )
 
         # Pass 2: IF / ELSE conditionals
