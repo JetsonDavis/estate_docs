@@ -16,7 +16,8 @@ class GeneratedDocumentResponse(BaseModel):
     session_id: int
     template_id: Optional[int]
     document_name: str
-    markdown_content: str
+    markdown_content: Optional[str]  # Now stored in S3, downloaded on-demand
+    s3_key: Optional[str]  # S3 location of markdown content
     pdf_file_path: Optional[str]
     generated_by: Optional[int]
     generated_at: datetime
