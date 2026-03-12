@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import styled, { keyframes, css } from 'styled-components'
 import { flushSync } from 'react-dom'
 import { Navigate, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { questionGroupService } from '../../services/questionService'
@@ -6,7 +7,535 @@ import { QuestionGroup, QuestionType, QuestionOption, QuestionLogicItem } from '
 import PersonTypeahead from '../../components/common/PersonTypeahead'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
-import './QuestionGroups.css'
+
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
+
+const flashAdd = keyframes`
+  0% { box-shadow: inset 0 0 0 100vmax rgba(134, 239, 172, 0.5); }
+  100% { box-shadow: inset 0 0 0 100vmax transparent; }
+`
+
+const flashDelete = keyframes`
+  0% { box-shadow: inset 0 0 0 100vmax rgba(252, 165, 165, 0.5); }
+  50% { box-shadow: inset 0 0 0 100vmax rgba(252, 165, 165, 0.4); }
+  100% { opacity: 0; transform: scale(0.98); }
+`
+
+const QGContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  padding: 3rem 1rem;
+`
+
+const QGWrapper = styled.div`
+  max-width: 1400px;
+  margin: 0 auto;
+`
+
+const QGHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+`
+
+const QGTitle = styled.h1`
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+`
+
+const QGSubtitle = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const CreateButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`
+
+const ButtonIcon = styled.svg`
+  width: 1.25rem;
+  height: 1.25rem;
+`
+
+
+const AlertContainer = styled.div`
+  margin-bottom: 1rem;
+`
+
+const Alert = styled.div<{ $variant: 'error' | 'success' }>`
+  padding: 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  ${({ $variant }) => $variant === 'error' ? `
+    background-color: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  ` : `
+    background-color: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+  `}
+`
+
+const AlertClose = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 1rem;
+`
+
+const LoadingState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+`
+
+const LoadingSpinner = styled.div`
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: ${spin} 0.8s linear infinite;
+`
+
+const LoadingText = styled.p`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+`
+
+const EmptyStateIcon = styled.svg`
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto;
+  color: #9ca3af;
+`
+
+const EmptyStateTitle = styled.h3`
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+`
+
+const EmptyStateDescription = styled.p`
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const GroupsList = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+`
+
+const GroupItem = styled.div`
+  padding: 0.625rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  &:last-child {
+    border-bottom: none;
+  }
+  &:hover {
+    background-color: #f9fafb;
+  }
+`
+
+const GroupContent = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`
+
+const GroupInfo = styled.div`
+  flex: 1;
+`
+
+const GroupHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+`
+
+const Badge = styled.span<{ $variant?: 'count' | 'inactive' }>`
+  display: inline-flex;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  line-height: 1.25rem;
+  ${({ $variant }) => $variant === 'inactive' ? `
+    background-color: #fee2e2;
+    color: #991b1b;
+  ` : `
+    background-color: #dbeafe;
+    color: #1e40af;
+  `}
+`
+
+const GroupDescription = styled.p`
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+`
+
+const Pagination = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+`
+
+const PaginationInfo = styled.div`
+  font-size: 0.875rem;
+  color: #374151;
+`
+
+const PaginationButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`
+
+const PaginationButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover:not(:disabled) {
+    background-color: #f9fafb;
+    border-color: #9ca3af;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
+
+const QGForm = styled.div`
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+
+  .form-group { margin-bottom: 1.5rem; }
+  .form-group-description { margin-top: 12px !important; }
+  .form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+  }
+  .form-input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    &:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+  }
+  .form-textarea {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: all 0.2s;
+    min-height: 100px !important;
+    height: 100px !important;
+    &:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+  }
+  .form-select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    &:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+  }
+  .question-text-section { width: 100%; }
+  .question-type-options-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  .question-type-section {
+    display: flex;
+    flex-direction: column;
+  }
+  .question-options-panel {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background-color: #f9fafb;
+  }
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    transition: background-color 0.2s;
+    &:hover { background-color: #f3f4f6; }
+    input[type="radio"] { cursor: pointer; }
+    span { font-size: 0.875rem; color: #374151; }
+  }
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    input[type="checkbox"] { cursor: pointer; }
+    span { font-size: 0.875rem; color: #374151; }
+  }
+  .options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .option-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .option-input { flex: 1; }
+  .remove-option-button {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    background-color: white;
+    color: #dc2626;
+    border: 1px solid #dc2626;
+    border-radius: 0.375rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    &:hover { background-color: #dc2626; color: white; }
+  }
+  .add-option-button {
+    padding: 0.375rem 0.75rem;
+    background-color: white;
+    color: #2563eb;
+    border: 1px solid #2563eb;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    &:hover { background-color: #2563eb; color: white; }
+  }
+  .empty-options {}
+  .conditional-block {}
+  .person-options {}
+  .date-options {}
+  .dropdown-container {}
+  .dropdown-button {
+    background: white;
+    cursor: pointer;
+    text-align: left;
+  }
+  .dropdown-menu {}
+  .dropdown-item {}
+`
+
+const FormSection = styled.div`
+  margin-bottom: 2rem;
+`
+
+const FormSectionTitle = styled.h2`
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 1.5rem 0;
+`
+
+const FormSectionHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px !important;
+`
+
+const FormGroup = styled.div`
+  margin-bottom: 1.5rem;
+`
+
+const FormGroupDescription = styled(FormGroup)`
+  margin-top: 12px !important;
+`
+
+const AddQuestionButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`
+
+const QuestionBuilder = styled.div<{ $flash?: string }>`
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0 1.5rem;
+  margin-bottom: 6px;
+  ${({ $flash }) => $flash === 'add' ? css`animation: ${flashAdd} 0.8s ease-out forwards;` : ''}
+  ${({ $flash }) => $flash === 'delete' ? css`animation: ${flashDelete} 0.4s ease-out forwards;` : ''}
+`
+
+const QuestionBuilderHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+`
+
+const QuestionNumber = styled.span`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2563eb;
+`
+
+const RemoveButton = styled.button`
+  padding: 0.25rem;
+  background: none;
+  color: #dc2626;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  &:hover {
+    color: #991b1b;
+  }
+`
+
+const TrashIcon = styled.svg`
+  width: 1rem;
+  height: 1rem;
+`
+
+const QuestionBuilderContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+`
+
+const EmptyQuestions = styled.div`
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+  background: white;
+  border-radius: 0.5rem;
+  border: 2px dashed #e5e7eb;
+`
+
+const SubmitButton = styled.button`
+  padding: 0.625rem 1.25rem;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  &:hover:not(:disabled) {
+    background-color: #1d4ed8;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`
 
 const QuestionGroups: React.FC = () => {
   const navigate = useNavigate()
@@ -156,50 +685,49 @@ const QuestionGroups: React.FC = () => {
 
   // Render list view
   return (
-    <div className="question-groups-container">
-      <div className="question-groups-wrapper">
-      <div className="question-groups-header">
+    <QGContainer>
+      <QGWrapper>
+      <QGHeader>
         <div>
-          <h1 className="question-groups-title">Question Groups</h1>
-          <p className="question-groups-subtitle">
+          <QGTitle>Question Groups</QGTitle>
+          <QGSubtitle>
             Create and manage question groups for documents
-          </p>
+          </QGSubtitle>
         </div>
-        <button onClick={() => navigate('/admin/question-groups/new')} className="create-button">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+        <CreateButton onClick={() => navigate('/admin/question-groups/new')}>
+          <ButtonIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+          </ButtonIcon>
           Create Questions Group
-        </button>
-      </div>
+        </CreateButton>
+      </QGHeader>
 
       {error && (
-        <div className="alert-container">
-          <div className="alert alert-error">
+        <AlertContainer>
+          <Alert $variant="error">
             <span>{error}</span>
-            <button onClick={() => setError('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setError('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
       {success && (
-        <div className="alert-container">
-          <div className="alert alert-success">
+        <AlertContainer>
+          <Alert $variant="success">
             <span>{success}</span>
-            <button onClick={() => setSuccess('')} className="alert-close">&times;</button>
-          </div>
-        </div>
+            <AlertClose onClick={() => setSuccess('')}>&times;</AlertClose>
+          </Alert>
+        </AlertContainer>
       )}
 
       {loading ? (
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">Loading question groups...</p>
-        </div>
+        <LoadingState>
+          <LoadingSpinner />
+          <LoadingText>Loading question groups...</LoadingText>
+        </LoadingState>
       ) : groups.length === 0 ? (
-        <div className="empty-state">
-          <svg
-            className="empty-state-icon"
+        <EmptyState>
+          <EmptyStateIcon
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -210,20 +738,20 @@ const QuestionGroups: React.FC = () => {
               strokeWidth="2"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
-          </svg>
-          <h3 className="empty-state-title">No question groups</h3>
-          <p className="empty-state-description">
+          </EmptyStateIcon>
+          <EmptyStateTitle>No question groups</EmptyStateTitle>
+          <EmptyStateDescription>
             Get started by creating a new question group using the button above.
-          </p>
-        </div>
+          </EmptyStateDescription>
+        </EmptyState>
       ) : (
         <>
-          <div className="groups-list">
+          <GroupsList>
             {groups.map((group) => (
-              <div key={group.id} className="group-item">
-                <div className="group-content">
-                  <div className="group-info">
-                    <div className="group-header">
+              <GroupItem key={group.id}>
+                <GroupContent>
+                  <GroupInfo>
+                    <GroupHeader>
                       <input
                         type="checkbox"
                         checked={group.is_active}
@@ -256,12 +784,11 @@ const QuestionGroups: React.FC = () => {
                       >
                         {group.name}
                       </span>
-                      <span className="badge badge-count">
+                      <Badge $variant="count">
                         {group.question_count} questions
-                      </span>
+                      </Badge>
                       <button
                         onClick={(e) => handleCopy(group.id, e)}
-                        className="copy-icon-button"
                         title="Copy group"
                         style={{
                           background: 'none',
@@ -314,7 +841,6 @@ const QuestionGroups: React.FC = () => {
                       {group.is_active && (
                         <button
                           onClick={() => handleDelete(group.id)}
-                          className="trash-icon-button"
                           title="Delete group"
                           style={{
                             background: 'none',
@@ -345,13 +871,13 @@ const QuestionGroups: React.FC = () => {
                         </button>
                       )}
                       {!group.is_active && (
-                        <span className="badge badge-inactive">
+                        <Badge $variant="inactive">
                           Inactive
-                        </span>
+                        </Badge>
                       )}
-                    </div>
+                    </GroupHeader>
                     {group.description && (
-                      <p className="group-description">{group.description}</p>
+                      <GroupDescription>{group.description}</GroupDescription>
                     )}
                     {group.questions && group.questions.length > 0 && (
                       <div>
@@ -417,38 +943,36 @@ const QuestionGroups: React.FC = () => {
                         )}
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
+                  </GroupInfo>
+                </GroupContent>
+              </GroupItem>
             ))}
-          </div>
+          </GroupsList>
 
           {totalPages > 1 && (
-            <div className="pagination">
-              <div className="pagination-info">
+            <Pagination>
+              <PaginationInfo>
                 Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} groups
-              </div>
-              <div className="pagination-buttons">
-                <button
+              </PaginationInfo>
+              <PaginationButtons>
+                <PaginationButton
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
-                  className="pagination-button"
                 >
                   Previous
-                </button>
-                <button
+                </PaginationButton>
+                <PaginationButton
                   onClick={() => setPage(page + 1)}
                   disabled={page === totalPages}
-                  className="pagination-button"
                 >
                   Next
-                </button>
-              </div>
-            </div>
+                </PaginationButton>
+              </PaginationButtons>
+            </Pagination>
           )}
         </>
       )}
-      </div>
+      </QGWrapper>
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         title="Delete Question Group"
@@ -458,7 +982,7 @@ const QuestionGroups: React.FC = () => {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </QGContainer>
   )
 }
 
@@ -3056,7 +3580,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   </div>
                 </div>
 
-                <div className="options-section">
+                <div className="question-options-panel">
                   {['multiple_choice', 'checkbox_group', 'dropdown'].includes(nestedQuestion.question_type) && (
                     <div className="options-list">
                       <label className="form-label">Options</label>
@@ -3698,7 +4222,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
   }
 
   return (
-    <div className="question-groups-container">
+    <QGContainer>
       {validationMessage && (
         <div style={{
           backgroundColor: '#fef2f2',
@@ -3741,31 +4265,30 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
         </svg>
         Back to Question Groups
       </button>
-      <div className="question-groups-header">
+      <QGHeader>
         <div>
-          <h1 className="question-groups-title">{isEditMode ? 'Edit Question Group' : 'Create Question Group'}</h1>
-          <p className="question-groups-subtitle">
+          <QGTitle>{isEditMode ? 'Edit Question Group' : 'Create Question Group'}</QGTitle>
+          <QGSubtitle>
             {isEditMode ? 'Update the question group information and questions' : 'Create a new question group'}
-          </p>
+          </QGSubtitle>
         </div>
         {!groupInfoSaved && (
-          <button
+          <CreateButton
             onClick={handleSaveGroupInfo}
             disabled={(!isNameUnique && !isEditMode) || submitting}
-            className="create-button"
             style={{ opacity: (isNameUnique || isEditMode) && !submitting ? 1 : 0.5, cursor: (isNameUnique || isEditMode) && !submitting ? 'pointer' : 'not-allowed' }}
           >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+            <ButtonIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            </ButtonIcon>
             {isEditMode ? 'Update Group Information' : 'Create Question Group'}
-          </button>
+          </CreateButton>
         )}
-      </div>
+      </QGHeader>
 
-      <div className="question-group-form">
-        <div className="form-section">
-          <h2 className="form-section-title">Group Information</h2>
+      <QGForm>
+        <FormSection>
+          <FormSectionTitle>Group Information</FormSectionTitle>
 
           <div className="form-group" style={{ maxWidth: '50%' }}>
             <label className="form-label">Name *</label>
@@ -3788,7 +4311,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             </div>
           </div>
 
-          <div className="form-group form-group-description" style={{ maxWidth: '50%' }}>
+          <FormGroupDescription style={{ maxWidth: '50%' }}>
             <label className="form-label">Description</label>
             <textarea
               value={description}
@@ -3796,60 +4319,59 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               className="form-textarea"
               rows={3}
             />
-          </div>
+          </FormGroupDescription>
 
           {!groupInfoSaved && (
             <div style={{ marginTop: '1rem' }}>
-              <button
+              <SubmitButton
                 type="button"
                 onClick={handleSaveGroupInfo}
                 disabled={(!isNameUnique && !isEditMode) || submitting}
-                className="submit-button"
                 style={{ opacity: (isNameUnique || isEditMode) && !submitting ? 1 : 0.5, cursor: (isNameUnique || isEditMode) && !submitting ? 'pointer' : 'not-allowed' }}
               >
                 {submitting ? 'Saving...' : (isEditMode ? 'Update Group Information' : 'Save Group Information')}
-              </button>
+              </SubmitButton>
             </div>
           )}
-        </div>
+        </FormSection>
 
         {groupInfoSaved && (
-        <div className="form-section">
-          <div className="form-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h2 className="form-section-title" style={{ marginBottom: 0 }}>Questions</h2>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={expandAll}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  fontSize: '0.7rem',
-                  background: 'white',
-                  color: '#374151',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Expand All
-              </button>
-              <button
-                type="button"
-                onClick={collapseAll}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  fontSize: '0.7rem',
-                  background: 'white',
-                  color: '#374151',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Collapse All
-              </button>
-            </div>
-          </div>
+          <FormSection>
+            <FormSectionHeader style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <FormSectionTitle style={{ marginBottom: 0 }}>Questions</FormSectionTitle>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={expandAll}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAll}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Collapse All
+                </button>
+              </div>
+            </FormSectionHeader>
 
           {(() => {
             // Build group color map
@@ -3902,7 +4424,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   zIndex: 1
                 }} />
               )}
-            <div className={`question-builder${flashingQuestions.has(question.id) ? ` flash-${flashingQuestions.get(question.id)}` : ''}`} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
+            <QuestionBuilder $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
@@ -3972,10 +4494,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 )}
               </div>
 
-              <div className="question-builder-header" style={isCollapsed ? { marginBottom: 0 } : undefined}>
+              <QuestionBuilderHeader style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
                   <span style={{ fontSize: '0.65rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`q-${question.id}`) ? '\u25B6' : '\u25BC'}</span>
-                  <span className="question-number">Question {qIndex + 1}</span>
+                  <QuestionNumber>Question {qIndex + 1}</QuestionNumber>
                   {question.isSaving && (
                     <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Saving...</span>
                   )}
@@ -3986,20 +4508,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <div style={{ marginLeft: '0.5rem' }}>{renderQuestionSummary(question, qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null)}</div>
                   )}
                 </div>
-                <button
+                <RemoveButton
                   type="button"
                   onClick={() => removeQuestion(question.id)}
-                  className="remove-button"
                   title="Remove question"
                   data-testid={`remove-question-${question.id}`}
                 >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="trash-icon">
+                  <TrashIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
+                  </TrashIcon>
+                </RemoveButton>
+              </QuestionBuilderHeader>
 
-              {!collapsedItems.has(`q-${question.id}`) && <div className="question-builder-content">
+              {!collapsedItems.has(`q-${question.id}`) && <QuestionBuilderContent>
                 <div className="form-group">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem' }}>
                     <label className="form-label" style={{ marginBottom: 0 }}>Identifier *</label>
@@ -4367,9 +4888,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     )}
                   </div>
                 </div>
-              </div>}
+              </QuestionBuilderContent>}
 
-            </div>
+            </QuestionBuilder>
 
               {/* Render conditionals that follow this question in questionLogic */}
               {(() => {
@@ -4593,29 +5114,27 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
 
           {questions.length === 0 && (
-            <div className="empty-questions">
+            <EmptyQuestions>
               <p>No questions added yet. Click "Add Question" to get started.</p>
-            </div>
+            </EmptyQuestions>
           )}
 
           <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
-            <button
+            <AddQuestionButton
               type="button"
               onClick={() => addQuestionToLogic()}
-              className="add-question-button"
               disabled={!canAddQuestion}
               style={{ opacity: canAddQuestion ? 1 : 0.5, cursor: canAddQuestion ? 'pointer' : 'not-allowed' }}
             >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="button-icon">
+              <ButtonIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              </ButtonIcon>
               Add Question
-            </button>
+            </AddQuestionButton>
             <button
               type="button"
               onClick={() => addConditionalToLogic(questionLogic.length - 1)}
-              className="action-button"
-              disabled={questions.length === 0}
+                            disabled={questions.length === 0}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -4635,10 +5154,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               Add Conditional
             </button>
           </div>
-        </div>
+        </FormSection>
         )}
-      </div>
-    </div>
+      </QGForm>
+    </QGContainer>
   )
 }
 
