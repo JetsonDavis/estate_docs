@@ -7,12 +7,192 @@ import re
 import logging
 from datetime import datetime
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 import io
 import json
-from htmldocx import HtmlToDocx
+import re
+from html.parser import HTMLParser
 
 _logger = logging.getLogger(__name__)
+
+
+class HTMLToWordConverter(HTMLParser):
+    """Custom HTML parser that converts HTML to Word document with proper formatting."""
+    
+    def __init__(self, doc):
+        super().__init__()
+        self.doc = doc
+        self.current_paragraph = None
+        self.current_run = None
+        self.style_stack = []  # Stack to track nested formatting
+        self.list_level = 0
+        self.in_list = False
+        
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        
+        if tag == 'p':
+            # Create new paragraph
+            self.current_paragraph = self.doc.add_paragraph()
+            self.current_run = None
+            
+            # Apply paragraph-level styling from style attribute
+            if 'style' in attrs_dict:
+                self._apply_paragraph_style(attrs_dict['style'])
+                
+        elif tag == 'br':
+            # Add line break within current paragraph
+            if self.current_paragraph is None:
+                self.current_paragraph = self.doc.add_paragraph()
+            if self.current_run is None:
+                self.current_run = self.current_paragraph.add_run()
+            self.current_run.add_break()
+            
+        elif tag in ('strong', 'b'):
+            self.style_stack.append({'bold': True})
+            
+        elif tag in ('em', 'i'):
+            self.style_stack.append({'italic': True})
+            
+        elif tag == 'u':
+            self.style_stack.append({'underline': True})
+            
+        elif tag == 'span':
+            # Parse inline styles
+            style_dict = {}
+            if 'style' in attrs_dict:
+                style_dict = self._parse_inline_style(attrs_dict['style'])
+            self.style_stack.append(style_dict)
+            
+        elif tag in ('ul', 'ol'):
+            self.in_list = True
+            self.list_level += 1
+            
+        elif tag == 'li':
+            # Create list item paragraph
+            self.current_paragraph = self.doc.add_paragraph(style='List Bullet' if self.in_list else None)
+            self.current_run = None
+            
+    def handle_endtag(self, tag):
+        if tag == 'p':
+            self.current_paragraph = None
+            self.current_run = None
+            
+        elif tag in ('strong', 'b', 'em', 'i', 'u', 'span'):
+            if self.style_stack:
+                self.style_stack.pop()
+                
+        elif tag in ('ul', 'ol'):
+            self.list_level -= 1
+            if self.list_level == 0:
+                self.in_list = False
+                
+        elif tag == 'li':
+            self.current_paragraph = None
+            self.current_run = None
+            
+    def handle_data(self, data):
+        # Skip completely empty data, but preserve whitespace-only if it contains tabs
+        if not data.strip() and '\t' not in data:
+            return
+            
+        # Ensure we have a paragraph
+        if self.current_paragraph is None:
+            self.current_paragraph = self.doc.add_paragraph()
+        
+        # Handle tabs by converting them to proper Word tab stops
+        # Split data by tabs and add tab characters
+        if '\t' in data:
+            parts = data.split('\t')
+            for i, part in enumerate(parts):
+                if part:  # Add text part
+                    self.current_run = self.current_paragraph.add_run(part)
+                    self._apply_run_styles(self.current_run)
+                if i < len(parts) - 1:  # Add tab between parts (not after last)
+                    self.current_run = self.current_paragraph.add_run('\t')
+                    self._apply_run_styles(self.current_run)
+        else:
+            # Create a new run with current styling
+            self.current_run = self.current_paragraph.add_run(data)
+            self._apply_run_styles(self.current_run)
+    
+    def _apply_run_styles(self, run):
+        """Apply accumulated styles from stack to a run."""
+        for style_dict in self.style_stack:
+            if 'bold' in style_dict:
+                run.bold = style_dict['bold']
+            if 'italic' in style_dict:
+                run.italic = style_dict['italic']
+            if 'underline' in style_dict:
+                run.underline = style_dict['underline']
+            if 'font_size' in style_dict:
+                run.font.size = Pt(style_dict['font_size'])
+            if 'color' in style_dict:
+                run.font.color.rgb = style_dict['color']
+                
+    def _parse_inline_style(self, style_str):
+        """Parse inline CSS style string and return dict of applicable styles."""
+        style_dict = {}
+        
+        # Split by semicolon and parse each property
+        for prop in style_str.split(';'):
+            if ':' not in prop:
+                continue
+            key, value = prop.split(':', 1)
+            key = key.strip().lower()
+            value = value.strip()
+            
+            if key == 'font-size':
+                # Extract numeric value from font-size (e.g., "14px" -> 14)
+                match = re.match(r'(\d+(?:\.\d+)?)', value)
+                if match:
+                    style_dict['font_size'] = float(match.group(1))
+                    
+            elif key == 'color':
+                # Parse color (basic support for hex colors)
+                if value.startswith('#'):
+                    try:
+                        rgb = RGBColor(
+                            int(value[1:3], 16),
+                            int(value[3:5], 16),
+                            int(value[5:7], 16)
+                        )
+                        style_dict['color'] = rgb
+                    except:
+                        pass
+                        
+        return style_dict
+        
+    def _apply_paragraph_style(self, style_str):
+        """Apply paragraph-level styles like alignment, spacing, indentation."""
+        if not self.current_paragraph:
+            return
+            
+        for prop in style_str.split(';'):
+            if ':' not in prop:
+                continue
+            key, value = prop.split(':', 1)
+            key = key.strip().lower()
+            value = value.strip()
+            
+            if key == 'text-align':
+                if value == 'center':
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif value == 'right':
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                elif value == 'justify':
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    
+            elif key == 'margin-left' or key == 'padding-left':
+                # Convert px to inches (rough approximation: 96px = 1 inch)
+                match = re.match(r'(\d+(?:\.\d+)?)', value)
+                if match:
+                    px = float(match.group(1))
+                    self.current_paragraph.paragraph_format.left_indent = Inches(px / 96)
+
 
 from ..models.document import GeneratedDocument
 from ..models.template import Template
@@ -1150,20 +1330,30 @@ class DocumentService:
         # Create a Word document
         doc = Document()
         
-        # Convert HTML to Word with formatting preserved
+        # Clean and prepare HTML content
         # The merged_content now contains HTML from the rich text editor
-        parser = HtmlToDocx()
+        html_content = merged_content
         
-        # Wrap content in basic HTML structure if not already HTML
-        if not merged_content.strip().startswith('<'):
-            # Plain text or markdown - wrap in paragraph tags
-            html_content = f"<div>{merged_content}</div>"
-        else:
-            # Already HTML from rich text editor
-            html_content = merged_content
+        # Remove Quill editor wrapper divs if present
+        html_content = re.sub(r'<div class="ql-editor[^"]*"[^>]*>', '', html_content)
+        html_content = html_content.replace('</div>', '')
         
-        # Parse and add HTML content to document with formatting
-        parser.add_html_to_document(html_content, doc)
+        # Normalize line breaks - Quill uses <p> tags, ensure we don't double them
+        # Remove empty paragraphs that cause double spacing
+        html_content = re.sub(r'<p>\s*<br\s*/?>\s*</p>', '<p></p>', html_content)
+        html_content = re.sub(r'<p>\s*</p>', '', html_content)
+        
+        # Convert <br> to proper paragraph breaks
+        # Split on <br> and wrap in <p> tags if not already in one
+        html_content = re.sub(r'<br\s*/?>', '</p><p>', html_content)
+        
+        # Ensure content is wrapped in paragraphs
+        if not html_content.strip().startswith('<p'):
+            html_content = f'<p>{html_content}</p>'
+        
+        # Parse HTML and convert to Word with custom parser
+        parser = HTMLToWordConverter(doc)
+        parser.feed(html_content)
         
         # Save to bytes
         doc_bytes = io.BytesIO()
