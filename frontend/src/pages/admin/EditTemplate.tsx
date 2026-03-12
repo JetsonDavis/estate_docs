@@ -436,7 +436,17 @@ const EditTemplate: React.FC = () => {
                 </div>
               )}
               {isEditing ? (
-                <>
+                <div
+                  onMouseDown={(e) => {
+                    // If clicking outside the editor, exit edit mode
+                    const target = e.target as HTMLElement
+                    const isClickInsideEditor = target.closest('.ql-container') || target.closest('.ql-toolbar')
+                    if (!isClickInsideEditor) {
+                      setIsEditing(false)
+                      setBlockErrors(validateBlocks(markdownContent))
+                    }
+                  }}
+                >
                   <RichTextEditor
                     value={markdownContent}
                     onChange={setMarkdownContent}
@@ -464,7 +474,7 @@ const EditTemplate: React.FC = () => {
                       Done Editing
                     </button>
                   </div>
-                </>
+                </div>
               ) : (
                 <div
                   ref={formattedDivRef}
