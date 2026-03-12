@@ -435,17 +435,35 @@ const EditTemplate: React.FC = () => {
                 </div>
               )}
               {isEditing ? (
-                <div onBlur={() => {
-                  setIsEditing(false)
-                  setBlockErrors(validateBlocks(markdownContent))
-                }}>
+                <>
                   <RichTextEditor
                     value={markdownContent}
                     onChange={setMarkdownContent}
                     placeholder="Enter your template content here..."
                     height="600px"
                   />
-                </div>
+                  <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false)
+                        setBlockErrors(validateBlocks(markdownContent))
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        fontWeight: 500
+                      }}
+                    >
+                      Done Editing
+                    </button>
+                  </div>
+                </>
               ) : (
                 <div
                   ref={formattedDivRef}
