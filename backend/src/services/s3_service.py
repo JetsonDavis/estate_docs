@@ -30,9 +30,6 @@ class S3Service:
         Returns:
             S3 key where the content was stored
         """
-        # Ensure bucket exists before uploading
-        self.create_bucket_if_not_exists()
-        
         s3_key = f"documents/user_{user_id}/doc_{document_id}.md"
         
         try:
