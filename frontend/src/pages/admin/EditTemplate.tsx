@@ -108,6 +108,13 @@ const EditTemplate: React.FC = () => {
     }
   }, [isEditing, markdownContent])
 
+  // Escape template identifiers in HTML for display
+  const escapeIdentifiersForDisplay = (html: string): string => {
+    // Replace <<identifier>> with HTML entities so they display correctly
+    return html.replace(/<<([^>]+)>>/g, '&lt;&lt;$1&gt;&gt;')
+      .replace(/\{\{([^}]+)\}\}/g, '&#123;&#123;$1&#125;&#125;')
+  }
+
   // Format content with bold for {{ }} and << >> patterns, and color coding for IF/FOREACH
   const formatContent = (text: string) => {
     // Escape HTML first
@@ -509,7 +516,7 @@ const EditTemplate: React.FC = () => {
                     cursor: 'text'
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: markdownContent
+                    __html: escapeIdentifiersForDisplay(markdownContent)
                   }}
                 />
               )}
