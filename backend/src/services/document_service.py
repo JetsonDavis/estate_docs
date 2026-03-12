@@ -72,13 +72,25 @@ class HTMLToWordConverter(HTMLParser):
             self.current_run.add_break()
             
         elif tag in ('strong', 'b'):
-            self.style_stack.append({'bold': True})
+            style_dict = {'bold': True}
+            # Parse inline styles on strong tags too
+            if 'style' in attrs_dict:
+                style_dict.update(self._parse_inline_style(attrs_dict['style']))
+            self.style_stack.append(style_dict)
             
         elif tag in ('em', 'i'):
-            self.style_stack.append({'italic': True})
+            style_dict = {'italic': True}
+            # Parse inline styles on em tags too
+            if 'style' in attrs_dict:
+                style_dict.update(self._parse_inline_style(attrs_dict['style']))
+            self.style_stack.append(style_dict)
             
         elif tag == 'u':
-            self.style_stack.append({'underline': True})
+            style_dict = {'underline': True}
+            # Parse inline styles on u tags too
+            if 'style' in attrs_dict:
+                style_dict.update(self._parse_inline_style(attrs_dict['style']))
+            self.style_stack.append(style_dict)
             
         elif tag == 'span':
             # Parse inline styles
