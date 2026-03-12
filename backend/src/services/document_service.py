@@ -323,7 +323,8 @@ class DocumentService:
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
     _END_RE = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
     _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
-    _COUNTER_RE = re.compile(r'(###|##%|##)(?:\+(\d*))?')
+    _COUNTER_RE = re.compile(r'(###|##%|##A|##)(?:\+(\d*))?')
+    _COUNTER_RESET_RE = re.compile(r'#/A')
     _IDENTIFIER_RE = re.compile(r'<<([^>]+)>>')
     _CONDITIONAL_RE = re.compile(r'\[\[(.*?)\]\]', re.DOTALL)
 
@@ -379,11 +380,22 @@ class DocumentService:
 
     @staticmethod
     def _counter_to_str(token: str, n: int) -> str:
-        """Convert a counter token (##, ###, ##%) and number to its string representation."""
+        """Convert a counter token (##, ###, ##%, ##A) and number to its string representation."""
         if token == '###':
             return DocumentService._CARDINAL_WORDS[n] if n < len(DocumentService._CARDINAL_WORDS) else str(n)
         elif token == '##%':
             return DocumentService._ORDINAL_WORDS[n] if n < len(DocumentService._ORDINAL_WORDS) else f'{n}th'
+        elif token == '##A':
+            # Convert number to uppercase letter (1=A, 2=B, ..., 26=Z, 27=AA, 28=AB, etc.)
+            if n <= 0:
+                return 'A'
+            result = ''
+            n_temp = n
+            while n_temp > 0:
+                n_temp -= 1
+                result = chr(65 + (n_temp % 26)) + result
+                n_temp //= 26
+            return result
         else:
             return str(n)
 
@@ -673,7 +685,8 @@ class DocumentService:
 
     @staticmethod
     def _replace_counter_tokens(text: str, global_counter: list) -> str:
-        """Replace ##, ###, ##% tokens with running counter values.
+        """Replace ##, ###, ##%, ##A tokens with running counter values.
+        Also handle #/A to reset the alphabetical counter.
 
         Args:
             text: Text containing counter tokens
@@ -682,6 +695,14 @@ class DocumentService:
         Returns:
             Text with counter tokens replaced
         """
+        # First, handle reset tokens #/A - replace with empty string and reset counter
+        def _reset_replacer(match):
+            global_counter[0] = 0
+            return ''
+        
+        text = DocumentService._COUNTER_RESET_RE.sub(_reset_replacer, text)
+        
+        # Then handle counter tokens
         def _replacer(match):
             token = match.group(1)
             plus_str = match.group(2)
