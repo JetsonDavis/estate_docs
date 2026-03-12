@@ -494,6 +494,7 @@ const EditTemplate: React.FC = () => {
                     pageScrollRef.current = window.scrollY
                     setIsEditing(true)
                   }}
+                  className="ql-editor"
                   style={{
                     width: '100%',
                     height: '600px',
@@ -505,12 +506,10 @@ const EditTemplate: React.FC = () => {
                     overflowY: 'auto',
                     backgroundColor: 'white',
                     color: '#111827',
-                    cursor: 'text',
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word'
+                    cursor: 'text'
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: formatContent(markdownContent)
+                    __html: markdownContent
                   }}
                 />
               )}
