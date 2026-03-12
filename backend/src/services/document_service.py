@@ -42,6 +42,16 @@ class HTMLToWordConverter(HTMLParser):
             # Apply paragraph-level styling from style attribute
             if 'style' in attrs_dict:
                 self._apply_paragraph_style(attrs_dict['style'])
+            
+            # Handle Quill class-based alignment
+            if 'class' in attrs_dict:
+                classes = attrs_dict['class'].split()
+                if 'ql-align-center' in classes:
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                elif 'ql-align-right' in classes:
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                elif 'ql-align-justify' in classes:
+                    self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                 
         elif tag == 'br':
             # Add line break within current paragraph
@@ -1334,6 +1344,9 @@ class DocumentService:
         # The merged_content now contains HTML from the rich text editor
         html_content = merged_content
         
+        # Log the HTML content for debugging
+        _logger.info(f"HTML content before processing: {html_content[:500]}")
+        
         # Remove Quill editor wrapper divs if present
         html_content = re.sub(r'<div class="ql-editor[^"]*"[^>]*>', '', html_content)
         html_content = html_content.replace('</div>', '')
@@ -1350,6 +1363,8 @@ class DocumentService:
         # Ensure content is wrapped in paragraphs
         if not html_content.strip().startswith('<p'):
             html_content = f'<p>{html_content}</p>'
+        
+        _logger.info(f"HTML content after processing: {html_content[:500]}")
         
         # Parse HTML and convert to Word with custom parser
         parser = HTMLToWordConverter(doc)
