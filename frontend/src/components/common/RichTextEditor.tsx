@@ -1,6 +1,11 @@
 import React, { useMemo } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill, { Quill } from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
+
+// Register custom font sizes
+const Size = Quill.import('attributors/style/size') as any
+Size.whitelist = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px']
+Quill.register(Size, true)
 
 interface RichTextEditorProps {
   value: string
@@ -17,7 +22,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 }) => {
   const modules = useMemo(() => ({
     toolbar: [
-      [{ 'size': ['small', false, 'large', 'huge'] }],
+      [{ 'size': ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px'] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
       [{ 'indent': '-1'}, { 'indent': '+1' }],
