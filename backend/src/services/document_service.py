@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Pt
 import io
 import json
+from htmldocx import HtmlToDocx
 
 _logger = logging.getLogger(__name__)
 
@@ -1070,16 +1071,20 @@ class DocumentService:
         # Create a Word document
         doc = Document()
         
-        # Add the merged content to the document
-        # Split by paragraphs and add each one
-        paragraphs = merged_content.split('\n')
-        for para_text in paragraphs:
-            if para_text.strip():
-                paragraph = doc.add_paragraph(para_text)
-                # Set default font
-                for run in paragraph.runs:
-                    run.font.size = Pt(12)
-                    run.font.name = 'Calibri'
+        # Convert HTML to Word with formatting preserved
+        # The merged_content now contains HTML from the rich text editor
+        parser = HtmlToDocx()
+        
+        # Wrap content in basic HTML structure if not already HTML
+        if not merged_content.strip().startswith('<'):
+            # Plain text or markdown - wrap in paragraph tags
+            html_content = f"<div>{merged_content}</div>"
+        else:
+            # Already HTML from rich text editor
+            html_content = merged_content
+        
+        # Parse and add HTML content to document with formatting
+        parser.add_html_to_document(html_content, doc)
         
         # Save to bytes
         doc_bytes = io.BytesIO()
