@@ -325,7 +325,7 @@ class DocumentService:
     _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
     _COUNTER_RE = re.compile(r'(###|##%|##A|##)(?:\+(\d*))?')
     _COUNTER_RESET_RE = re.compile(r'#/A')
-    _IDENTIFIER_RE = re.compile(r'<<([^>]+)>>')
+    _IDENTIFIER_RE = re.compile(r'<<([^>]+?)(?:\[(\d+)\])?(?:\.([^>]+))?>>')
     _CONDITIONAL_RE = re.compile(r'\[\[(.*?)\]\]', re.DOTALL)
 
     @staticmethod
@@ -717,8 +717,12 @@ class DocumentService:
                              conjunction_map: dict, identifier_group_map: dict) -> str:
         """Replace all <<identifier>> tokens with their values.
 
-        Handles dot notation for person fields, JSON arrays with conjunction
-        joining, and scalar values.
+        Handles:
+        - Array indexing: <<identifier[0]>> for first item
+        - Dot notation for person fields: <<person.name>>
+        - Combined: <<person[0].name>> for first person's name
+        - JSON arrays with conjunction joining
+        - Scalar values
         """
         _conj_map = conjunction_map or {}
         _id_grp_map = identifier_group_map or {}
@@ -726,14 +730,67 @@ class DocumentService:
 
         def _replace(match):
             identifier = match.group(1).lower()
+            array_index_str = match.group(2)  # Array index like [0], [1], etc.
+            field_name = match.group(3)  # Field name after dot or array index
+            
+            # Convert array index to integer (0-based)
+            array_index = int(array_index_str) if array_index_str else None
 
-            if '.' in identifier:
-                parts = identifier.split('.', 1)
-                person_identifier = parts[0]
-                field_name = parts[1]
+            # Handle array indexing with optional field access
+            # e.g., <<identifier[0]>>, <<identifier[0].name>>
+            if array_index is not None:
+                raw_json = _raw_map.get(identifier, '') or ''
+                formatted = answer_map.get(identifier, '')
+                
+                # Try to parse as JSON array
+                if raw_json:
+                    try:
+                        data = json.loads(raw_json)
+                        if isinstance(data, list):
+                            # Check if index is valid (convert to 0-based)
+                            if 0 <= array_index < len(data):
+                                item = data[array_index]
+                                
+                                # Decode if double-encoded
+                                decoded = DocumentService._decode_json_item(item)
+                                
+                                # If field name specified, extract field from dict
+                                if field_name and isinstance(decoded, dict):
+                                    field_value = decoded.get(field_name)
+                                    return str(field_value) if field_value is not None else ''
+                                
+                                # Otherwise return the whole item
+                                if isinstance(decoded, dict):
+                                    return decoded.get('name', str(decoded))
+                                return str(decoded)
+                            else:
+                                # Index out of range - fail gracefully
+                                return ''
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                # If raw parsing failed, try formatted value
+                if formatted:
+                    try:
+                        data = json.loads(formatted)
+                        if isinstance(data, list) and 0 <= array_index < len(data):
+                            item = data[array_index]
+                            if field_name and isinstance(item, dict):
+                                field_value = item.get(field_name)
+                                return str(field_value) if field_value is not None else ''
+                            if isinstance(item, dict):
+                                return item.get('name', str(item))
+                            return str(item)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                return ''
 
-                raw_json = _raw_map.get(person_identifier, '') or ''
-                formatted = answer_map.get(person_identifier, '')
+            # Handle dot notation without array index (legacy behavior)
+            # e.g., <<person.name>>
+            if field_name:
+                raw_json = _raw_map.get(identifier, '') or ''
+                formatted = answer_map.get(identifier, '')
 
                 if raw_json:
                     try:
@@ -772,6 +829,7 @@ class DocumentService:
 
                 return ''
 
+            # Handle simple identifier without index or field (legacy behavior)
             value = answer_map.get(identifier, '')
             if not DocumentService._is_value_empty(value):
                 try:
