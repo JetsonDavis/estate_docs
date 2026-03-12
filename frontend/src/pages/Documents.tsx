@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import styled from 'styled-components'
 import { documentService } from '../services/documentService'
-import { sessionService } from '../services/sessionService'
-import { templateService } from '../services/templateService'
-import { GeneratedDocument, DocumentPreview } from '../types/document'
-import { InputForm } from '../types/session'
-import { Template } from '../types/template'
+import { GeneratedDocument } from '../types/document'
 import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 
@@ -272,17 +268,8 @@ const PreviewContent = styled.div`
 
 const Documents: React.FC = () => {
   const [documents, setDocuments] = useState<GeneratedDocument[]>([])
-  const [sessions, setSessions] = useState<InputForm[]>([])
-  const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showGenerateModal, setShowGenerateModal] = useState(false)
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
-  const [selectedSession, setSelectedSession] = useState<number | null>(null)
-  const [selectedTemplate, setSelectedTemplate] = useState<number | null>(null)
-  const [documentName, setDocumentName] = useState('')
-  const [preview, setPreview] = useState<DocumentPreview | null>(null)
-  const [generating, setGenerating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
   const { toast } = useToast()
 
@@ -300,66 +287,6 @@ const Documents: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to load documents')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadSessionsAndTemplates = async () => {
-    try {
-      const [sessionsData, templatesData] = await Promise.all([
-        sessionService.getSessions(),
-        templateService.getTemplates()
-      ])
-      setSessions(sessionsData.filter(s => s.is_completed))
-      setTemplates(templatesData.templates)
-    } catch (err: any) {
-      toast(err.response?.data?.detail || 'Failed to load sessions and templates')
-    }
-  }
-
-  const handleGenerateClick = async () => {
-    await loadSessionsAndTemplates()
-    setShowGenerateModal(true)
-  }
-
-  const handlePreview = async () => {
-    if (!selectedSession || !selectedTemplate) {
-      toast('Please select both a session and a template', 'warning')
-      return
-    }
-
-    try {
-      const previewData = await documentService.previewDocument(selectedSession, selectedTemplate)
-      setPreview(previewData)
-      setShowPreviewModal(true)
-    } catch (err: any) {
-      toast(err.response?.data?.detail || 'Failed to preview document')
-    }
-  }
-
-  const handleGenerate = async () => {
-    if (!selectedSession || !selectedTemplate) {
-      toast('Please select both a session and a template', 'warning')
-      return
-    }
-
-    try {
-      setGenerating(true)
-      await documentService.generateDocument({
-        session_id: selectedSession,
-        template_id: selectedTemplate,
-        document_name: documentName || undefined
-      })
-      setShowGenerateModal(false)
-      setShowPreviewModal(false)
-      setSelectedSession(null)
-      setSelectedTemplate(null)
-      setDocumentName('')
-      setPreview(null)
-      loadDocuments()
-    } catch (err: any) {
-      toast(err.response?.data?.detail || 'Failed to generate document')
-    } finally {
-      setGenerating(false)
     }
   }
 
@@ -384,18 +311,15 @@ const Documents: React.FC = () => {
       <DocumentsContent>
         <DocumentsHeader>
           <DocumentsTitle>My Documents</DocumentsTitle>
-          <Btn onClick={handleGenerateClick}>
-            Generate New Document
-          </Btn>
         </DocumentsHeader>
 
         {loading && <StateMessage>Loading documents...</StateMessage>}
-        
+
         {error && <StateMessage $variant="error">{error}</StateMessage>}
-        
+
         {!loading && !error && documents.length === 0 && (
           <StateMessage>
-            No documents generated yet. Generate your first document to get started.
+            No documents yet. Merge a template with session data from the Merge Documents page to create your first document.
           </StateMessage>
         )}
 
@@ -440,99 +364,6 @@ const Documents: React.FC = () => {
           </DocumentsGrid>
         )}
 
-        {showGenerateModal && (
-          <ModalOverlay onClick={() => setShowGenerateModal(false)}>
-            <ModalContent onClick={(e) => e.stopPropagation()}>
-              <ModalHeader>
-                <ModalTitle>Generate Document</ModalTitle>
-                <ModalClose onClick={() => setShowGenerateModal(false)}>&times;</ModalClose>
-              </ModalHeader>
-
-              <FormGroup>
-                <FormLabel>Select Completed Session</FormLabel>
-                <FormSelect
-                  value={selectedSession || ''}
-                  onChange={(e) => setSelectedSession(Number(e.target.value))}
-                >
-                  <option value="">Choose a session...</option>
-                  {sessions.map(session => (
-                    <option key={session.id} value={session.id}>
-                      {session.client_identifier} - {new Date(session.created_at).toLocaleDateString()} {new Date(session.created_at).toLocaleTimeString()}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormGroup>
-
-              <FormGroup>
-                <FormLabel>Select Template</FormLabel>
-                <FormSelect
-                  value={selectedTemplate || ''}
-                  onChange={(e) => setSelectedTemplate(Number(e.target.value))}
-                >
-                  <option value="">Choose a template...</option>
-                  {templates.map(template => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormGroup>
-
-              <FormGroup>
-                <FormLabel>Document Name (Optional)</FormLabel>
-                <FormInput
-                  type="text"
-                  value={documentName}
-                  onChange={(e) => setDocumentName(e.target.value)}
-                  placeholder="Leave blank for auto-generated name"
-                />
-              </FormGroup>
-
-              <ModalActions>
-                <Btn $variant="secondary" onClick={handlePreview}>
-                  Preview
-                </Btn>
-                <Btn onClick={handleGenerate} disabled={generating}>
-                  {generating ? 'Generating...' : 'Generate'}
-                </Btn>
-              </ModalActions>
-            </ModalContent>
-          </ModalOverlay>
-        )}
-
-        {showPreviewModal && preview && (
-          <ModalOverlay onClick={() => setShowPreviewModal(false)}>
-            <ModalContent $large onClick={(e) => e.stopPropagation()}>
-              <ModalHeader>
-                <ModalTitle>Document Preview</ModalTitle>
-                <ModalClose onClick={() => setShowPreviewModal(false)}>&times;</ModalClose>
-              </ModalHeader>
-
-              <PreviewInfo>
-                <p><strong>Template:</strong> {preview.template_name}</p>
-                <p><strong>Client:</strong> {preview.session_client}</p>
-                {preview.missing_identifiers.length > 0 && (
-                  <WarningBox>
-                    <strong>Missing Identifiers:</strong> {preview.missing_identifiers.join(', ')}
-                  </WarningBox>
-                )}
-              </PreviewInfo>
-
-              <PreviewContent>
-                <pre>{preview.markdown_content}</pre>
-              </PreviewContent>
-
-              <ModalActions>
-                <Btn $variant="secondary" onClick={() => setShowPreviewModal(false)}>
-                  Close
-                </Btn>
-                <Btn onClick={handleGenerate} disabled={generating}>
-                  {generating ? 'Generating...' : 'Generate Document'}
-                </Btn>
-              </ModalActions>
-            </ModalContent>
-          </ModalOverlay>
-        )}
         <ConfirmDialog
           isOpen={deleteTarget !== null}
           title="Delete Document"

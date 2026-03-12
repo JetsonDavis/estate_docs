@@ -455,24 +455,45 @@ const MergeDocuments: React.FC = () => {
 
     try {
       setLoadingIdentifiers(true)
-      const response = await fetch(`/api/v1/documents/merge`, {
+      
+      // First, generate and save the document to the database
+      const generateResponse = await fetch(`/api/v1/documents/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        credentials: 'include',
+        body: JSON.stringify({
+          session_id: selectedSessionId,
+          template_id: selectedTemplateId,
+          document_name: `Document ${new Date().toLocaleDateString()}`
+        })
+      })
+
+      if (!generateResponse.ok) {
+        const errorData = await generateResponse.json()
+        throw new Error(errorData.detail || 'Failed to generate document')
+      }
+
+      // Then, download the Word document
+      const mergeResponse = await fetch(`/api/v1/documents/merge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({
           session_id: selectedSessionId,
           template_id: selectedTemplateId
         })
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!mergeResponse.ok) {
+        const errorData = await mergeResponse.json()
         throw new Error(errorData.detail || 'Failed to merge documents')
       }
 
-      const blob = await response.blob()
+      const blob = await mergeResponse.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -481,6 +502,8 @@ const MergeDocuments: React.FC = () => {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+      
+      toast('Document generated and downloaded successfully!', 'success')
     } catch (err: any) {
       toast(err.message || 'Failed to merge documents')
     } finally {
