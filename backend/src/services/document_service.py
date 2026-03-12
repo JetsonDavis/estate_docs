@@ -43,7 +43,7 @@ class HTMLToWordConverter(HTMLParser):
             if 'style' in attrs_dict:
                 self._apply_paragraph_style(attrs_dict['style'])
             
-            # Handle Quill class-based alignment
+            # Handle Quill class-based alignment and indentation
             if 'class' in attrs_dict:
                 classes = attrs_dict['class'].split()
                 if 'ql-align-center' in classes:
@@ -52,6 +52,16 @@ class HTMLToWordConverter(HTMLParser):
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 elif 'ql-align-justify' in classes:
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                
+                # Handle Quill indent classes (ql-indent-1 through ql-indent-8)
+                for cls in classes:
+                    if cls.startswith('ql-indent-'):
+                        try:
+                            indent_level = int(cls.replace('ql-indent-', ''))
+                            # Each indent level is approximately 0.5 inches
+                            self.current_paragraph.paragraph_format.left_indent = Inches(indent_level * 0.5)
+                        except ValueError:
+                            pass
                 
         elif tag == 'br':
             # Add line break within current paragraph
@@ -168,10 +178,13 @@ class HTMLToWordConverter(HTMLParser):
             value = value.strip()
             
             if key == 'font-size':
-                # Extract numeric value from font-size (e.g., "14px" -> 14)
-                match = re.match(r'(\d+(?:\.\d+)?)', value)
-                if match:
-                    style_dict['font_size'] = float(match.group(1))
+                # Extract numeric value from font-size (e.g., "14px" -> 14, "32px" -> 32)
+                # Remove 'px', 'pt', or other units
+                value_clean = value.replace('px', '').replace('pt', '').strip()
+                try:
+                    style_dict['font_size'] = float(value_clean)
+                except ValueError:
+                    pass
                     
             elif key == 'color':
                 # Parse color (basic support for hex colors)
