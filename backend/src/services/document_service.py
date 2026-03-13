@@ -1046,7 +1046,20 @@ class DocumentService:
                 raw_json = _raw_map.get(identifier, '') or ''
                 formatted = answer_map.get(identifier, '')
                 
-                # Try to parse as JSON array
+                # If no field name specified, prefer formatted values (for dates, etc.)
+                # If field name IS specified, use raw values to extract the field
+                if not field_name and formatted:
+                    try:
+                        data = json.loads(formatted)
+                        if isinstance(data, list) and 0 <= array_index < len(data):
+                            item = data[array_index]
+                            if isinstance(item, dict):
+                                return item.get('name', str(item))
+                            return str(item)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                # For field extraction or if formatted failed, use raw values
                 if raw_json:
                     try:
                         data = json.loads(raw_json)
@@ -1070,21 +1083,6 @@ class DocumentService:
                             else:
                                 # Index out of range - fail gracefully
                                 return ''
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                
-                # If raw parsing failed, try formatted value
-                if formatted:
-                    try:
-                        data = json.loads(formatted)
-                        if isinstance(data, list) and 0 <= array_index < len(data):
-                            item = data[array_index]
-                            if field_name and isinstance(item, dict):
-                                field_value = item.get(field_name)
-                                return str(field_value) if field_value is not None else ''
-                            if isinstance(item, dict):
-                                return item.get('name', str(item))
-                            return str(item)
                     except (json.JSONDecodeError, TypeError):
                         pass
                 
