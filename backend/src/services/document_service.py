@@ -483,7 +483,7 @@ class DocumentService:
                 if any('name' in p for p in normalised):
                     result_parts = []
                     for i, person in enumerate(normalised):
-                        name = person.get('name', '')
+                        name = DocumentService._extract_plain_name(person.get('name', ''))
                         if not name:
                             continue
                         # The conjunction on THIS person indicates how it connects
@@ -608,6 +608,31 @@ class DocumentService:
         return None
 
     @staticmethod
+    def _extract_plain_name(name_value) -> str:
+        """Extract a plain name string from a possibly JSON-encoded person object.
+
+        Handles cases where a person's 'name' field is itself a JSON string
+        like '{"name":"john sample"}' instead of just 'john sample'.
+        """
+        if not isinstance(name_value, str):
+            return str(name_value) if name_value is not None else ''
+        # Try decoding up to 3 levels of nesting
+        current = name_value
+        for _ in range(3):
+            try:
+                parsed = json.loads(current)
+                if isinstance(parsed, dict):
+                    inner = parsed.get('name')
+                    if inner is not None:
+                        current = str(inner)
+                        continue
+                    return str(parsed)
+                break
+            except (json.JSONDecodeError, TypeError):
+                break
+        return current
+
+    @staticmethod
     def _decode_json_item(item):
         """Decode a possibly multi-level JSON-encoded item to its innermost dict or str."""
         decoded = item
@@ -636,8 +661,10 @@ class DocumentService:
 
         if isinstance(decoded, dict):
             if field:
-                return str(decoded.get(field, ''))
-            return decoded.get('name', str(decoded))
+                val = decoded.get(field, '')
+                return DocumentService._extract_plain_name(str(val)) if val else ''
+            name = decoded.get('name', str(decoded))
+            return DocumentService._extract_plain_name(name)
         if isinstance(decoded, str):
             if field:
                 return decoded if field == 'name' else ''
@@ -780,10 +807,16 @@ class DocumentService:
                         
                         # Otherwise return the whole item
                         if isinstance(item, dict):
-                            return item.get('name', str(item))
+                            name = item.get('name', str(item))
+                            return DocumentService._extract_plain_name(name)
                         return str(item)
+                    elif not isinstance(parsed, list) and array_index == 0:
+                        # Scalar value used with [1] index — treat as single-element
+                        return str(parsed)
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    # Not valid JSON — if index is 0, return the scalar
+                    if array_index == 0:
+                        return raw_json
         
         direct = answer_map.get(identifier, '')
         if direct and not DocumentService._is_value_empty(direct):
@@ -1093,25 +1126,11 @@ class DocumentService:
                 raw_json = _raw_map.get(identifier, '') or ''
                 formatted = answer_map.get(identifier, '')
                 
-                # If no field name specified, prefer formatted values (for dates, etc.)
-                # If field name IS specified, use raw values to extract the field
-                if not field_name and formatted:
-                    try:
-                        data = json.loads(formatted)
-                        if isinstance(data, list) and 0 <= array_index < len(data):
-                            item = data[array_index]
-                            if isinstance(item, dict):
-                                return item.get('name', str(item))
-                            return str(item)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                
-                # For field extraction or if formatted failed, use raw values
+                # 1) Try raw values first (preserves JSON arrays for proper indexing)
                 if raw_json:
                     try:
                         data = json.loads(raw_json)
                         if isinstance(data, list):
-                            # Check if index is valid (array_index is already 0-based after conversion)
                             if 0 <= array_index < len(data):
                                 item = data[array_index]
                                 
@@ -1123,16 +1142,52 @@ class DocumentService:
                                     field_value = decoded.get(field_name)
                                     return str(field_value) if field_value is not None else ''
                                 
+                                # For dates, format nicely
+                                if not field_name and isinstance(decoded, str):
+                                    try:
+                                        dt = datetime.strptime(decoded, '%Y-%m-%d')
+                                        return dt.strftime('%B %-d, %Y')
+                                    except (ValueError, TypeError):
+                                        pass
+                                
                                 # Otherwise return the whole item
                                 if isinstance(decoded, dict):
-                                    return decoded.get('name', str(decoded))
+                                    name = decoded.get('name', str(decoded))
+                                    name = DocumentService._extract_plain_name(name)
+                                    return name
                                 return str(decoded)
                             else:
-                                # Index out of range - fail gracefully
+                                # Index out of range
                                 return ''
                     except (json.JSONDecodeError, TypeError):
                         pass
+
+                # 2) Try formatted values as JSON array
+                if not field_name and formatted:
+                    try:
+                        data = json.loads(formatted)
+                        if isinstance(data, list) and 0 <= array_index < len(data):
+                            item = data[array_index]
+                            if isinstance(item, dict):
+                                name = item.get('name', str(item))
+                                name = DocumentService._extract_plain_name(name)
+                                return name
+                            return str(item)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 
+                # 3) Scalar fallback: value is not a JSON array but index is 0
+                if array_index == 0:
+                    if raw_json:
+                        # Format dates
+                        try:
+                            dt = datetime.strptime(raw_json, '%Y-%m-%d')
+                            return dt.strftime('%B %-d, %Y')
+                        except (ValueError, TypeError):
+                            pass
+                        return raw_json
+                    if formatted:
+                        return formatted
                 return ''
 
             # Handle dot notation without array index (legacy behavior)
@@ -1188,7 +1243,7 @@ class DocumentService:
                         for item in parsed:
                             decoded = DocumentService._decode_json_item(item)
                             if isinstance(decoded, dict):
-                                item_str = decoded.get('name', str(decoded))
+                                item_str = DocumentService._extract_plain_name(decoded.get('name', str(decoded)))
                             else:
                                 item_str = str(decoded)
                             items.append(item_str)

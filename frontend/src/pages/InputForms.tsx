@@ -1792,7 +1792,17 @@ const InputForms: React.FC = () => {
         const savePersonOnBlur = () => {
           // Get current value from repeatable array to avoid stale state
           const currentArray = getRepeatableAnswerArray(question.id)
-          const currentValue = JSON.stringify(currentArray)
+          // Parse each JSON string element back to an object to avoid
+          // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
+          const personObjects = currentArray.map(item => {
+            if (!item) return null
+            try {
+              const parsed = JSON.parse(item)
+              if (typeof parsed === 'object' && parsed !== null) return parsed
+            } catch { /* not JSON, treat as plain name */ }
+            return { name: item }
+          }).filter(Boolean)
+          const currentValue = JSON.stringify(personObjects)
           handleAnswerBlur(question.id, currentValue)
         }
 
@@ -2251,7 +2261,17 @@ const InputForms: React.FC = () => {
         const savePersonBackupOnBlur = () => {
           // Get current value from repeatable array to avoid stale state
           const currentArray = getRepeatableAnswerArray(question.id)
-          const currentValue = JSON.stringify(currentArray)
+          // Parse each JSON string element back to an object to avoid
+          // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
+          const personObjects = currentArray.map(item => {
+            if (!item) return null
+            try {
+              const parsed = JSON.parse(item)
+              if (typeof parsed === 'object' && parsed !== null) return parsed
+            } catch { /* not JSON, treat as plain name */ }
+            return { name: item }
+          }).filter(Boolean)
+          const currentValue = JSON.stringify(personObjects)
           handleAnswerBlur(question.id, currentValue)
         }
 
@@ -2265,7 +2285,16 @@ const InputForms: React.FC = () => {
           const currentArray = getRepeatableAnswerArray(question.id)
           const updatedArray = [...currentArray]
           updatedArray[instanceIndex] = newJson
-          handleAnswerBlur(question.id, JSON.stringify(updatedArray))
+          // Parse each JSON string element back to an object to avoid double-encoding
+          const personObjects = updatedArray.map(item => {
+            if (!item) return null
+            try {
+              const parsed = JSON.parse(item)
+              if (typeof parsed === 'object' && parsed !== null) return parsed
+            } catch { /* not JSON */ }
+            return { name: item }
+          }).filter(Boolean)
+          handleAnswerBlur(question.id, JSON.stringify(personObjects))
         }
 
         return (
