@@ -59,6 +59,9 @@ const QGSubtitle = styled.p`
 `
 
 const CreateButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.625rem 1.25rem;
   background-color: #2563eb;
   color: white;
