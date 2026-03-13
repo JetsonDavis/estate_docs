@@ -333,9 +333,7 @@ const Documents: React.FC = () => {
                     {new Date(doc.generated_at).toLocaleDateString()} {new Date(doc.generated_at).toLocaleTimeString()}
                   </DocumentDate>
                 </DocumentHeaderRow>
-                <DocumentPreviewText>
-                  {doc.markdown_content.substring(0, 200)}...
-                </DocumentPreviewText>
+                <DocumentPreviewText dangerouslySetInnerHTML={{ __html: doc.markdown_content.substring(0, 200) + '...' }} />
                 <DocumentActions>
                   <Btn
                     $variant="secondary"
