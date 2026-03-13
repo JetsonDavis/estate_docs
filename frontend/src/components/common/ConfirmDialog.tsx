@@ -43,33 +43,94 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   if (!isOpen) return null
 
-  const confirmClasses =
-    variant === 'danger'
-      ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500 text-white'
-      : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 text-white'
+  const confirmBg = variant === 'danger' ? '#dc2626' : '#2563eb'
+  const confirmHoverBg = variant === 'danger' ? '#b91c1c' : '#1d4ed8'
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onCancel} />
-        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-          <h3 id="confirm-title" className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-          <p className="text-sm text-gray-600 mb-6">{message}</p>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-            >
-              {cancelLabel}
-            </button>
-            <button
-              ref={confirmRef}
-              onClick={onConfirm}
-              className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${confirmClasses}`}
-            >
-              {confirmLabel}
-            </button>
-          </div>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+      }}
+    >
+      <div
+        onClick={onCancel}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        }}
+      />
+      <div
+        style={{
+          position: 'relative',
+          backgroundColor: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          maxWidth: '28rem',
+          width: '100%',
+          padding: '1.5rem',
+        }}
+      >
+        <h3
+          id="confirm-title"
+          style={{
+            fontSize: '1.125rem',
+            fontWeight: 600,
+            color: '#111827',
+            marginBottom: '0.5rem',
+            marginTop: 0,
+          }}
+        >
+          {title}
+        </h3>
+        <p style={{ fontSize: '0.875rem', color: '#4b5563', marginBottom: '1.5rem' }}>
+          {message}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: '#374151',
+              backgroundColor: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            ref={confirmRef}
+            onClick={onConfirm}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: 'white',
+              backgroundColor: confirmBg,
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = confirmHoverBg)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = confirmBg)}
+          >
+            {confirmLabel}
+          </button>
         </div>
       </div>
     </div>
