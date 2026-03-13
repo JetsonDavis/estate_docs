@@ -99,3 +99,4 @@ coverage/
 # Playwright
 playwright-report/
 test-results/
+frontend/test-screenshots/

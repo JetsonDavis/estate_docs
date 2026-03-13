@@ -68,7 +68,7 @@ test.describe('Repeatable Conditional Followups', () => {
     await page.waitForTimeout(2000);
     
     // Take screenshot before checking values
-    await page.screenshot({ path: 'test-before-check.png', fullPage: true });
+    await page.screenshot({ path: 'test-screenshots/test-before-check.png', fullPage: true });
     
     // Get all textareas and log their values
     const allTextareas = await page.locator('textarea').all();
@@ -99,7 +99,7 @@ test.describe('Repeatable Conditional Followups', () => {
     // If there are more, it means the bug exists
     if (textareasWithSecondValue > 1) {
       console.error(`BUG DETECTED: ${textareasWithSecondValue} textareas have "Second trustor reason" - they're sharing state!`);
-      await page.screenshot({ path: 'test-bug-detected.png', fullPage: true });
+      await page.screenshot({ path: 'test-screenshots/test-bug-detected.png', fullPage: true });
       throw new Error(`Bug: ${textareasWithSecondValue} textareas share the same value instead of being independent`);
     }
     
@@ -128,6 +128,6 @@ test.describe('Repeatable Conditional Followups', () => {
     expect(secondValueAfterRefresh).toBe('Second trustor reason');
     
     // Take a screenshot for verification
-    await page.screenshot({ path: 'repeatable-conditional-test-success.png', fullPage: true });
+    await page.screenshot({ path: 'test-screenshots/repeatable-conditional-test-success.png', fullPage: true });
   });
 });
