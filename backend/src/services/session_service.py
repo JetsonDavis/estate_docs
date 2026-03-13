@@ -448,7 +448,27 @@ class SessionService:
         existing_answers_list = db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id
         ).all()
-        existing_answers = {a.question_id: a.answer_value for a in existing_answers_list}
+        existing_answers = {}
+        
+        # Process answers and split 2D arrays into synthetic IDs
+        for answer in existing_answers_list:
+            # Check if this is a 2D array (for repeatable conditional followups)
+            try:
+                parsed = json.loads(answer.answer_value)
+                if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], list):
+                    # This is a 2D array - split into synthetic IDs
+                    # Each element is an array for a parent instance
+                    for instance_idx, instance_array in enumerate(parsed):
+                        synthetic_id = answer.question_id * 100000 + instance_idx
+                        existing_answers[synthetic_id] = json.dumps(instance_array)
+                    # Also keep the original for backward compatibility
+                    existing_answers[answer.question_id] = answer.answer_value
+                else:
+                    # Regular answer
+                    existing_answers[answer.question_id] = answer.answer_value
+            except (json.JSONDecodeError, TypeError):
+                # Not JSON or not a list - treat as regular answer
+                existing_answers[answer.question_id] = answer.answer_value
 
         # Get questions to display based on question_logic
         # Returns tuple of (questions_with_data, repeatable_followups, question_numbers, all_followups)
@@ -1031,6 +1051,7 @@ class SessionService:
     ) -> None:
         """
         Save answers without navigating to next group.
+        Handles synthetic IDs (>= 100000) for repeatable conditional followups.
         """
         session = SessionService.get_session(db, session_id, user_id)
         if not session:
@@ -1039,6 +1060,22 @@ class SessionService:
                 detail="Session not found"
             )
 
+        # Separate synthetic IDs from real IDs
+        real_answers = []
+        synthetic_answers = {}  # {real_id: {instance_idx: answer_value}}
+        
+        for answer_data in answers:
+            if answer_data.question_id >= 100000:
+                # Synthetic ID: extract real ID and instance index
+                real_id = answer_data.question_id // 100000
+                instance_idx = answer_data.question_id % 100000
+                
+                if real_id not in synthetic_answers:
+                    synthetic_answers[real_id] = {}
+                synthetic_answers[real_id][instance_idx] = answer_data.answer_value
+            else:
+                real_answers.append(answer_data)
+
         # Validate question_ids belong to the current group
         if session.current_group_id:
             current_group = db.query(QuestionGroup).filter(
@@ -1046,33 +1083,93 @@ class SessionService:
             ).first()
             if current_group:
                 valid_question_ids = {q.id for q in current_group.questions}
-                for answer_data in answers:
+                
+                # Validate real answers
+                for answer_data in real_answers:
                     if answer_data.question_id not in valid_question_ids:
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Question {answer_data.question_id} does not belong to current group"
                         )
+                
+                # Validate synthetic answers (check real IDs)
+                for real_id in synthetic_answers.keys():
+                    if real_id not in valid_question_ids:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Question {real_id} does not belong to current group"
+                        )
 
-        # Batch-load existing answers for submitted question_ids in one query
-        submitted_question_ids = [a.question_id for a in answers]
-        existing_answers_list = db.query(SessionAnswer).filter(
-            SessionAnswer.session_id == session_id,
-            SessionAnswer.question_id.in_(submitted_question_ids)
-        ).all()
-        existing_by_qid = {a.question_id: a for a in existing_answers_list}
-
-        for answer_data in answers:
-            existing = existing_by_qid.get(answer_data.question_id)
-
+        # Merge synthetic answers into 2D arrays
+        for real_id, instance_data in synthetic_answers.items():
+            # Load existing answer for this real question
+            existing = db.query(SessionAnswer).filter(
+                SessionAnswer.session_id == session_id,
+                SessionAnswer.question_id == real_id
+            ).first()
+            
+            # Parse existing 2D array or create new one
+            if existing and existing.answer_value:
+                try:
+                    existing_2d = json.loads(existing.answer_value)
+                    if not isinstance(existing_2d, list):
+                        existing_2d = []
+                except (json.JSONDecodeError, TypeError):
+                    existing_2d = []
+            else:
+                existing_2d = []
+            
+            # Update the 2D array with new instance data
+            for instance_idx, answer_value in instance_data.items():
+                # Parse the answer value (it's a JSON array for repeatable questions)
+                try:
+                    answer_array = json.loads(answer_value)
+                    if not isinstance(answer_array, list):
+                        answer_array = [answer_value]
+                except (json.JSONDecodeError, TypeError):
+                    answer_array = [answer_value] if answer_value else ['']
+                
+                # Ensure 2D array is large enough
+                while len(existing_2d) <= instance_idx:
+                    existing_2d.append([])
+                
+                # Update this instance's array
+                existing_2d[instance_idx] = answer_array
+            
+            # Save the merged 2D array
+            merged_value = json.dumps(existing_2d)
+            
             if existing:
-                existing.answer_value = answer_data.answer_value
+                existing.answer_value = merged_value
             else:
                 answer = SessionAnswer(
                     session_id=session_id,
-                    question_id=answer_data.question_id,
-                    answer_value=answer_data.answer_value
+                    question_id=real_id,
+                    answer_value=merged_value
                 )
                 db.add(answer)
+
+        # Save regular answers
+        if real_answers:
+            submitted_question_ids = [a.question_id for a in real_answers]
+            existing_answers_list = db.query(SessionAnswer).filter(
+                SessionAnswer.session_id == session_id,
+                SessionAnswer.question_id.in_(submitted_question_ids)
+            ).all()
+            existing_by_qid = {a.question_id: a for a in existing_answers_list}
+
+            for answer_data in real_answers:
+                existing = existing_by_qid.get(answer_data.question_id)
+
+                if existing:
+                    existing.answer_value = answer_data.answer_value
+                else:
+                    answer = SessionAnswer(
+                        session_id=session_id,
+                        question_id=answer_data.question_id,
+                        answer_value=answer_data.answer_value
+                    )
+                    db.add(answer)
 
         db.commit()
 
