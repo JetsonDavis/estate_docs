@@ -574,7 +574,7 @@ class DocumentService:
     _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
     _COUNTER_RE = re.compile(r'(###|##%|##A|##)(?:\+(\d*))?')
     _COUNTER_RESET_RE = re.compile(r'#/A')
-    _IDENTIFIER_RE = re.compile(r'<<([^>]+?)(?:\[(\d+)\])?(?:\.([^>]+))?>>')
+    _IDENTIFIER_RE = re.compile(r'[<«‹]{2}([^>»›]+?)(?:\[(\d+)\])?(?:\.([^>»›]+))?[>»›]{2}')
     _CONDITIONAL_RE = re.compile(r'\[\[(.*?)\]\]', re.DOTALL)
 
     @staticmethod
