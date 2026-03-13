@@ -1536,8 +1536,16 @@ const InputForms: React.FC = () => {
             onBlur={(e) => {
               // For repeatable questions, save the entire array to avoid overwriting other instances
               if (question.repeatable) {
-                // Get current array and update THIS instance with the fresh value from the input
-                const currentArray = getRepeatableAnswerArray(question.id)
+                // Read from current answers state to get the latest array
+                const currentValue = answers[question.id] || ''
+                let currentArray: string[]
+                try {
+                  const parsed = JSON.parse(currentValue)
+                  currentArray = Array.isArray(parsed) ? parsed : [currentValue]
+                } catch {
+                  currentArray = currentValue ? [currentValue] : ['']
+                }
+                
                 const updated = [...currentArray]
                 // Ensure array is long enough
                 while (updated.length <= instanceIndex) {
@@ -1563,8 +1571,16 @@ const InputForms: React.FC = () => {
             onBlur={(e) => {
               // For repeatable questions, save the entire array to avoid overwriting other instances
               if (question.repeatable) {
-                // Get current array and update THIS instance with the fresh value from the input
-                const currentArray = getRepeatableAnswerArray(question.id)
+                // Read from current answers state to get the latest array
+                const currentValue = answers[question.id] || ''
+                let currentArray: string[]
+                try {
+                  const parsed = JSON.parse(currentValue)
+                  currentArray = Array.isArray(parsed) ? parsed : [currentValue]
+                } catch {
+                  currentArray = currentValue ? [currentValue] : ['']
+                }
+                
                 const updated = [...currentArray]
                 // Ensure array is long enough
                 while (updated.length <= instanceIndex) {
@@ -2746,6 +2762,11 @@ const InputForms: React.FC = () => {
                                         <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{setQLabel}.</span>
                                         {replaceLoopToken(setQuestion.question_text, instanceIdx)}
                                         {setQuestion.is_required && <span >*</span>}
+                                        {setQuestion.repeatable && (
+                                          <span style={{ color: '#9ca3af', fontSize: '0.875rem', marginLeft: '0.5rem' }}>
+                                            ({setQuestion.identifier.split('.').pop()}[{instanceIdx + 1}])
+                                          </span>
+                                        )}
                                       </label>
                                       {setQuestion.help_text && (
                                         <p >{replaceLoopToken(setQuestion.help_text, instanceIdx)}</p>
