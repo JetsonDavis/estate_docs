@@ -727,12 +727,47 @@ class DocumentService:
 
     @staticmethod
     def _resolve_identifier_value(identifier: str, answer_map: dict, raw_answer_map: dict) -> str:
-        """Resolve an identifier to its value, supporting dot notation.
+        """Resolve an identifier to its value, supporting dot notation and array indexing.
 
         For simple identifiers, looks up in answer_map.
         For dot notation (e.g., 'person.relationship'), parses the
         person JSON from raw_answer_map and extracts the field.
+        For array indexing (e.g., 'able_to_act[1]'), parses the array and returns the indexed element.
         """
+        # Check for array indexing syntax: identifier[N]
+        array_match = re.match(r'^([^\[]+)\[(\d+)\](?:\.(.+))?$', identifier)
+        if array_match:
+            base_identifier = array_match.group(1)
+            array_index = int(array_match.group(2)) - 1  # Convert to 0-based
+            field_name = array_match.group(3)  # Optional field after array index
+            
+            # Get raw value for the base identifier
+            raw_json = (raw_answer_map or {}).get(base_identifier, '') or ''
+            if raw_json:
+                try:
+                    parsed = json.loads(raw_json)
+                    if isinstance(parsed, list) and 0 <= array_index < len(parsed):
+                        item = parsed[array_index]
+                        
+                        # Decode if double-encoded
+                        if isinstance(item, str):
+                            try:
+                                item = json.loads(item)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        
+                        # If field name specified, extract field from dict
+                        if field_name and isinstance(item, dict):
+                            val = item.get(field_name)
+                            return str(val) if val is not None else ''
+                        
+                        # Otherwise return the whole item
+                        if isinstance(item, dict):
+                            return item.get('name', str(item))
+                        return str(item)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
         direct = answer_map.get(identifier, '')
         if direct and not DocumentService._is_value_empty(direct):
             return direct
