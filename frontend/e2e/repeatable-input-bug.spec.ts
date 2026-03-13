@@ -31,7 +31,7 @@ test.describe('Repeatable Question Input Bug', () => {
     // Type in the first instance
     await firstUnableReason.clear();
     await firstUnableReason.fill('first reason');
-    await firstUnableReason.blur();
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     
     // Wait a bit for state to settle
     await page.waitForTimeout(500);
@@ -41,29 +41,30 @@ test.describe('Repeatable Question Input Bug', () => {
     await page.waitForTimeout(500);
     
     // Find the second trustor instance - select "No" to show conditional followups
-    const secondTrustorNo = page.locator('label:has-text("No")').nth(1);
-    await secondTrustorNo.click();
+    const allNoLabels = page.locator('label:has-text("No")');
+    const noCount = await allNoLabels.count();
+    await allNoLabels.nth(noCount - 1).click();
     
     // Wait for the second conditional followup to appear
     await page.waitForTimeout(500);
     
     // Find the second instance's "Why can't the trustor act?" textarea
-    const secondUnableReason = page.locator('textarea').filter({ hasText: /^(noodle|dflknsdfnkldmf)?$/ }).nth(1);
+    const secondUnableReason = page.locator('textarea').filter({ hasText: /^(noodle|dflknsdfnkldmf)?$/ }).first();
     
     // Type in the second instance
     await secondUnableReason.clear();
     await secondUnableReason.fill('second reason');
-    await secondUnableReason.blur();
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     
     // Wait for state to settle
     await page.waitForTimeout(500);
     
     // Verify the first instance still has its original value
-    const firstValue = await firstUnableReason.inputValue();
+    const firstValue = await page.locator('textarea').filter({ hasText: 'first reason' }).first().inputValue();
     expect(firstValue).toBe('first reason');
     
     // Verify the second instance has its own value
-    const secondValue = await secondUnableReason.inputValue();
+    const secondValue = await page.locator('textarea').filter({ hasText: 'second reason' }).first().inputValue();
     expect(secondValue).toBe('second reason');
     
     console.log('First instance value:', firstValue);

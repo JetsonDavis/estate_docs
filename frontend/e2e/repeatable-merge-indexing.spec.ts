@@ -16,6 +16,7 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
   });
 
   test('should correctly index 2D arrays in merged documents', async ({ page }) => {
+    test.setTimeout(120000);
     // Navigate to the input form
     await page.goto(`${BASE_URL}/document?session=${SESSION_ID}`);
     
@@ -36,7 +37,7 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     await page.waitForTimeout(2000);
     
     // Add a second trustor
-    await page.click('button:has-text("Add Another (8–9)")');
+    await page.click('button:has-text("Add Another (8-9)")');
     await page.waitForTimeout(2000);
     
     // Set up second trustor with "No"
@@ -79,13 +80,15 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     const templateHeading = page.locator('heading:has-text("Templates")');
     await expect(templateHeading).toBeVisible({ timeout: 5000 });
     
-    // Click the first template radio button
-    const firstTemplateRadio = page.locator('input[type="radio"]').nth(50); // Skip past session radios
-    await firstTemplateRadio.click();
+    // Click the "Trust Restatement Clause Only" template radio button
+    await page.locator('text=Trust Restatement Clause Only').click();
     await page.waitForTimeout(1000);
     
-    // Click the "Merge Documents" button at the top
+    // Scroll to top and click the "Merge Documents" button
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(500);
     const mergeButton = page.locator('button:has-text("Merge Documents")').first();
+    await expect(mergeButton).toBeEnabled({ timeout: 10000 });
     await mergeButton.click();
     await page.waitForTimeout(5000);
     

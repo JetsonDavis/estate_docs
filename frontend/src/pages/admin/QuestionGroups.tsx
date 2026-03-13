@@ -4427,7 +4427,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   zIndex: 1
                 }} />
               )}
-            <QuestionBuilder $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
+            <QuestionBuilder className="question-builder" $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               {/* Insert Question and Insert Conditional buttons before each question */}
               <div style={{
                 display: 'flex',
@@ -4512,6 +4512,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   )}
                 </div>
                 <RemoveButton
+                  className="remove-button"
                   type="button"
                   onClick={() => removeQuestion(question.id)}
                   title="Remove question"

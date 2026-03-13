@@ -206,6 +206,17 @@ function App() {
               }
             />
             <Route
+              path="/input-form"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-gray-50">
+                    <Header />
+                    <InputForms />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/document/new"
               element={
                 <ProtectedRoute>

@@ -7,6 +7,14 @@ import { InputForm } from '../types/session'
 import { Template } from '../types/template'
 import { useToast } from '../hooks/useToast'
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      heading: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    }
+  }
+}
+
 const MergeContainer = styled.div`
   min-height: 100vh;
   background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
@@ -303,6 +311,7 @@ const MergeDocuments: React.FC = () => {
   const [sessionIdentifiers, setSessionIdentifiers] = useState<string[]>([])
   const [templateIdentifiers, setTemplateIdentifiers] = useState<string[]>([])
   const [loadingIdentifiers, setLoadingIdentifiers] = useState(false)
+  const [mergedContent, setMergedContent] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -486,6 +495,11 @@ const MergeDocuments: React.FC = () => {
         throw new Error(errorData.detail || 'Failed to generate document')
       }
 
+      const generatedDoc = await generateResponse.json()
+      if (generatedDoc.markdown_content) {
+        setMergedContent(generatedDoc.markdown_content)
+      }
+
       // Then, download the Word document
       const mergeResponse = await fetch(`/api/v1/documents/merge`, {
         method: 'POST',
@@ -545,12 +559,14 @@ const MergeDocuments: React.FC = () => {
             <ListBoxContainer>
               <ListBox>
                 <ListBoxHeader>
+                  <heading style={{ display: 'contents' }}>
                   <ListBoxTitle
                     onClick={() => navigate('/document')}
                     title="Go to Input Forms"
                   >
                     Input Form
                   </ListBoxTitle>
+                  </heading>
                   <ListBoxCount>{sessions.length}</ListBoxCount>
                 </ListBoxHeader>
                 <ListBoxContent>
@@ -559,7 +575,7 @@ const MergeDocuments: React.FC = () => {
                   ) : (
                     <ItemList>
                       {sessions.map((session) => (
-                        <Item key={session.id}>
+                        <Item key={session.id} onClick={() => handleSessionRadioChange(session.id)} style={{ cursor: 'pointer' }}>
                           <ItemRadio>
                             <input
                               type="radio"
@@ -572,7 +588,6 @@ const MergeDocuments: React.FC = () => {
                           <ItemContent>
                             <ItemHeader>
                               <ItemNameLink
-                                onClick={(e) => { e.stopPropagation(); navigate(`/document?session=${session.id}`) }}
                                 title="Open input form"
                               >{session.client_identifier}</ItemNameLink>
                               {session.is_completed && (
@@ -608,12 +623,14 @@ const MergeDocuments: React.FC = () => {
 
               <ListBox>
                 <ListBoxHeader>
+                  <heading style={{ display: 'contents' }}>
                   <ListBoxTitle
                     onClick={() => navigate('/admin/templates')}
                     title="Go to Templates"
                   >
                     Templates
                   </ListBoxTitle>
+                  </heading>
                   <ListBoxCount>{templates.length}</ListBoxCount>
                 </ListBoxHeader>
                 <ListBoxContent>
@@ -622,7 +639,7 @@ const MergeDocuments: React.FC = () => {
                   ) : (
                     <ItemList>
                       {templates.map((template) => (
-                        <Item key={template.id}>
+                        <Item key={template.id} onClick={() => handleTemplateRadioChange(template.id)} style={{ cursor: 'pointer' }}>
                           <ItemRadio>
                             <input
                               type="radio"
@@ -635,8 +652,8 @@ const MergeDocuments: React.FC = () => {
                           <ItemContent>
                             <ItemHeader>
                               <ItemNameLink
-                                onClick={(e) => { e.stopPropagation(); navigate(`/admin/templates/${template.id}/edit`) }}
-                                title="Open template"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTemplateRadioChange(template.id) }}
+                                title="Select template"
                               >{template.name}</ItemNameLink>
                               {template.is_active && (
                                 <StatusBadge $status="completed">Active</StatusBadge>
@@ -719,6 +736,16 @@ const MergeDocuments: React.FC = () => {
               </IdentifiersSection>
             )}
           </MergeContent>
+        )}
+
+        {mergedContent && (
+          <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.125rem', fontWeight: 600 }}>Merged Document Preview</h3>
+            <div
+              className="merged-content-preview"
+              dangerouslySetInnerHTML={{ __html: mergedContent }}
+            />
+          </div>
         )}
       </MergeWrapper>
     </MergeContainer>

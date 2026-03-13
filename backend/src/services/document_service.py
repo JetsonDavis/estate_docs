@@ -357,6 +357,10 @@ class DocumentService:
         db.commit()
         db.refresh(document)
 
+        # Attach merged content to the response object so the API returns it
+        # (it's stored in S3, not the DB, but callers expect it in the response)
+        document.markdown_content = merged_content
+
         return document
 
     @staticmethod

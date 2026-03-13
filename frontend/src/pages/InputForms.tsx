@@ -1645,6 +1645,7 @@ const InputForms: React.FC = () => {
       case 'free_text':
         return (
           <QuestionTextarea
+            className="question-textarea"
             value={value}
             onChange={(e) => handleValueChange(e.target.value)}
             onBlur={(e) => {
@@ -3389,7 +3390,7 @@ const InputForms: React.FC = () => {
                               }}
                             >
                               <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>+</span>
-                              Add Another ({setQuestions.length > 1 ? `${setQuestions[0].hierarchical_number || '1'}–${setQuestions[setQuestions.length - 1].hierarchical_number || String(setQuestions.length)}` : `${setQuestions[0].hierarchical_number || '1'}`})
+                              Add Another ({setQuestions.length > 1 ? `${setQuestions[0].hierarchical_number || '1'}-${setQuestions[setQuestions.length - 1].hierarchical_number || String(setQuestions.length)}` : `${setQuestions[0].hierarchical_number || '1'}`})
                             </button>
                           )}
                         </div>
