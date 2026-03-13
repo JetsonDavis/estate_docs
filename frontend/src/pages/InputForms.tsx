@@ -1447,14 +1447,37 @@ const InputForms: React.FC = () => {
   }
 
   const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
-    const current = getRepeatableAnswerArray(questionId)
-    const updated = [...current]
-    // Ensure array is long enough
-    while (updated.length <= instanceIndex) {
-      updated.push('')
-    }
-    updated[instanceIndex] = value
-    setRepeatableAnswerArray(questionId, updated)
+    setAnswers(prev => {
+      // Get current value from state
+      const currentValue = prev[questionId] || ''
+      let current: string[]
+      
+      // Parse current array
+      if (!currentValue) {
+        current = ['']
+      } else {
+        try {
+          const parsed = JSON.parse(currentValue)
+          current = Array.isArray(parsed) ? parsed : [currentValue]
+        } catch {
+          current = [currentValue]
+        }
+      }
+      
+      // Update the array
+      const updated = [...current]
+      while (updated.length <= instanceIndex) {
+        updated.push('')
+      }
+      updated[instanceIndex] = value
+      
+      return {
+        ...prev,
+        [questionId]: JSON.stringify(updated)
+      }
+    })
+    
+    setHasChanges(true)
   }
 
   const renderQuestion = (question: QuestionToDisplay, instanceIndex: number = 0) => {
