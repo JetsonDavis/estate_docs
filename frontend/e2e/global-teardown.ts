@@ -151,6 +151,30 @@ async function globalTeardown(config: FullConfig) {
     } catch (e) {
       console.log('⚠️  Session cleanup failed:', e);
     }
+
+    // Clean up test-created templates
+    const testTemplatePatterns = [/^E2E_/];
+    try {
+      const templatesResponse = await context.request.get(`${backendURL}/api/v1/templates/?page=1&page_size=100`);
+      if (templatesResponse.ok()) {
+        const data = await templatesResponse.json();
+        const allTemplates = Array.isArray(data.templates) ? data.templates : [];
+        const testTemplates = allTemplates.filter((t: any) =>
+          testTemplatePatterns.some(pattern => pattern.test(t.name || ''))
+        );
+
+        let deletedTemplates = 0;
+        for (const tmpl of testTemplates) {
+          try {
+            const delResp = await context.request.delete(`${backendURL}/api/v1/templates/${tmpl.id}`);
+            if (delResp.ok()) deletedTemplates++;
+          } catch (e) { /* ignore */ }
+        }
+        console.log(`✅ Template cleanup: deleted ${deletedTemplates} test templates, preserved ${allTemplates.length - testTemplates.length} pre-existing templates`);
+      }
+    } catch (e) {
+      console.log('⚠️  Template cleanup failed:', e);
+    }
   } catch (error) {
     console.error('❌ Error during database cleanup:', error);
     // Don't fail the tests if cleanup fails

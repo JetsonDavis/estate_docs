@@ -1,19 +1,50 @@
 import { test, expect } from '@playwright/test';
+import {
+  apiLogin,
+  createTestQuestionGroup,
+  createTestSession,
+  saveAnswers,
+  deleteSession,
+  deleteQuestionGroup,
+  TestQuestionGroup,
+} from './helpers/test-data-api';
+
+const BASE_URL = 'http://localhost:3005';
+
+let groupData: TestQuestionGroup;
+let sessionId: number;
 
 test.describe('Repeatable Question Input Bug', () => {
+  test.beforeAll(async () => {
+    await apiLogin();
+    groupData = await createTestQuestionGroup('InputBug');
+    sessionId = await createTestSession(groupData.groupId, 'E2E_InputBug_Client');
+    // Seed one trustor with able_to_act = "no"
+    await saveAnswers(sessionId, [
+      { question_id: groupData.trustorId, answer_value: '[{"name":"Test Trustor"}]' },
+      { question_id: groupData.ableToActId, answer_value: '["no"]' },
+      { question_id: groupData.unableReasonId, answer_value: '[""]' },
+      { question_id: groupData.unableDateId, answer_value: '[""]' },
+    ]);
+  });
+
+  test.afterAll(async () => {
+    await deleteSession(sessionId);
+    await deleteQuestionGroup(groupData.groupId);
+  });
+
   test.beforeEach(async ({ page }) => {
     // Login
-    await page.goto('http://localhost:3005/login');
+    await page.goto(`${BASE_URL}/login`);
     await page.fill('input[id="username"]', 'admin');
     await page.fill('input[id="password"]', 'password');
     await page.click('button[type="submit"]');
-    // Wait for navigation to complete
     await page.waitForTimeout(2000);
   });
 
   test('should maintain independent values for repeatable questions in different parent instances', async ({ page }) => {
-    // Navigate to the input form with session 668
-    await page.goto('http://localhost:3005/input-form?session=668');
+    // Navigate to the input form with our test session
+    await page.goto(`${BASE_URL}/input-form?session=${sessionId}`);
     
     // Wait for the form to load
     await page.waitForSelector('text=are they able to act?');
@@ -26,7 +57,7 @@ test.describe('Repeatable Question Input Bug', () => {
     await page.waitForSelector('text=Why can\'t the trustor act?');
     
     // Find the first instance's "Why can't the trustor act?" textarea
-    const firstUnableReason = page.locator('textarea').filter({ hasText: /^(noodle|dflknsdfnkldmf)?$/ }).first();
+    const firstUnableReason = page.locator('textarea').first();
     
     // Type in the first instance
     await firstUnableReason.clear();
@@ -37,7 +68,7 @@ test.describe('Repeatable Question Input Bug', () => {
     await page.waitForTimeout(500);
     
     // Add another trustor
-    await page.click('button:has-text("Add Another (8-9)")');
+    await page.click('button:has-text("Add Another")');
     await page.waitForTimeout(500);
     
     // Find the second trustor instance - select "No" to show conditional followups
@@ -49,7 +80,8 @@ test.describe('Repeatable Question Input Bug', () => {
     await page.waitForTimeout(500);
     
     // Find the second instance's "Why can't the trustor act?" textarea
-    const secondUnableReason = page.locator('textarea').filter({ hasText: /^(noodle|dflknsdfnkldmf)?$/ }).first();
+    // After filling the first textarea, only the new empty one matches
+    const secondUnableReason = page.locator('textarea').filter({ hasText: /^$/ }).first();
     
     // Type in the second instance
     await secondUnableReason.clear();
@@ -69,8 +101,5 @@ test.describe('Repeatable Question Input Bug', () => {
     
     console.log('First instance value:', firstValue);
     console.log('Second instance value:', secondValue);
-    
-    // Take a screenshot for debugging
-    await page.screenshot({ path: 'repeatable-input-test.png', fullPage: true });
   });
 });

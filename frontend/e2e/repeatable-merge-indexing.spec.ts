@@ -1,9 +1,52 @@
 import { test, expect } from '@playwright/test';
+import {
+  apiLogin,
+  createTestQuestionGroup,
+  createTestSession,
+  createTestTemplate,
+  saveAnswers,
+  deleteSession,
+  deleteQuestionGroup,
+  deleteTemplate,
+  TestQuestionGroup,
+} from './helpers/test-data-api';
 
 const BASE_URL = 'http://localhost:3005';
-const SESSION_ID = 668;
+
+let groupData: TestQuestionGroup;
+let sessionId: number;
+let templateId: number;
+const SESSION_NAME = 'E2E_MergeIndex_Client';
+const TEMPLATE_NAME = 'E2E_MergeIndex_Template';
 
 test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
+  test.beforeAll(async () => {
+    await apiLogin();
+    groupData = await createTestQuestionGroup('MergeIndex');
+    sessionId = await createTestSession(groupData.groupId, SESSION_NAME);
+
+    // Seed one trustor with able_to_act = "no"
+    await saveAnswers(sessionId, [
+      { question_id: groupData.trustorId, answer_value: '[{"name":"Test Trustor"}]' },
+      { question_id: groupData.ableToActId, answer_value: '["no"]' },
+      { question_id: groupData.unableReasonId, answer_value: '[""]' },
+      { question_id: groupData.unableDateId, answer_value: '[""]' },
+    ]);
+
+    // Create a template that references unable_reason by trustor index
+    const templateContent = [
+      '<p>Trustor 1 unable reason: &lt;&lt;unable_reason[1]&gt;&gt;</p>',
+      '<p>Trustor 2 unable reason: &lt;&lt;unable_reason[2]&gt;&gt;</p>',
+    ].join('\n');
+    templateId = await createTestTemplate(TEMPLATE_NAME, templateContent);
+  });
+
+  test.afterAll(async () => {
+    await deleteSession(sessionId);
+    await deleteTemplate(templateId);
+    await deleteQuestionGroup(groupData.groupId);
+  });
+
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto(`${BASE_URL}/login`);
@@ -17,8 +60,9 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
 
   test('should correctly index 2D arrays in merged documents', async ({ page }) => {
     test.setTimeout(120000);
+
     // Navigate to the input form
-    await page.goto(`${BASE_URL}/document?session=${SESSION_ID}`);
+    await page.goto(`${BASE_URL}/document?session=${sessionId}`);
     
     // Wait for the form to load
     await page.waitForSelector('text=are they able to act?', { timeout: 15000 });
@@ -37,7 +81,7 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     await page.waitForTimeout(2000);
     
     // Add a second trustor
-    await page.click('button:has-text("Add Another (8-9)")');
+    await page.click('button:has-text("Add Another")');
     await page.waitForTimeout(2000);
     
     // Set up second trustor with "No"
@@ -48,14 +92,12 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     
     // Second trustor unable reason
     const allTextareas = page.locator('textarea');
-    const textareaCount = await allTextareas.count();
-    const secondTrustorReason = allTextareas.nth(1); // Second textarea
+    const secondTrustorReason = allTextareas.nth(1);
     await secondTrustorReason.click();
     await secondTrustorReason.fill('Trustor 2 - Unable Reason');
     await secondTrustorReason.blur();
     await page.waitForTimeout(3000);
     
-    // Log the structure we've created
     console.log('Created 2D array structure:');
     console.log('Trustor 1: ["Trustor 1 - Unable Reason"]');
     console.log('Trustor 2: ["Trustor 2 - Unable Reason"]');
@@ -64,24 +106,19 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     await page.goto(`${BASE_URL}/merge-documents`);
     await page.waitForTimeout(2000);
     
-    // Find the session in the list - it shows as "john - example"
-    await expect(page.locator('text=john - example').first()).toBeVisible({ timeout: 10000 });
-    
-    // Click the session's radio button (clicking the name navigates away)
-    await page.locator('li', { has: page.locator('text=john - example') }).first().locator('input[type="radio"]').click();
+    // Select the test session
+    await expect(page.locator(`text=${SESSION_NAME}`).first()).toBeVisible({ timeout: 10000 });
+    await page.locator('li', { has: page.locator(`text=${SESSION_NAME}`) }).first().locator('input[type="radio"]').click();
     await page.waitForTimeout(1000);
     
     // Scroll down to see templates section
     await page.evaluate(() => window.scrollBy(0, 500));
     await page.waitForTimeout(500);
     
-    // Find a template to select (we need both a session and template selected)
-    // Use any available template
+    // Select the test template
     const templateHeading = page.locator('heading:has-text("Templates")');
     await expect(templateHeading).toBeVisible({ timeout: 5000 });
-    
-    // Click the template's radio button (clicking the name navigates away)
-    await page.locator('li', { has: page.locator('text=Trust Restatement Clause Only') }).first().locator('input[type="radio"]').click();
+    await page.locator('li', { has: page.locator(`text=${TEMPLATE_NAME}`) }).first().locator('input[type="radio"]').click();
     await page.waitForTimeout(1000);
     
     // Scroll to top and click the "Merge Documents" button
@@ -92,27 +129,19 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     await mergeButton.click();
     await page.waitForTimeout(5000);
     
-    // The merge should create a document - check if we're redirected or if there's a success message
-    // Look for either a success message or the merged document content
+    // Verify the merged document content
     const pageContent = await page.textContent('body');
     
     console.log('Page content after merge (first 3000 chars):');
     console.log(pageContent?.substring(0, 3000));
     
-    // Verify the indexed values appear correctly in the merged document
-    // The identifiers should be: unable_reason[1][1], unable_reason[2][1]
-    // This tests that the 2D array structure is correctly indexed by parent instance
-    
-    // Check if both values are present in the document
+    // Check if both values are present in the merged document
     if (pageContent) {
       expect(pageContent).toContain('Trustor 1 - Unable Reason');
       expect(pageContent).toContain('Trustor 2 - Unable Reason');
       
       console.log('✓ All 2D array values found in merged document');
-      console.log('✓ Verified that unable_reason[1][1] and unable_reason[2][1] are correctly indexed');
+      console.log('✓ Verified that unable_reason[1] and unable_reason[2] are correctly indexed');
     }
-    
-    // Take a screenshot for verification
-    await page.screenshot({ path: 'repeatable-merge-indexing-success.png', fullPage: true });
   });
 });
