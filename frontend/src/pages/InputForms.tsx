@@ -3027,6 +3027,7 @@ const InputForms: React.FC = () => {
                                                 )}
                                                 {fuSetQuestions.map((fuQ, fuQIdx) => {
                                                   const sid = fuSyntheticIds[fuQIdx]
+                                                  console.log(`[VIRTUAL Q] fuQ.id=${fuQ.id}, fuQIdx=${fuQIdx}, sid=${sid}, fuIdx=${fuIdx}, instanceIdx=${instanceIdx}`)
                                                   const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
 
                                                   // Get the current answer for this follow-up question instance
