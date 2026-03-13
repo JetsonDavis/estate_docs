@@ -683,7 +683,7 @@ const MergeDocuments: React.FC = () => {
                                 $placeholder={identifier === null}
                                 $missing={isMissing}
                               >
-                                {identifier || '\u00A0'}
+                                {identifier ? stripSubscript(identifier) : '\u00A0'}
                               </IdentifierItem>
                             )
                           })}
@@ -707,7 +707,7 @@ const MergeDocuments: React.FC = () => {
                                 $placeholder={identifier === null}
                                 $missing={isMissing}
                               >
-                                {identifier || '\u00A0'}
+                                {identifier ? stripSubscript(identifier) : '\u00A0'}
                               </IdentifierItem>
                             )
                           })}
