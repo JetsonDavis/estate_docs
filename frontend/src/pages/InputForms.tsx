@@ -1464,17 +1464,12 @@ const InputForms: React.FC = () => {
         }
       }
       
-      console.log(`updateRepeatableInstance: questionId=${questionId}, instanceIndex=${instanceIndex}, value="${value}"`)
-      console.log(`  Current array:`, current)
-      
       // Update the array
       const updated = [...current]
       while (updated.length <= instanceIndex) {
         updated.push('')
       }
       updated[instanceIndex] = value
-      
-      console.log(`  Updated array:`, updated)
       
       return {
         ...prev,
@@ -1497,7 +1492,6 @@ const InputForms: React.FC = () => {
 
     // Handler for value changes - uses repeatable-aware update if needed
     const handleValueChange = (newValue: string) => {
-      console.log(`handleValueChange called: questionId=${question.id}, instanceIndex=${instanceIndex}, repeatable=${question.repeatable}, value="${newValue}"`)
       if (question.repeatable) {
         updateRepeatableInstance(question.id, instanceIndex, newValue)
       } else {
