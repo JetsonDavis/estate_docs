@@ -431,6 +431,23 @@ class DocumentService:
         """
         # Format date values as "Month Day, Year" (e.g., "March 9, 2026")
         if question_type == 'date':
+            # Check if it's an array of dates (for repeatable questions)
+            try:
+                parsed = json.loads(answer_value)
+                if isinstance(parsed, list):
+                    # Format each date in the array
+                    formatted_dates = []
+                    for date_str in parsed:
+                        try:
+                            dt = datetime.strptime(date_str, '%Y-%m-%d')
+                            formatted_dates.append(dt.strftime('%B %-d, %Y'))
+                        except (ValueError, TypeError):
+                            formatted_dates.append(date_str)
+                    return json.dumps(formatted_dates)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            
+            # Single date value
             try:
                 dt = datetime.strptime(answer_value, '%Y-%m-%d')
                 return dt.strftime('%B %-d, %Y')
