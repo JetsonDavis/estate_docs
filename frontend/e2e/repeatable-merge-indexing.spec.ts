@@ -67,8 +67,8 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     // Find the session in the list - it shows as "john - example"
     await expect(page.locator('text=john - example').first()).toBeVisible({ timeout: 10000 });
     
-    // Click on the session item itself (the whole row should be clickable)
-    await page.locator('text=john - example').first().click();
+    // Click the session's radio button (clicking the name navigates away)
+    await page.locator('li', { has: page.locator('text=john - example') }).first().locator('input[type="radio"]').click();
     await page.waitForTimeout(1000);
     
     // Scroll down to see templates section
@@ -80,8 +80,8 @@ test.describe('Repeatable Conditional Followups - Merge Indexing', () => {
     const templateHeading = page.locator('heading:has-text("Templates")');
     await expect(templateHeading).toBeVisible({ timeout: 5000 });
     
-    // Click the "Trust Restatement Clause Only" template radio button
-    await page.locator('text=Trust Restatement Clause Only').click();
+    // Click the template's radio button (clicking the name navigates away)
+    await page.locator('li', { has: page.locator('text=Trust Restatement Clause Only') }).first().locator('input[type="radio"]').click();
     await page.waitForTimeout(1000);
     
     // Scroll to top and click the "Merge Documents" button

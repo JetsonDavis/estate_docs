@@ -588,6 +588,7 @@ const MergeDocuments: React.FC = () => {
                           <ItemContent>
                             <ItemHeader>
                               <ItemNameLink
+                                onClick={(e) => { e.stopPropagation(); navigate(`/document?session=${session.id}`) }}
                                 title="Open input form"
                               >{session.client_identifier}</ItemNameLink>
                               {session.is_completed && (
@@ -652,8 +653,8 @@ const MergeDocuments: React.FC = () => {
                           <ItemContent>
                             <ItemHeader>
                               <ItemNameLink
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleTemplateRadioChange(template.id) }}
-                                title="Select template"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/admin/templates/${template.id}/edit`) }}
+                                title="Edit template"
                               >{template.name}</ItemNameLink>
                               {template.is_active && (
                                 <StatusBadge $status="completed">Active</StatusBadge>
