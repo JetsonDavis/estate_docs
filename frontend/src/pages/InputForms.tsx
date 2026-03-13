@@ -2705,6 +2705,26 @@ const InputForms: React.FC = () => {
               )}
             </SessionList>
         </SessionsWrapper>
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="Delete Form"
+        message={deleteTarget ? `Are you sure you want to delete the form for "${deleteTarget.client_identifier}"?` : ''}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (!deleteTarget) return
+          const id = deleteTarget.id
+          setDeleteTarget(null)
+          sessionService.deleteSession(id)
+            .then(() => {
+              setSessions(prev => prev.filter(s => s.id !== id))
+            })
+            .catch(err => {
+              toast('Failed to delete form: ' + (err.response?.data?.detail || err.message))
+            })
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
       </SessionsContainer>
     )
   }
