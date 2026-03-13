@@ -1447,8 +1447,6 @@ const InputForms: React.FC = () => {
   }
 
   const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
-    console.log(`[updateRepeatableInstance] questionId=${questionId}, instanceIndex=${instanceIndex}, value="${value}"`)
-    
     setAnswers(prev => {
       // Get current value from state
       const currentValue = prev[questionId] || ''
@@ -1466,16 +1464,12 @@ const InputForms: React.FC = () => {
         }
       }
       
-      console.log(`[updateRepeatableInstance] current array for ${questionId}:`, current)
-      
       // Update the array
       const updated = [...current]
       while (updated.length <= instanceIndex) {
         updated.push('')
       }
       updated[instanceIndex] = value
-      
-      console.log(`[updateRepeatableInstance] updated array for ${questionId}:`, updated)
       
       return {
         ...prev,
@@ -1488,6 +1482,7 @@ const InputForms: React.FC = () => {
 
   const renderQuestion = (question: QuestionToDisplay, instanceIndex: number = 0) => {
     // For repeatable questions, get the value at the specific instance index
+    // Synthetic IDs (for conditional followups) work the same way - they store arrays too
     let value: string
     if (question.repeatable) {
       const arr = getRepeatableAnswerArray(question.id)
@@ -2975,12 +2970,7 @@ const InputForms: React.FC = () => {
 
                                         // Repeatable conditional followups need synthetic IDs per parent instance
                                         // This ensures each parent instance has its own separate array
-                                        console.log(`[SYNTHETIC ID CALC] instanceIdx=${instanceIdx}, fuSetQuestions:`, fuSetQuestions.map(q => q.id))
-                                        const fuSyntheticIds = fuSetQuestions.map(q => {
-                                          const synId = q.id * 100000 + instanceIdx
-                                          console.log(`[SYNTHETIC ID] q.id=${q.id}, instanceIdx=${instanceIdx}, synId=${synId}`)
-                                          return synId
-                                        })
+                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + instanceIdx)
 
                                         // Get instance count from the max answer array length across the set
                                         let fuInstanceCount = 1
@@ -3027,7 +3017,6 @@ const InputForms: React.FC = () => {
                                                 )}
                                                 {fuSetQuestions.map((fuQ, fuQIdx) => {
                                                   const sid = fuSyntheticIds[fuQIdx]
-                                                  console.log(`[VIRTUAL Q] fuQ.id=${fuQ.id}, fuQIdx=${fuQIdx}, sid=${sid}, fuIdx=${fuIdx}, instanceIdx=${instanceIdx}`)
                                                   const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
 
                                                   // Get the current answer for this follow-up question instance
