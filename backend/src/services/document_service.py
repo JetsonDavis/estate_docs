@@ -978,9 +978,12 @@ class DocumentService:
         _raw_map = raw_answer_map or {}
 
         def _replace(match):
+            full_match = match.group(0)
             identifier = match.group(1).lower()
             array_index_str = match.group(2)  # Array index like [1], [2], etc.
             field_name = match.group(3)  # Field name after dot or array index
+            
+            _logger.debug(f"Replacing identifier: {full_match} -> identifier={identifier}, in_map={identifier in answer_map}")
             
             # Convert array index to integer (1-based, so subtract 1 for 0-based array access)
             array_index = int(array_index_str) - 1 if array_index_str else None
@@ -1194,6 +1197,14 @@ class DocumentService:
         Returns:
             Merged content with identifiers replaced
         """
+        import html
+        
+        # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
+        # Remove span tags but keep their content
+        template_content = re.sub(r'<span[^>]*>([^<]*)</span>', r'\1', template_content)
+        # Decode HTML entities like &lt; &gt; &amp;
+        template_content = html.unescape(template_content)
+        
         raw_map = raw_answer_map if raw_answer_map else answer_map
         global_counter = [0]
 
