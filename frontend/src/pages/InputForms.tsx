@@ -1622,8 +1622,57 @@ const InputForms: React.FC = () => {
                 updated[instanceIndex] = e.target.value
                 
                 handleAnswerBlur(question.id, JSON.stringify(updated))
+              } else if (question.id >= 100000) {
+                // Non-repeatable followup inside a repeatable parent (synthetic ID).
+                // All instances share the same real backend question ID.
+                // We must save ALL instance values as a JSON array to avoid overwrites.
+                const realId = Math.floor(question.id / 100000)
+                const instanceIdx = question.id % 100000
+
+                // Build array from all instance answers (real ID = instance 0, synthetic IDs = instances 1+)
+                const instance0Value = answers[realId] || ''
+                // Find the max instance index we have data for
+                let maxIdx = instanceIdx
+                for (const key of Object.keys(answers)) {
+                  const numKey = Number(key)
+                  if (numKey >= 100000 && Math.floor(numKey / 100000) === realId) {
+                    const idx = numKey % 100000
+                    if (idx > maxIdx) maxIdx = idx
+                  }
+                }
+                const arr: string[] = [instance0Value]
+                for (let i = 1; i <= maxIdx; i++) {
+                  const synId = realId * 100000 + i
+                  arr.push(answers[synId] || '')
+                }
+                // Apply the fresh value from e.target to avoid stale state
+                arr[instanceIdx] = e.target.value
+
+                handleAnswerBlur(realId, JSON.stringify(arr))
               } else {
-                handleAnswerBlur(question.id, e.target.value)
+                // Check if this real ID has synthetic siblings (meaning it's instance 0
+                // of a non-repeatable followup inside a repeatable parent)
+                let hasSyntheticSiblings = false
+                let maxSiblingIdx = 0
+                for (const key of Object.keys(answers)) {
+                  const numKey = Number(key)
+                  if (numKey >= 100000 && Math.floor(numKey / 100000) === question.id) {
+                    hasSyntheticSiblings = true
+                    const idx = numKey % 100000
+                    if (idx > maxSiblingIdx) maxSiblingIdx = idx
+                  }
+                }
+                if (hasSyntheticSiblings) {
+                  // Save all instance values as a JSON array
+                  const arr: string[] = [e.target.value]
+                  for (let i = 1; i <= maxSiblingIdx; i++) {
+                    const synId = question.id * 100000 + i
+                    arr.push(answers[synId] || '')
+                  }
+                  handleAnswerBlur(question.id, JSON.stringify(arr))
+                } else {
+                  handleAnswerBlur(question.id, e.target.value)
+                }
               }
             }}
             placeholder="Enter your answer..."

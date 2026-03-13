@@ -3366,8 +3366,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {!collapsedItems.has(`nq-${nestedQuestion.id}`) && <>
               {/* Identifier */}
               <div className="form-group">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.25rem', flexWrap: 'nowrap' }}>
-                  <label className="form-label" style={{ marginBottom: 0, whiteSpace: 'nowrap' }}>Identifier *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                  <label className="form-label form-label-inline" style={{ marginBottom: 0, whiteSpace: 'nowrap', minWidth: '80px' }}>Identifier *</label>
                   {(() => {
                     // Find the previous repeatable question within this nested context (same nesting level only)
                     let prevRepeatableNestedQuestion: QuestionFormData | null = null
