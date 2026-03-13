@@ -1040,6 +1040,53 @@ class DocumentService:
             # Convert array index to integer (1-based, so subtract 1 for 0-based array access)
             array_index = int(array_index_str) - 1 if array_index_str else None
 
+            # Check for 2D array indexing: identifier[1][2]
+            # This handles repeatable questions inside repeatable parents (e.g., conditional followups)
+            nested_array_match = None
+            if field_name and re.match(r'^\[(\d+)\]', field_name):
+                nested_array_match = re.match(r'^\[(\d+)\](?:\.(.+))?$', field_name)
+                if nested_array_match:
+                    second_index_str = nested_array_match.group(1)
+                    second_index = int(second_index_str) - 1  # Convert to 0-based
+                    remaining_field = nested_array_match.group(2)  # Any field after second index
+                    
+                    # Access 2D array: data[array_index][second_index]
+                    raw_json = _raw_map.get(identifier, '') or ''
+                    if raw_json:
+                        try:
+                            data = json.loads(raw_json)
+                            if isinstance(data, list) and 0 <= array_index < len(data):
+                                inner_array = data[array_index]
+                                # Decode if double-encoded
+                                if isinstance(inner_array, str):
+                                    try:
+                                        inner_array = json.loads(inner_array)
+                                    except (json.JSONDecodeError, TypeError):
+                                        pass
+                                
+                                if isinstance(inner_array, list) and 0 <= second_index < len(inner_array):
+                                    item = inner_array[second_index]
+                                    
+                                    # Decode if double-encoded
+                                    if isinstance(item, str):
+                                        try:
+                                            item = json.loads(item)
+                                        except (json.JSONDecodeError, TypeError):
+                                            pass
+                                    
+                                    # If there's a field after the second index, extract it
+                                    if remaining_field and isinstance(item, dict):
+                                        field_value = item.get(remaining_field)
+                                        return str(field_value) if field_value is not None else ''
+                                    
+                                    # Otherwise return the item
+                                    if isinstance(item, dict):
+                                        return item.get('name', str(item))
+                                    return str(item)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    return ''
+
             # Handle array indexing with optional field access
             # e.g., <<identifier[1]>>, <<identifier[1].name>>
             if array_index is not None:
