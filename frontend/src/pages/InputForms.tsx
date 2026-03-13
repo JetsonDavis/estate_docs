@@ -1447,6 +1447,8 @@ const InputForms: React.FC = () => {
   }
 
   const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
+    console.log(`[updateRepeatableInstance] questionId=${questionId}, instanceIndex=${instanceIndex}, value="${value}"`)
+    
     setAnswers(prev => {
       // Get current value from state
       const currentValue = prev[questionId] || ''
@@ -1464,12 +1466,16 @@ const InputForms: React.FC = () => {
         }
       }
       
+      console.log(`[updateRepeatableInstance] current array for ${questionId}:`, current)
+      
       // Update the array
       const updated = [...current]
       while (updated.length <= instanceIndex) {
         updated.push('')
       }
       updated[instanceIndex] = value
+      
+      console.log(`[updateRepeatableInstance] updated array for ${questionId}:`, updated)
       
       return {
         ...prev,
