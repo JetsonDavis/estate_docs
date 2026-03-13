@@ -509,10 +509,12 @@ const InputForms: React.FC = () => {
           for (const fq of (cfu.questions || [])) {
             if (fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Repeatable followups use synthetic IDs for ALL instances (including 0)
-              // Each parent instance gets its own separate array
+              // Backend already provides synthetic IDs for 2D arrays, so only seed if missing
               for (let i = 0; i < instanceCount; i++) {
                 const synId = fq.id * 100000 + i
                 if (initialAnswers[synId] === undefined) {
+                  // Only seed if backend didn't provide this synthetic ID
+                  // For new instances or 1D arrays, copy from real ID
                   initialAnswers[synId] = initialAnswers[fq.id]
                 }
                 // Also seed personAnswers/personConjunctions for person-type questions
@@ -525,10 +527,38 @@ const InputForms: React.FC = () => {
               }
             } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
-              for (let i = 1; i < instanceCount; i++) {
-                const synId = fq.id * 100000 + i
-                if (initialAnswers[synId] === undefined) {
-                  initialAnswers[synId] = initialAnswers[fq.id]
+              // If the real ID contains an array, distribute values to each synthetic ID
+              try {
+                const parsed = JSON.parse(initialAnswers[fq.id])
+                if (Array.isArray(parsed)) {
+                  // Distribute array values to synthetic IDs
+                  for (let i = 1; i < instanceCount; i++) {
+                    const synId = fq.id * 100000 + i
+                    if (initialAnswers[synId] === undefined) {
+                      const valueToSeed = parsed[i] !== undefined ? parsed[i] : ''
+                      initialAnswers[synId] = valueToSeed
+                    }
+                  }
+                  // Instance 0 gets the first value
+                  initialAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                } else {
+                  // Not an array — value belongs to instance 0 only.
+                  // Initialize synthetic IDs for instances 1+ to empty strings.
+                  for (let i = 1; i < instanceCount; i++) {
+                    const synId = fq.id * 100000 + i
+                    if (initialAnswers[synId] === undefined) {
+                      initialAnswers[synId] = ''
+                    }
+                  }
+                }
+              } catch {
+                // Not valid JSON — value belongs to instance 0 only.
+                // Initialize synthetic IDs for instances 1+ to empty strings.
+                for (let i = 1; i < instanceCount; i++) {
+                  const synId = fq.id * 100000 + i
+                  if (initialAnswers[synId] === undefined) {
+                    initialAnswers[synId] = ''
+                  }
                 }
               }
             }
@@ -873,7 +903,6 @@ const InputForms: React.FC = () => {
       console.error('Failed to refresh conditionals:', err)
     } finally {
       setConditionalLoading(false)
-      setConditionalLoadingQuestionId(null)
     }
   }
 
@@ -1003,6 +1032,48 @@ const InputForms: React.FC = () => {
             if (!idsToDelete.includes(q.id)) {
               newAnswers[q.id] = data.existing_answers[q.id]
             }
+          }
+        })
+
+        // After merging backend data, re-seed synthetic IDs for conditional followups
+        // This distributes array values from real IDs to synthetic IDs
+        const seedFollowupsInAnswers = (cfus: any[] | undefined, instanceCount: number) => {
+          if (!cfus) return
+          for (const cfu of cfus) {
+            for (const fq of (cfu.questions || [])) {
+              if (!fq.repeatable && newAnswers[fq.id] !== undefined) {
+                try {
+                  const parsed = JSON.parse(newAnswers[fq.id])
+                  if (Array.isArray(parsed)) {
+                    // Distribute array values to synthetic IDs
+                    for (let i = 1; i < instanceCount; i++) {
+                      const synId = fq.id * 100000 + i
+                      if (newAnswers[synId] === undefined) {
+                        newAnswers[synId] = parsed[i] !== undefined ? parsed[i] : ''
+                      }
+                    }
+                    // Instance 0 gets the first value
+                    newAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                  }
+                } catch {
+                  // Not JSON, skip
+                }
+              }
+              // Recurse into nested followups
+              seedFollowupsInAnswers(fq.conditional_followups, instanceCount)
+            }
+          }
+        }
+
+        // Seed followups for all repeatable questions
+        data.questions.forEach(q => {
+          if (q.repeatable && newAnswers[q.id]) {
+            try {
+              const parsed = JSON.parse(newAnswers[q.id])
+              if (Array.isArray(parsed) && parsed.length >= 1) {
+                seedFollowupsInAnswers(q.conditional_followups || undefined, parsed.length)
+              }
+            } catch { /* not a JSON array */ }
           }
         })
 
@@ -1405,6 +1476,32 @@ const InputForms: React.FC = () => {
     }
   }
 
+  const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
+    setAnswers(prev => {
+      const currentValue = prev[questionId] || ''
+      let current: string[]
+      try {
+        const parsed = JSON.parse(currentValue)
+        current = Array.isArray(parsed) ? parsed : [currentValue]
+      } catch {
+        current = currentValue ? [currentValue] : ['']
+      }
+      
+      const updated = [...current]
+      while (updated.length <= instanceIndex) {
+        updated.push('')
+      }
+      updated[instanceIndex] = value
+      
+      return {
+        ...prev,
+        [questionId]: JSON.stringify(updated)
+      }
+    })
+    
+    setHasChanges(true)
+  }
+
   const removeRepeatableInstance = async (questionIndex: number, instanceIndex: number) => {
     if (!sessionData) return
 
@@ -1444,38 +1541,6 @@ const InputForms: React.FC = () => {
         console.error('Failed to save after removing instance:', err)
       }
     }
-  }
-
-  const updateRepeatableInstance = (questionId: number, instanceIndex: number, value: string) => {
-    setAnswers(prev => {
-      // Get current value from state
-      const currentValue = prev[questionId] || ''
-      let current: string[]
-      
-      // Parse current array
-      if (!currentValue) {
-        current = ['']
-      } else {
-        try {
-          const parsed = JSON.parse(currentValue)
-          current = Array.isArray(parsed) ? parsed : [currentValue]
-        } catch {
-          current = [currentValue]
-        }
-      }
-      
-      // Update the array
-      const updated = [...current]
-      while (updated.length <= instanceIndex) {
-        updated.push('')
-      }
-      updated[instanceIndex] = value
-      
-      return {
-        ...prev,
-        [questionId]: JSON.stringify(updated)
-      }
-    })
     
     setHasChanges(true)
   }
@@ -1537,7 +1602,8 @@ const InputForms: React.FC = () => {
             onBlur={(e) => {
               // For repeatable questions, save the entire array to avoid overwriting other instances
               if (question.repeatable) {
-                // Read from current answers state to get the latest array
+                // Synthetic IDs (>= 100000) already encode the parent instance
+                // They maintain their own separate arrays, so instanceIndex is always used within that array
                 const currentValue = answers[question.id] || ''
                 let currentArray: string[]
                 try {
@@ -1554,6 +1620,7 @@ const InputForms: React.FC = () => {
                 }
                 // Use the fresh value from e.target.value to avoid stale state
                 updated[instanceIndex] = e.target.value
+                
                 handleAnswerBlur(question.id, JSON.stringify(updated))
               } else {
                 handleAnswerBlur(question.id, e.target.value)
@@ -2928,29 +2995,31 @@ const InputForms: React.FC = () => {
                                       const allFuQuestions = matchingFollowups.flatMap(fu => fu.questions)
                                       const renderedFuGroups = new Set<string>()
                                       let fuQCounter = 0
+                                      // Capture instanceIdx by value to avoid closure issues
+                                      const capturedInstanceIdx = instanceIdx
                                       return allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
                                           fuQCounter++
                                           const fuLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
                                           // Non-repeatable follow-up: use synthetic ID for instances > 0
                                           // Instance 0 uses real ID (preserves backend persistence)
-                                          const fqEffectiveId = instanceIdx > 0 ? fq.id * 100000 + instanceIdx : fq.id
+                                          const fqEffectiveId = capturedInstanceIdx > 0 ? fq.id * 100000 + capturedInstanceIdx : fq.id
                                           const fqVirtual = { ...fq, id: fqEffectiveId } as unknown as QuestionToDisplay
                                           const fqWithEffId = { ...fq, id: fqEffectiveId }
                                           return (
-                                            <React.Fragment key={`fu-${fq.id}-${instanceIdx}`}>
+                                            <React.Fragment key={`fu-${fq.id}-${capturedInstanceIdx}`}>
                                               <div  style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
                                                 <label >
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuLabel}.</span>
-                                                  {replaceLoopToken(fq.question_text, instanceIdx)}
+                                                  {replaceLoopToken(fq.question_text, capturedInstanceIdx)}
                                                   {fq.is_required && <span >*</span>}
                                                 </label>
                                                 {fq.help_text && (
-                                                  <p >{replaceLoopToken(fq.help_text, instanceIdx)}</p>
+                                                  <p >{replaceLoopToken(fq.help_text, capturedInstanceIdx)}</p>
                                                 )}
                                                 {renderQuestion(fqVirtual, 0)}
                                               </div>
-                                              {renderNestedFollowups(fqWithEffId, instanceIdx, 2, `fu-${fq.id}`, fuLabel)}
+                                              {renderNestedFollowups(fqWithEffId, capturedInstanceIdx, 2, `fu-${fq.id}`, fuLabel)}
                                             </React.Fragment>
                                           )
                                         }
@@ -2959,7 +3028,7 @@ const InputForms: React.FC = () => {
                                         const fuRepLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
                                         // Repeatable follow-up: group by repeatable_group_id
                                         const fuGroupId = fq.repeatable_group_id || String(fq.id)
-                                        const fuGroupKey = `${fuGroupId}-${instanceIdx}`
+                                        const fuGroupKey = `${fuGroupId}-${capturedInstanceIdx}`
                                         if (renderedFuGroups.has(fuGroupKey)) return null
                                         renderedFuGroups.add(fuGroupKey)
 
@@ -2970,7 +3039,7 @@ const InputForms: React.FC = () => {
 
                                         // Repeatable conditional followups need synthetic IDs per parent instance
                                         // This ensures each parent instance has its own separate array
-                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + instanceIdx)
+                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + capturedInstanceIdx)
 
                                         // Get instance count from the max answer array length across the set
                                         let fuInstanceCount = 1
@@ -2980,7 +3049,7 @@ const InputForms: React.FC = () => {
                                         }
 
                                         return (
-                                          <div key={`fu-set-${fuGroupId}-${instanceIdx}`} style={{
+                                          <div key={`fu-set-${fuGroupId}-${capturedInstanceIdx}`} style={{
                                             marginBottom: '0.75rem',
                                             marginLeft: '1rem',
                                             borderLeft: '2px solid #d1d5db',
@@ -2990,7 +3059,7 @@ const InputForms: React.FC = () => {
                                             backgroundColor: '#fafafa'
                                           }}>
                                             {Array.from({ length: fuInstanceCount }).map((_, fuIdx) => (
-                                              <div key={`fu-set-${fuGroupId}-${instanceIdx}-${fuIdx}`} style={{
+                                              <div key={`fu-set-${fuGroupId}-${capturedInstanceIdx}-${fuIdx}`} style={{
                                                 padding: '0.75rem',
                                                 borderBottom: fuIdx < fuInstanceCount - 1 ? '1px solid #e5e7eb' : 'none',
                                                 position: 'relative'
@@ -3020,7 +3089,8 @@ const InputForms: React.FC = () => {
                                                   const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
 
                                                   // Get the current answer for this follow-up question instance
-                                                  const fuAnswer = getRepeatableAnswerArray(sid)[fuIdx] || ''
+                                                  const fuAnswerArray = getRepeatableAnswerArray(sid)
+                                                  const fuAnswer = fuAnswerArray[fuIdx] || ''
 
                                                   // Evaluate conditional_followups on this follow-up question
                                                   const nestedFollowups = (fuQ as any).conditional_followups?.filter((cfu: any) => {
@@ -3159,9 +3229,9 @@ const InputForms: React.FC = () => {
                                                                 {nfq.help_text && (
                                                                   <p >{replaceLoopToken(nfq.help_text, fuIdx)}</p>
                                                                 )}
-                                                                {renderQuestion({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
+                                                                {renderQuestion({ ...nfq, id: capturedInstanceIdx > 0 ? nfq.id * 100000 + capturedInstanceIdx : nfq.id } as unknown as QuestionToDisplay, fuIdx)}
                                                               </div>
-                                                              {renderNestedFollowups({ ...nfq, id: instanceIdx > 0 ? nfq.id * 100000 + instanceIdx : nfq.id }, fuIdx, 2, nfqKey, nfqNestedLabel)}
+                                                              {renderNestedFollowups({ ...nfq, id: capturedInstanceIdx > 0 ? nfq.id * 100000 + capturedInstanceIdx : nfq.id }, fuIdx, 2, nfqKey, nfqNestedLabel)}
                                                             </React.Fragment>
                                                           )
                                                         })

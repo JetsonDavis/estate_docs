@@ -5,6 +5,11 @@ const SESSION_ID = 668;
 
 test.describe('Repeatable Conditional Followups', () => {
   test.beforeEach(async ({ page }) => {
+    // Capture ALL console logs from the browser
+    page.on('console', msg => {
+      console.log('BROWSER:', msg.text());
+    });
+    
     // Login
     await page.goto(`${BASE_URL}/login`);
     await page.waitForSelector('input[id="username"]');
@@ -54,25 +59,49 @@ test.describe('Repeatable Conditional Followups', () => {
     const whyTexts = page.locator('text=Why can\'t the trustor act?');
     await expect(whyTexts.nth(1)).toBeVisible({ timeout: 5000 });
     
-    // Type in the second trustor's "Why can't the trustor act?" field
-    const allTextareas = page.locator('textarea');
-    const textareaCount = await allTextareas.count();
-    const secondUnableReason = allTextareas.nth(1); // Second textarea
+    // Fill in second trustor's unable reason
+    const secondUnableReason = page.locator('textarea').nth(1);
     await secondUnableReason.click();
-    await secondUnableReason.fill('');
+    await secondUnableReason.clear();
     await secondUnableReason.fill('Second trustor reason');
     await secondUnableReason.blur();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
     
-    // Verify both values are correct before refresh
-    const firstValue = await firstUnableReason.inputValue();
-    const secondValue = await secondUnableReason.inputValue();
+    // Take screenshot before checking values
+    await page.screenshot({ path: 'test-before-check.png', fullPage: true });
     
-    console.log('Before refresh - First value:', firstValue);
-    console.log('Before refresh - Second value:', secondValue);
+    // Get all textareas and log their values
+    const allTextareas = await page.locator('textarea').all();
+    console.log(`Total textareas found: ${allTextareas.length}`);
+    const textareaValues: string[] = [];
+    for (let i = 0; i < allTextareas.length; i++) {
+      const val = await allTextareas[i].inputValue();
+      textareaValues.push(val);
+      console.log(`Textarea ${i}: "${val}"`);
+    }
     
-    expect(firstValue).toBe('First trustor reason');
-    expect(secondValue).toBe('Second trustor reason');
+    // CRITICAL: Verify first textarea STILL has its original value after filling second
+    const firstValueAfterSecond = await firstUnableReason.inputValue();
+    const secondValueAfterSecond = await secondUnableReason.inputValue();
+    console.log('First textarea value AFTER filling second:', firstValueAfterSecond);
+    console.log('Second textarea value:', secondValueAfterSecond);
+    
+    // This is the key test - first should NOT have changed to second's value
+    expect(firstValueAfterSecond).toBe('First trustor reason');
+    expect(secondValueAfterSecond).toBe('Second trustor reason');
+    
+    // CRITICAL: Verify that textareas 2+ don't all have "Second trustor reason"
+    // If they do, it means all parent instances are sharing the same synthetic ID
+    const textareasWithSecondValue = textareaValues.filter(v => v === 'Second trustor reason').length;
+    console.log(`Textareas with "Second trustor reason": ${textareasWithSecondValue}`);
+    
+    // There should be exactly 1 textarea with "Second trustor reason" (the second one)
+    // If there are more, it means the bug exists
+    if (textareasWithSecondValue > 1) {
+      console.error(`BUG DETECTED: ${textareasWithSecondValue} textareas have "Second trustor reason" - they're sharing state!`);
+      await page.screenshot({ path: 'test-bug-detected.png', fullPage: true });
+      throw new Error(`Bug: ${textareasWithSecondValue} textareas share the same value instead of being independent`);
+    }
     
     // Refresh the page
     await page.reload();
