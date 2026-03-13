@@ -1464,12 +1464,17 @@ const InputForms: React.FC = () => {
         }
       }
       
+      console.log(`updateRepeatableInstance: questionId=${questionId}, instanceIndex=${instanceIndex}, value="${value}"`)
+      console.log(`  Current array:`, current)
+      
       // Update the array
       const updated = [...current]
       while (updated.length <= instanceIndex) {
         updated.push('')
       }
       updated[instanceIndex] = value
+      
+      console.log(`  Updated array:`, updated)
       
       return {
         ...prev,
