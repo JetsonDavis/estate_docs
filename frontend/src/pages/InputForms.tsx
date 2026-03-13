@@ -2975,7 +2975,12 @@ const InputForms: React.FC = () => {
 
                                         // Repeatable conditional followups need synthetic IDs per parent instance
                                         // This ensures each parent instance has its own separate array
-                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + instanceIdx)
+                                        console.log(`[SYNTHETIC ID CALC] instanceIdx=${instanceIdx}, fuSetQuestions:`, fuSetQuestions.map(q => q.id))
+                                        const fuSyntheticIds = fuSetQuestions.map(q => {
+                                          const synId = q.id * 100000 + instanceIdx
+                                          console.log(`[SYNTHETIC ID] q.id=${q.id}, instanceIdx=${instanceIdx}, synId=${synId}`)
+                                          return synId
+                                        })
 
                                         // Get instance count from the max answer array length across the set
                                         let fuInstanceCount = 1
