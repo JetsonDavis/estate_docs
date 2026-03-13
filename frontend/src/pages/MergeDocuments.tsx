@@ -411,14 +411,25 @@ const MergeDocuments: React.FC = () => {
   // Sort identifiers so matching ones line up between the two columns
   // Returns { sessionSorted, templateSorted } where matching identifiers are at the same index
   const { sessionSorted, templateSorted } = useMemo(() => {
-    // Find identifiers that exist in both lists
-    const inBoth = sessionIdentifiers.filter(id => templateIdentifiers.includes(id)).sort()
+    // Helper to strip subscripts like [1], [2] from identifiers
+    const stripSubscript = (id: string): string => {
+      return id.replace(/\[\d+\]$/, '')
+    }
+    
+    // Find identifiers that exist in both lists (ignoring subscripts)
+    const inBoth = sessionIdentifiers.filter(id => 
+      templateIdentifiers.some(tid => stripSubscript(id) === stripSubscript(tid))
+    ).sort()
     
     // Find identifiers only in session (not in template)
-    const onlyInSession = sessionIdentifiers.filter(id => !templateIdentifiers.includes(id)).sort()
+    const onlyInSession = sessionIdentifiers.filter(id => 
+      !templateIdentifiers.some(tid => stripSubscript(id) === stripSubscript(tid))
+    ).sort()
     
     // Find identifiers only in template (not in session)
-    const onlyInTemplate = templateIdentifiers.filter(id => !sessionIdentifiers.includes(id)).sort()
+    const onlyInTemplate = templateIdentifiers.filter(id => 
+      !sessionIdentifiers.some(sid => stripSubscript(id) === stripSubscript(sid))
+    ).sort()
     
     // Build aligned lists:
     // - First, matching identifiers (same in both)
@@ -661,15 +672,21 @@ const MergeDocuments: React.FC = () => {
                         <EmptyList>No session selected or no identifiers found</EmptyList>
                       ) : (
                         <IdentifierItems>
-                          {sessionSorted.map((identifier, index) => (
-                            <IdentifierItem
-                              key={identifier || `placeholder-${index}`}
-                              $placeholder={identifier === null}
-                              $missing={identifier !== null && !templateIdentifiers.includes(identifier)}
-                            >
-                              {identifier || '\u00A0'}
-                            </IdentifierItem>
-                          ))}
+                          {sessionSorted.map((identifier, index) => {
+                            const stripSubscript = (id: string): string => id.replace(/\[\d+\]$/, '')
+                            const isMissing = identifier !== null && !templateIdentifiers.some(tid => 
+                              stripSubscript(identifier) === stripSubscript(tid)
+                            )
+                            return (
+                              <IdentifierItem
+                                key={identifier || `placeholder-${index}`}
+                                $placeholder={identifier === null}
+                                $missing={isMissing}
+                              >
+                                {identifier || '\u00A0'}
+                              </IdentifierItem>
+                            )
+                          })}
                         </IdentifierItems>
                       )}
                     </IdentifiersColumn>
@@ -679,15 +696,21 @@ const MergeDocuments: React.FC = () => {
                         <EmptyList>No template selected or no identifiers found</EmptyList>
                       ) : (
                         <IdentifierItems>
-                          {templateSorted.map((identifier, index) => (
-                            <IdentifierItem
-                              key={identifier || `placeholder-${index}`}
-                              $placeholder={identifier === null}
-                              $missing={identifier !== null && !sessionIdentifiers.includes(identifier)}
-                            >
-                              {identifier || '\u00A0'}
-                            </IdentifierItem>
-                          ))}
+                          {templateSorted.map((identifier, index) => {
+                            const stripSubscript = (id: string): string => id.replace(/\[\d+\]$/, '')
+                            const isMissing = identifier !== null && !sessionIdentifiers.some(sid => 
+                              stripSubscript(identifier) === stripSubscript(sid)
+                            )
+                            return (
+                              <IdentifierItem
+                                key={identifier || `placeholder-${index}`}
+                                $placeholder={identifier === null}
+                                $missing={isMissing}
+                              >
+                                {identifier || '\u00A0'}
+                              </IdentifierItem>
+                            )
+                          })}
                         </IdentifierItems>
                       )}
                     </IdentifiersColumn>
