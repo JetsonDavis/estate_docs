@@ -348,6 +348,11 @@
   margin-bottom: 0.5rem;
 }
 
+.form-label-inline {
+  display: inline-block !important;
+  margin-bottom: 0 !important;
+}
+
 .form-input {
   width: 100%;
   padding: 0.625rem 0.875rem;

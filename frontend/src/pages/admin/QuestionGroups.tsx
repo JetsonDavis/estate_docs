@@ -4523,7 +4523,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {!collapsedItems.has(`q-${question.id}`) && <QuestionBuilderContent>
                 <div className="form-group">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                    <label className="form-label" style={{ display: 'inline-block', marginBottom: '0 !important', whiteSpace: 'nowrap', minWidth: '80px' }}>Identifier *</label>
+                    <label className="form-label form-label-inline" style={{ whiteSpace: 'nowrap', minWidth: '80px' }}>Identifier *</label>
                     {(() => {
                       // Find the previous repeatable question by checking the actual order in questionLogic
                       // This handles cases where there's a conditional between questions
