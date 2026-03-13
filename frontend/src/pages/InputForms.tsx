@@ -1497,6 +1497,7 @@ const InputForms: React.FC = () => {
 
     // Handler for value changes - uses repeatable-aware update if needed
     const handleValueChange = (newValue: string) => {
+      console.log(`handleValueChange called: questionId=${question.id}, instanceIndex=${instanceIndex}, repeatable=${question.repeatable}, value="${newValue}"`)
       if (question.repeatable) {
         updateRepeatableInstance(question.id, instanceIndex, newValue)
       } else {
