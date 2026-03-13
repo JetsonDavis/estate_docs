@@ -4607,6 +4607,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                   updateQuestionFields(question.id, { repeatable: false, repeatable_group_id: undefined })
                                 }
                               }}
+                              style={{ margin: 0, verticalAlign: 'middle' }}
                             />
                             Repeatable
                           </label>
