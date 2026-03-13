@@ -507,22 +507,9 @@ const InputForms: React.FC = () => {
         if (!cfus) return
         for (const cfu of cfus) {
           for (const fq of (cfu.questions || [])) {
-            if (fq.repeatable && initialAnswers[fq.id] !== undefined) {
-              // Repeatable followups use synthetic IDs for ALL instances (including 0)
-              // Copy the real ID answer to synthetic ID 0 so rendering can find it
-              for (let i = 0; i < instanceCount; i++) {
-                const synId = fq.id * 100000 + i
-                if (initialAnswers[synId] === undefined) {
-                  initialAnswers[synId] = initialAnswers[fq.id]
-                }
-                // Also seed personAnswers/personConjunctions for person-type questions
-                if ((fq.question_type === 'person' || fq.question_type === 'person_backup') && initialPersonAnswers[fq.id] && !initialPersonAnswers[synId]) {
-                  initialPersonAnswers[synId] = [...initialPersonAnswers[fq.id]]
-                  if (initialPersonConjunctions[fq.id]) {
-                    initialPersonConjunctions[synId] = [...initialPersonConjunctions[fq.id]]
-                  }
-                }
-              }
+            if (fq.repeatable) {
+              // Repeatable followups now use REAL IDs and manage their own arrays
+              // No synthetic ID seeding needed - they work like regular repeatable questions
             } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
               for (let i = 1; i < instanceCount; i++) {
