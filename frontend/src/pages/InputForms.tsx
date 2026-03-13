@@ -507,9 +507,22 @@ const InputForms: React.FC = () => {
         if (!cfus) return
         for (const cfu of cfus) {
           for (const fq of (cfu.questions || [])) {
-            if (fq.repeatable) {
-              // Repeatable followups now use REAL IDs and manage their own arrays
-              // No synthetic ID seeding needed - they work like regular repeatable questions
+            if (fq.repeatable && initialAnswers[fq.id] !== undefined) {
+              // Repeatable followups use synthetic IDs for ALL instances (including 0)
+              // Each parent instance gets its own separate array
+              for (let i = 0; i < instanceCount; i++) {
+                const synId = fq.id * 100000 + i
+                if (initialAnswers[synId] === undefined) {
+                  initialAnswers[synId] = initialAnswers[fq.id]
+                }
+                // Also seed personAnswers/personConjunctions for person-type questions
+                if ((fq.question_type === 'person' || fq.question_type === 'person_backup') && initialPersonAnswers[fq.id] && !initialPersonAnswers[synId]) {
+                  initialPersonAnswers[synId] = [...initialPersonAnswers[fq.id]]
+                  if (initialPersonConjunctions[fq.id]) {
+                    initialPersonConjunctions[synId] = [...initialPersonConjunctions[fq.id]]
+                  }
+                }
+              }
             } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
               for (let i = 1; i < instanceCount; i++) {
@@ -2954,14 +2967,14 @@ const InputForms: React.FC = () => {
                                           q.repeatable && (q.repeatable_group_id || String(q.id)) === fuGroupId
                                         )
 
-                                        // Use REAL IDs for repeatable questions - they manage their own arrays
-                                        // No synthetic IDs needed since they're truly repeatable
-                                        const fuQuestionIds = fuSetQuestions.map(q => q.id)
+                                        // Repeatable conditional followups need synthetic IDs per parent instance
+                                        // This ensures each parent instance has its own separate array
+                                        const fuSyntheticIds = fuSetQuestions.map(q => q.id * 100000 + instanceIdx)
 
                                         // Get instance count from the max answer array length across the set
                                         let fuInstanceCount = 1
-                                        for (const qid of fuQuestionIds) {
-                                          const arr = getRepeatableAnswerArray(qid)
+                                        for (const sid of fuSyntheticIds) {
+                                          const arr = getRepeatableAnswerArray(sid)
                                           if (arr.length > fuInstanceCount) fuInstanceCount = arr.length
                                         }
 
@@ -2985,10 +2998,10 @@ const InputForms: React.FC = () => {
                                                   <button
                                                     type="button"
                                                     onClick={() => {
-                                                      for (const qid of fuQuestionIds) {
-                                                        const arr = getRepeatableAnswerArray(qid)
+                                                      for (const sid of fuSyntheticIds) {
+                                                        const arr = getRepeatableAnswerArray(sid)
                                                         if (arr.length > 1) {
-                                                          setRepeatableAnswerArray(qid, arr.filter((_, i) => i !== fuIdx))
+                                                          setRepeatableAnswerArray(sid, arr.filter((_, i) => i !== fuIdx))
                                                         }
                                                       }
                                                     }}
@@ -3002,11 +3015,11 @@ const InputForms: React.FC = () => {
                                                   ><span aria-hidden="true">×</span> Remove</button>
                                                 )}
                                                 {fuSetQuestions.map((fuQ, fuQIdx) => {
-                                                  // Use real ID for repeatable questions - no synthetic ID needed
-                                                  const virtualQ = { ...fuQ } as unknown as QuestionToDisplay
+                                                  const sid = fuSyntheticIds[fuQIdx]
+                                                  const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
 
                                                   // Get the current answer for this follow-up question instance
-                                                  const fuAnswer = getRepeatableAnswerArray(fuQ.id)[fuIdx] || ''
+                                                  const fuAnswer = getRepeatableAnswerArray(sid)[fuIdx] || ''
 
                                                   // Evaluate conditional_followups on this follow-up question
                                                   const nestedFollowups = (fuQ as any).conditional_followups?.filter((cfu: any) => {
@@ -3160,9 +3173,9 @@ const InputForms: React.FC = () => {
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                for (const qid of fuQuestionIds) {
-                                                  const arr = getRepeatableAnswerArray(qid)
-                                                  setRepeatableAnswerArray(qid, [...arr, ''])
+                                                for (const sid of fuSyntheticIds) {
+                                                  const arr = getRepeatableAnswerArray(sid)
+                                                  setRepeatableAnswerArray(sid, [...arr, ''])
                                                 }
                                               }}
                                               style={{
