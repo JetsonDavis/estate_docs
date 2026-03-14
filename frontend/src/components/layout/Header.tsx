@@ -255,9 +255,6 @@ const Header: React.FC = () => {
                     <HeaderLink to="/admin/question-groups">
                       Question Groups
                     </HeaderLink>
-                    <HeaderLink to="/admin/flows">
-                      Flows
-                    </HeaderLink>
                     <HeaderLink to="/admin/templates">
                       Templates
                     </HeaderLink>

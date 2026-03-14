@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
@@ -10,6 +10,8 @@ import './Templates.css'
 const EditTemplate: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const returnTo = searchParams.get('returnTo')
 
   const [template, setTemplate] = useState<Template | null>(null)
   const [name, setName] = useState('')
@@ -290,7 +292,7 @@ const EditTemplate: React.FC = () => {
         description: description || undefined,
         markdown_content: markdownContent
       })
-      navigate('/admin/templates')
+      navigate(returnTo || '/admin/templates')
     } catch (err: any) {
       toast(err.response?.data?.detail || 'Failed to update template')
     } finally {

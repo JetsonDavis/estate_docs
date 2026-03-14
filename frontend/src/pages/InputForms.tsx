@@ -380,6 +380,7 @@ const US_STATES = [
 const InputForms: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const sessionId = searchParams.get('session')
+  const returnTo = searchParams.get('returnTo')
   const navigate = useNavigate()
 
   // Session list state
@@ -1384,7 +1385,7 @@ const InputForms: React.FC = () => {
 
       if (direction === 'forward' && isLastGroup && !hasChanges) {
         // No changes - just navigate directly to menu without saving
-        navigate('/document')
+        navigate(returnTo || '/document')
         return
       }
 
@@ -1395,8 +1396,8 @@ const InputForms: React.FC = () => {
       })
 
       if (result.is_completed) {
-        // Navigate back to document sessions list
-        navigate('/document')
+        // Navigate back to where user came from, or document sessions list
+        navigate(returnTo || '/document')
       } else {
         // Reload questions for new group
         await loadSessionQuestions(sessionData.session_id)
