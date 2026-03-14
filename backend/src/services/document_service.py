@@ -899,27 +899,27 @@ class DocumentService:
             return DocumentService._is_value_empty(value)
 
         neq_match = re.match(
-            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL))',
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL|NONE))',
             cond, re.IGNORECASE
         )
         if neq_match:
             identifier = neq_match.group(1).lower()
             keyword = neq_match.group(3)
             actual = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
-            if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+            if keyword and keyword.upper() in ('EMPTY', 'NULL', 'NONE'):
                 return not DocumentService._is_value_empty(actual)
             expected = neq_match.group(2) or ''
             return actual.lower() != expected.lower()
 
         eq_match = re.match(
-            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL))',
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL|NONE))',
             cond, re.IGNORECASE
         )
         if eq_match:
             identifier = eq_match.group(1).lower()
             keyword = eq_match.group(3)
             actual = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
-            if keyword and keyword.upper() in ('EMPTY', 'NULL'):
+            if keyword and keyword.upper() in ('EMPTY', 'NULL', 'NONE'):
                 return DocumentService._is_value_empty(actual)
             expected = eq_match.group(2) or ''
             return actual.lower() == expected.lower()
