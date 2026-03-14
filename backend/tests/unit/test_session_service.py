@@ -270,6 +270,414 @@ class TestSessionService:
         assert success is False
 
 
+class TestHierarchicalNumbering:
+    """Test suite for hierarchical numbering in _get_questions_from_logic.
+
+    Regression tests for the bug where conditionals far from their triggering
+    question used last_question_number as prefix instead of the trigger's number,
+    causing follow-ups like '6-1' instead of '2-2' inside repeatable blocks.
+    """
+
+    def _make_question(self, db_session, group, identifier, text, qtype="free_text",
+                       repeatable=False, repeatable_group_id=None, options=None):
+        """Helper to create a question in the group."""
+        q = Question(
+            question_group_id=group.id,
+            identifier=identifier,
+            question_text=text,
+            question_type=qtype,
+            display_order=1,
+            is_required=False,
+            repeatable=repeatable,
+            repeatable_group_id=repeatable_group_id,
+            options=options,
+        )
+        db_session.add(q)
+        db_session.flush()
+        return q
+
+    def test_conditional_far_from_trigger_uses_trigger_number(self, db_session):
+        """Conditionals referencing a question far earlier in the logic list
+        should number nested items relative to the trigger, not the last question.
+
+        Layout mirrors the Diane Schatz bug:
+          Q1 (trustor, repeatable)
+          Q2 (trustor_living, repeatable)
+          IF trustor_living=no -> Q_dod            (should be 2-1)
+          Q3 (trust_name)
+          Q4 (trust_date)
+          Q5 (has_restated)
+          Q6 (amend_clause)
+          IF trustor_living=no -> Q_death_clause   (should be 2-2, NOT 6-1)
+        """
+        group = QuestionGroup(
+            name="Test Numbering",
+            identifier="test_numbering_far_cond",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        rep_grp = "rep-group-1"
+        q1 = self._make_question(db_session, group, "trustor", "Trustor?",
+                                 qtype="person", repeatable=True, repeatable_group_id=rep_grp)
+        q2 = self._make_question(db_session, group, "trustor_living", "Living?",
+                                 qtype="multiple_choice", repeatable=True,
+                                 repeatable_group_id=rep_grp,
+                                 options=[{"value": "yes", "label": "Yes"},
+                                          {"value": "no", "label": "No"}])
+        q_dod = self._make_question(db_session, group, "trustor_dod", "Date of death?")
+        q3 = self._make_question(db_session, group, "trust_name", "Trust name?")
+        q4 = self._make_question(db_session, group, "trust_date", "Trust date?")
+        q5 = self._make_question(db_session, group, "has_restated", "Restated?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "yes", "label": "Yes"},
+                                          {"value": "no", "label": "No"}])
+        q6 = self._make_question(db_session, group, "amend_clause", "What clause?")
+        q_death_clause = self._make_question(db_session, group, "death_clause",
+                                             "Surviving trustor clause?")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q1.id},
+            {"type": "question", "questionId": q2.id},
+            # First conditional right after trigger — should number as 2-X
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "trustor_living", "value": "no",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_dod.id},
+                ],
+            }},
+            {"type": "question", "questionId": q3.id},
+            {"type": "question", "questionId": q4.id},
+            {"type": "question", "questionId": q5.id},
+            {"type": "question", "questionId": q6.id},
+            # Second conditional far from trigger — should ALSO number as 2-X (continuing)
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "trustor_living", "value": "no",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_death_clause.id},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        questions_with_data, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        # Core assertions: top-level numbering
+        assert question_numbers[q1.id] == "1"
+        assert question_numbers[q2.id] == "2"
+        assert question_numbers[q3.id] == "3"
+        assert question_numbers[q4.id] == "4"
+        assert question_numbers[q5.id] == "5"
+        assert question_numbers[q6.id] == "6"
+
+        # First conditional follow-up of trustor_living: numbered under "2"
+        assert question_numbers[q_dod.id] == "2-1"
+
+        # Second conditional follow-up of trustor_living: MUST continue under "2"
+        # Before the fix this was incorrectly "6-1"
+        assert question_numbers[q_death_clause.id] == "2-2"
+
+    def test_multiple_conditionals_same_trigger_continue_numbering(self, db_session):
+        """Multiple conditional blocks referencing the same trigger should
+        continue incrementing the sub-number, not restart at 1."""
+        group = QuestionGroup(
+            name="Test Multi Cond",
+            identifier="test_multi_cond",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        q_main = self._make_question(db_session, group, "color", "Favorite color?",
+                                     qtype="multiple_choice",
+                                     options=[{"value": "red", "label": "Red"},
+                                              {"value": "blue", "label": "Blue"}])
+        q_red1 = self._make_question(db_session, group, "shade_red", "What shade of red?")
+        q_filler = self._make_question(db_session, group, "filler", "Unrelated question?")
+        q_red2 = self._make_question(db_session, group, "why_red", "Why red?")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q_main.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "color", "value": "red",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_red1.id},
+                ],
+            }},
+            {"type": "question", "questionId": q_filler.id},
+            # Second conditional for same trigger, after intervening question
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "color", "value": "red",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_red2.id},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        assert question_numbers[q_main.id] == "1"
+        assert question_numbers[q_red1.id] == "1-1"
+        assert question_numbers[q_filler.id] == "2"
+        # Must be 1-2, not 2-1
+        assert question_numbers[q_red2.id] == "1-2"
+
+    def test_nested_sub_conditionals_number_correctly(self, db_session):
+        """Conditionals nested inside other conditionals should number
+        relative to their own trigger question."""
+        group = QuestionGroup(
+            name="Test Nested Sub",
+            identifier="test_nested_sub",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        q_parent = self._make_question(db_session, group, "parent_q", "Parent?",
+                                       qtype="multiple_choice",
+                                       options=[{"value": "yes", "label": "Yes"}])
+        q_child = self._make_question(db_session, group, "child_q", "Child?",
+                                      qtype="multiple_choice",
+                                      options=[{"value": "Other", "label": "Other"}])
+        q_grandchild = self._make_question(db_session, group, "grandchild_q", "Details?")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q_parent.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "parent_q", "value": "yes",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_child.id},
+                    {"type": "conditional", "conditional": {
+                        "ifIdentifier": "child_q", "value": "Other",
+                        "nestedItems": [
+                            {"type": "question", "questionId": q_grandchild.id},
+                        ],
+                    }},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        assert question_numbers[q_parent.id] == "1"
+        assert question_numbers[q_child.id] == "1-1"
+        assert question_numbers[q_grandchild.id] == "1-1-1"
+
+    def test_amendment_pattern_no_duplicate_numbers(self, db_session):
+        """Mimics the amendment repeatable block where multiple conditional
+        blocks under the same trigger should not produce duplicate numbers.
+
+        Layout:
+          Q7 (amendment_number, repeatable)
+          Q8 (amendment_type, repeatable)
+          IF amendment_type=Update SSTEE -> Q_sstee_title    (8-1)
+          IF amendment_type=Update SSTEE -> Q_new_sstee      (8-2, NOT duplicate 8-1)
+                                            Q_sstee_relation (8-3)
+        """
+        group = QuestionGroup(
+            name="Test Amend Pattern",
+            identifier="test_amend_pattern",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        rep_grp = "amend-group"
+        q7 = self._make_question(db_session, group, "amend_num", "Amendment number?",
+                                 repeatable=True, repeatable_group_id=rep_grp)
+        q8 = self._make_question(db_session, group, "amend_type", "Amendment type?",
+                                 qtype="multiple_choice", repeatable=True,
+                                 repeatable_group_id=rep_grp,
+                                 options=[{"value": "Update SSTEE", "label": "Update SSTEE"}])
+        q_title = self._make_question(db_session, group, "sstee_title", "SSTEE section title?")
+        q_new = self._make_question(db_session, group, "new_sstee", "New trustees?",
+                                    qtype="person", repeatable=True,
+                                    repeatable_group_id="sstee-sub-group")
+        q_rel = self._make_question(db_session, group, "sstee_rel", "Relation to trustor?",
+                                    repeatable=True, repeatable_group_id="sstee-sub-group")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q7.id},
+            {"type": "question", "questionId": q8.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "amend_type", "value": "Update SSTEE",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_title.id},
+                ],
+            }},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "amend_type", "value": "Update SSTEE",
+                "nestedItems": [
+                    {"type": "question", "questionId": q_new.id},
+                    {"type": "question", "questionId": q_rel.id},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        assert question_numbers[q7.id] == "1"
+        assert question_numbers[q8.id] == "2"
+        assert question_numbers[q_title.id] == "2-1"
+        # These must continue from 2-1, not restart at 2-1
+        assert question_numbers[q_new.id] == "2-2"
+        assert question_numbers[q_rel.id] == "2-3"
+
+        # Verify no duplicate hierarchical numbers
+        all_numbers = list(question_numbers.values())
+        assert len(all_numbers) == len(set(all_numbers)), \
+            f"Duplicate hierarchical numbers found: {all_numbers}"
+
+
+class TestAnyNoneOperators:
+    """Tests for IF ANY / IF NONE conditional operators on repeatable groups."""
+
+    def _make_question(self, db_session, group, identifier, text, qtype="free_text",
+                       repeatable=False, repeatable_group_id=None, options=None):
+        q = Question(
+            question_group_id=group.id,
+            identifier=identifier,
+            question_text=text,
+            question_type=qtype,
+            display_order=1,
+            is_required=False,
+            repeatable=repeatable,
+            repeatable_group_id=repeatable_group_id,
+            options=options,
+        )
+        db_session.add(q)
+        db_session.flush()
+        return q
+
+    def _setup_any_none_scenario(self, db_session):
+        """Create a repeatable question with an any_equals and none_equals conditional.
+
+        Layout:
+          Q1 (color, repeatable, multiple_choice: red/blue/green)
+          IF ANY color = red  -> Q_red_msg
+          IF NONE color = blue -> Q_no_blue_msg
+        """
+        group = QuestionGroup(
+            name="Test Any None",
+            identifier="test_any_none",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        q_color = self._make_question(
+            db_session, group, "color", "Favorite color?",
+            qtype="multiple_choice", repeatable=True, repeatable_group_id="color-group",
+            options=[{"value": "red", "label": "Red"},
+                     {"value": "blue", "label": "Blue"},
+                     {"value": "green", "label": "Green"}],
+        )
+        q_red_msg = self._make_question(db_session, group, "red_msg", "Someone picked red!")
+        q_no_blue_msg = self._make_question(db_session, group, "no_blue_msg", "Nobody picked blue!")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q_color.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "color", "operator": "any_equals", "value": "red",
+                "nestedItems": [{"type": "question", "questionId": q_red_msg.id}],
+            }},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "color", "operator": "none_equals", "value": "blue",
+                "nestedItems": [{"type": "question", "questionId": q_no_blue_msg.id}],
+            }},
+        ]
+        db_session.commit()
+        return group, q_color, q_red_msg, q_no_blue_msg
+
+    def test_any_equals_matches_when_present(self, db_session):
+        """any_equals should show nested questions when at least one instance matches."""
+        group, q_color, q_red_msg, _ = self._setup_any_none_scenario(db_session)
+
+        # Answers: ["red", "green"] — "red" is present
+        existing_answers = {q_color.id: '["red", "green"]'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_red_msg.id in displayed_ids
+
+    def test_any_equals_hidden_when_absent(self, db_session):
+        """any_equals should hide nested questions when no instance matches."""
+        group, q_color, q_red_msg, _ = self._setup_any_none_scenario(db_session)
+
+        # Answers: ["blue", "green"] — "red" is NOT present
+        existing_answers = {q_color.id: '["blue", "green"]'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_red_msg.id not in displayed_ids
+
+    def test_none_equals_matches_when_absent(self, db_session):
+        """none_equals should show nested questions when NO instance matches."""
+        group, q_color, _, q_no_blue_msg = self._setup_any_none_scenario(db_session)
+
+        # Answers: ["red", "green"] — "blue" is NOT present
+        existing_answers = {q_color.id: '["red", "green"]'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_no_blue_msg.id in displayed_ids
+
+    def test_none_equals_hidden_when_present(self, db_session):
+        """none_equals should hide nested questions when any instance matches."""
+        group, q_color, _, q_no_blue_msg = self._setup_any_none_scenario(db_session)
+
+        # Answers: ["blue", "green"] — "blue" IS present
+        existing_answers = {q_color.id: '["blue", "green"]'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_no_blue_msg.id not in displayed_ids
+
+    def test_any_equals_single_value_fallback(self, db_session):
+        """any_equals should work with a plain (non-JSON) scalar answer."""
+        group, q_color, q_red_msg, _ = self._setup_any_none_scenario(db_session)
+
+        existing_answers = {q_color.id: 'red'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_red_msg.id in displayed_ids
+
+    def test_none_equals_single_value_fallback(self, db_session):
+        """none_equals should work with a plain (non-JSON) scalar answer."""
+        group, q_color, _, q_no_blue_msg = self._setup_any_none_scenario(db_session)
+
+        # "red" is not "blue", so none_equals blue should be True
+        existing_answers = {q_color.id: 'red'}
+        questions_with_data, _, _, _ = SessionService._get_questions_from_logic(
+            db_session, group, existing_answers
+        )
+        displayed_ids = [q.id for q, _, _ in questions_with_data]
+        assert q_no_blue_msg.id in displayed_ids
+
+
 @pytest.fixture
 def sample_question_group(db_session):
     """Create a sample question group."""

@@ -108,22 +108,8 @@ const EditTemplate: React.FC = () => {
     }
   }, [isEditing, markdownContent])
 
-  // Escape template identifiers in HTML for display
-  const escapeIdentifiersForDisplay = (html: string): string => {
-    // Replace <<identifier>> with HTML entities so they display correctly
-    return html.replace(/<<([^>]+)>>/g, '&lt;&lt;$1&gt;&gt;')
-      .replace(/\{\{([^}]+)\}\}/g, '&#123;&#123;$1&#125;&#125;')
-  }
-
-  // Format content with bold for {{ }} and << >> patterns, and color coding for IF/FOREACH
-  const formatContent = (text: string) => {
-    // Escape HTML first
-    const escaped = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-
-    // Color scheme for nesting levels
+  // Color-code IF/FOREACH blocks and escape identifiers for the formatted display view
+  const colorCodeForDisplay = (html: string): string => {
     const colors = [
       '#2563eb', // Blue for level 0
       '#059669', // Green for level 1
@@ -131,64 +117,33 @@ const EditTemplate: React.FC = () => {
       '#dc2626', // Red for level 3+
     ]
 
-    // Track nesting depth as we parse
-    let result = ''
+    // First escape <<...>> patterns (< is HTML-special)
+    let result = html.replace(/<<([^>]+)>>/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
+
+    // Process {{...}} with depth-based color coding for control flow
     let depth = 0
-    const stack: string[] = [] // Track what we're inside (IF or FOREACH)
+    result = result.replace(/\{\{([^}]+)\}\}/g, (_match, inner) => {
+      const upper = inner.trim().toUpperCase()
 
-    // Split by {{ }} blocks
-    const parts = escaped.split(/(\{\{[^}]+\}\})/g)
-
-    for (const part of parts) {
-      if (part.startsWith('{{') && part.endsWith('}}')) {
-        const inner = part.slice(2, -2).trim()
-
-        // Determine block type
-        let isOpening = false
-        let isClosing = false
-        let blockType = ''
-
-        if (inner.match(/^IF\s/i) || inner === 'IF') {
-          isOpening = true
-          blockType = 'IF'
-        } else if (inner.match(/^FOREACH\s/i)) {
-          isOpening = true
-          blockType = 'FOREACH'
-        } else if (inner === 'END FOREACH') {
-          isClosing = true
-          blockType = 'FOREACH'
-        } else if (inner === 'END') {
-          isClosing = true
-          blockType = 'IF'
-        } else if (inner === 'ELSE') {
-          // ELSE doesn't change depth, uses current depth
-          const color = colors[Math.min(depth - 1, colors.length - 1)]
-          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
-          continue
-        }
-
-        if (isOpening) {
-          const color = colors[Math.min(depth, colors.length - 1)]
-          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
-          stack.push(blockType)
-          depth++
-        } else if (isClosing) {
-          depth = Math.max(0, depth - 1)
-          const color = colors[Math.min(depth, colors.length - 1)]
-          result += `<strong style="color: ${color};">{{${inner}}}</strong>`
-          stack.pop()
-        } else {
-          // Other {{ }} blocks (not control flow) - just bold
-          result += `<strong>{{${inner}}}</strong>`
-        }
+      if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOREACH')) {
+        const color = colors[Math.min(depth, colors.length - 1)]
+        depth++
+        return `<strong style="color: ${color};">{{${inner}}}</strong>`
+      } else if (upper === 'END FOREACH' || upper === 'END') {
+        depth = Math.max(0, depth - 1)
+        const color = colors[Math.min(depth, colors.length - 1)]
+        return `<strong style="color: ${color};">{{${inner}}}</strong>`
+      } else if (upper === 'ELSE') {
+        const color = colors[Math.min(Math.max(0, depth - 1), colors.length - 1)]
+        return `<strong style="color: ${color};">{{${inner}}}</strong>`
       } else {
-        // Regular text - apply << >> bold formatting
-        result += part.replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
+        return `<strong>{{${inner}}}</strong>`
       }
-    }
+    })
 
-    return result.replace(/\n/g, '<br>')
+    return result
   }
+
 
 
   // Validate matching IF/END and FOREACH/END FOREACH blocks
@@ -242,17 +197,7 @@ const EditTemplate: React.FC = () => {
     return errors
   }
 
-  // Block navigation when there are block errors
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (blockErrors.length > 0) {
-        e.preventDefault()
-        e.returnValue = ''
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [blockErrors])
+  // Note: block errors are shown as warnings only — navigation is not blocked
 
   const autoSave = useCallback(async () => {
     const t = templateRef.current
@@ -334,7 +279,9 @@ const EditTemplate: React.FC = () => {
 
     const errors = validateBlocks(markdownContent)
     setBlockErrors(errors)
-    if (errors.length > 0) return
+    if (errors.length > 0) {
+      toast('Warning: there are mismatched IF/FOREACH blocks. Saving anyway.', 'warning')
+    }
 
     try {
       setSubmitting(true)
@@ -388,13 +335,7 @@ const EditTemplate: React.FC = () => {
             )}
           </div>
           <button
-            onClick={() => {
-              if (blockErrors.length > 0) {
-                toast('Please fix the mismatched IF/FOREACH blocks before navigating away.', 'warning')
-                return
-              }
-              navigate('/admin/templates')
-            }}
+            onClick={() => navigate('/admin/templates')}
             className="cancel-button"
             style={{ padding: '0.625rem 1.25rem' }}
           >
@@ -495,7 +436,7 @@ const EditTemplate: React.FC = () => {
                     cursor: 'text'
                   }}
                   dangerouslySetInnerHTML={{
-                    __html: escapeIdentifiersForDisplay(markdownContent)
+                    __html: colorCodeForDisplay(markdownContent)
                   }}
                 />
               )}
@@ -504,30 +445,22 @@ const EditTemplate: React.FC = () => {
             <div className="form-actions" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button
                 type="button"
-                onClick={() => {
-                  if (blockErrors.length > 0) {
-                    toast('Please fix the mismatched IF/FOREACH blocks before navigating away.', 'warning')
-                    return
-                  }
-                  navigate('/admin/templates')
-                }}
+                onClick={() => navigate('/admin/templates')}
                 className="cancel-button"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={submitting || blockErrors.length > 0}
+                disabled={submitting}
                 className="submit-button"
                 style={blockErrors.length > 0 ? {
-                  backgroundColor: '#dc2626',
-                  borderColor: '#dc2626',
-                  cursor: 'not-allowed',
-                  opacity: 0.9
+                  backgroundColor: '#f59e0b',
+                  borderColor: '#f59e0b',
                 } : {}}
               >
                 {blockErrors.length > 0
-                  ? 'Error, please correct before saving'
+                  ? '⚠ Save (has warnings)'
                   : submitting
                     ? 'Saving...'
                     : 'Save Changes'}

@@ -656,11 +656,28 @@ const InputForms: React.FC = () => {
     return answers[syntheticId] || answers[realId] || ''
   }
 
-  // Shared conditional evaluation: supports equals, not_equals, count_greater_than, count_equals, count_less_than
+  // Shared conditional evaluation: supports equals, not_equals, any_equals, none_equals, count_greater_than, count_equals, count_less_than
   const evaluateConditional = (operator: string | undefined, answer: string, triggerValue: string, fullAnswer?: string): boolean => {
     const op = operator || 'equals'
     if (op === 'equals') return answer === triggerValue
     if (op === 'not_equals') return answer !== triggerValue
+    if (op === 'any_equals' || op === 'none_equals') {
+      // any_equals / none_equals: check if ANY or NONE of the repeatable group instances match
+      const source = fullAnswer !== undefined ? fullAnswer : answer
+      let values: string[] = []
+      try {
+        const parsed = JSON.parse(source)
+        if (Array.isArray(parsed)) {
+          values = parsed.map((v: any) => (v != null ? String(v) : ''))
+        } else {
+          values = [source]
+        }
+      } catch {
+        values = [source]
+      }
+      const anyMatch = values.some(v => v === triggerValue)
+      return op === 'any_equals' ? anyMatch : !anyMatch
+    }
     if (op === 'count_greater_than' || op === 'count_equals' || op === 'count_less_than') {
       // Count operators: parse the full answer (JSON array) and compare length to threshold
       const source = fullAnswer !== undefined ? fullAnswer : answer

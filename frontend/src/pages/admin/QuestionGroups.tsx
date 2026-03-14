@@ -3979,6 +3979,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <option value="not_equals">does not equal</option>
                       {isRepeatable && (
                         <>
+                          <option value="any_equals">if any equals</option>
+                          <option value="none_equals">if none equals</option>
                           <option value="count_greater_than">entry count &gt;</option>
                           <option value="count_equals">entry count =</option>
                           <option value="count_less_than">entry count &lt;</option>
@@ -5001,6 +5003,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 <option value="not_equals">does not equal</option>
                                 {isRepeatable && (
                                   <>
+                                    <option value="any_equals">if any equals</option>
+                                    <option value="none_equals">if none equals</option>
                                     <option value="count_greater_than">entry count &gt;</option>
                                     <option value="count_equals">entry count =</option>
                                     <option value="count_less_than">entry count &lt;</option>

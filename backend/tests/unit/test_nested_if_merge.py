@@ -705,3 +705,78 @@ Footer"""
         assert "NOT available" in result
         assert "Fallback content" in result
         assert "Footer" in result
+
+
+class TestIfAnyNoneMerge:
+    """Test suite for IF ANY / IF NONE aggregate operators in template merge."""
+
+    def test_if_any_true_when_match_present(self):
+        """IF ANY should include block when at least one array element matches."""
+        template = '{{ IF ANY <<color>> = "red" }}Red found{{ END }}'
+        raw = {"color": '["red", "green", "blue"]'}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "Red found" in result
+
+    def test_if_any_false_when_no_match(self):
+        """IF ANY should exclude block when no array element matches."""
+        template = '{{ IF ANY <<color>> = "red" }}Red found{{ END }}'
+        raw = {"color": '["green", "blue"]'}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "Red found" not in result
+
+    def test_if_none_true_when_no_match(self):
+        """IF NONE should include block when no array element matches."""
+        template = '{{ IF NONE <<color>> = "red" }}No red{{ END }}'
+        raw = {"color": '["green", "blue"]'}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "No red" in result
+
+    def test_if_none_false_when_match_present(self):
+        """IF NONE should exclude block when at least one element matches."""
+        template = '{{ IF NONE <<color>> = "red" }}No red{{ END }}'
+        raw = {"color": '["red", "green"]'}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "No red" not in result
+
+    def test_if_any_with_else(self):
+        """IF ANY with ELSE branch."""
+        template = '{{ IF ANY <<color>> = "red" }}Has red{{ ELSE }}No red{{ END }}'
+        raw_yes = {"color": '["red", "blue"]'}
+        raw_no = {"color": '["green", "blue"]'}
+        assert "Has red" in DocumentService._merge_template(template, {}, raw_answer_map=raw_yes)
+        assert "No red" in DocumentService._merge_template(template, {}, raw_answer_map=raw_no)
+
+    def test_if_any_scalar_fallback(self):
+        """IF ANY should work with a non-array scalar value."""
+        template = '{{ IF ANY <<color>> = "red" }}Red found{{ END }}'
+        raw = {"color": "red"}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "Red found" in result
+
+    def test_if_none_scalar_fallback(self):
+        """IF NONE should work with a non-array scalar value."""
+        template = '{{ IF NONE <<color>> = "red" }}No red{{ END }}'
+        raw = {"color": "green"}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "No red" in result
+
+    def test_if_any_case_insensitive(self):
+        """IF ANY/NONE condition keywords are case-insensitive."""
+        template = '{{ if any <<color>> = "Red" }}found{{ END }}'
+        raw = {"color": '["Red", "Blue"]'}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "found" in result
+
+    def test_if_any_empty_array(self):
+        """IF ANY on an empty array should be false."""
+        template = '{{ IF ANY <<color>> = "red" }}Red found{{ END }}'
+        raw = {"color": "[]"}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "Red found" not in result
+
+    def test_if_none_empty_array(self):
+        """IF NONE on an empty array should be true (no elements match)."""
+        template = '{{ IF NONE <<color>> = "red" }}No red{{ END }}'
+        raw = {"color": "[]"}
+        result = DocumentService._merge_template(template, {}, raw_answer_map=raw)
+        assert "No red" in result

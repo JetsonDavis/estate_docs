@@ -85,6 +85,14 @@ export const templateService = {
   },
 
   /**
+   * Duplicate a template
+   */
+  duplicateTemplate: async (id: number): Promise<Template> => {
+    const response = await apiClient.post<Template>(`/templates/${id}/duplicate`)
+    return response.data
+  },
+
+  /**
    * Get all identifiers from a template
    */
   getTemplateIdentifiers: async (id: number): Promise<TemplateIdentifiersResponse> => {

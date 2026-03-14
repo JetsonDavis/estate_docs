@@ -261,6 +261,40 @@ class TemplateService:
         }
     
     @staticmethod
+    def duplicate_template(db: Session, template_id: int, created_by: int) -> Optional[Template]:
+        """
+        Duplicate an existing template.
+
+        Args:
+            db: Database session
+            template_id: ID of the template to duplicate
+            created_by: User ID creating the duplicate
+
+        Returns:
+            New duplicated template if source found, None otherwise
+        """
+        source = TemplateService.get_template(db, template_id)
+        if not source:
+            return None
+
+        duplicate = Template(
+            name=f"{source.name} (Copy)",
+            description=source.description,
+            template_type=source.template_type,
+            markdown_content=source.markdown_content,
+            original_filename=source.original_filename,
+            original_file_path=source.original_file_path,
+            identifiers=source.identifiers,
+            created_by=created_by,
+        )
+
+        db.add(duplicate)
+        db.commit()
+        db.refresh(duplicate)
+
+        return duplicate
+
+    @staticmethod
     def get_template_identifiers(db: Session, template_id: int) -> Optional[list[str]]:
         """
         Get all identifiers from a template.

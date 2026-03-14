@@ -855,9 +855,40 @@ class DocumentService:
     def _evaluate_if_condition(condition_text: str, answer_map: dict, raw_answer_map: dict) -> bool:
         """Evaluate the condition inside {{ IF <condition> }}.
 
+        Supports:
+          identifier = "value"     / identifier != "value"
+          NOT identifier
+          ANY <<identifier>> = "value"   (true if any array element matches)
+          NONE <<identifier>> = "value"  (true if no array element matches)
+
         Returns True if the content should be included.
         """
         cond = condition_text.strip()
+
+        # ANY / NONE aggregate operators for repeatable fields
+        _q = r'["\'\u201c\u201d\u2018\u2019\u00ab\u00bb]'
+        any_none_match = re.match(
+            r'(ANY|NONE)\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?',
+            cond, re.IGNORECASE
+        )
+        if any_none_match:
+            quantifier = any_none_match.group(1).upper()
+            identifier = any_none_match.group(2).lower()
+            expected = any_none_match.group(3) or ''
+            raw_value = (raw_answer_map or {}).get(identifier, '') or (answer_map or {}).get(identifier, '')
+            # Parse as JSON array; fall back to single-element list
+            values: list = []
+            if raw_value:
+                try:
+                    parsed = json.loads(raw_value)
+                    if isinstance(parsed, list):
+                        values = [str(v).lower() if v is not None else '' for v in parsed]
+                    else:
+                        values = [str(raw_value).lower()]
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    values = [str(raw_value).lower()]
+            any_match = expected.lower() in values
+            return any_match if quantifier == 'ANY' else not any_match
 
         not_match = re.match(
             r'NOT\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
@@ -867,7 +898,6 @@ class DocumentService:
             value = DocumentService._resolve_identifier_value(identifier, answer_map, raw_answer_map)
             return DocumentService._is_value_empty(value)
 
-        _q = r'["\'\u201c\u201d\u2018\u2019\u00ab\u00bb]'
         neq_match = re.match(
             r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*!=\s*(?:' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?|(EMPTY|NULL))',
             cond, re.IGNORECASE

@@ -274,6 +274,18 @@ class SessionService:
                             # Evaluate based on operator
                             if operator == 'not_equals':
                                 condition_met = actual_value != expected_value
+                            elif operator in ('any_equals', 'none_equals'):
+                                # Check if ANY or NONE of the repeatable group instances match
+                                try:
+                                    parsed = json.loads(actual_value)
+                                    if isinstance(parsed, list):
+                                        values = [str(v) if v is not None else '' for v in parsed]
+                                    else:
+                                        values = [actual_value]
+                                except (json.JSONDecodeError, TypeError):
+                                    values = [actual_value]
+                                any_match = expected_value in values
+                                condition_met = any_match if operator == 'any_equals' else not any_match
                             elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
                                 # Count operators for repeatable fields - parse JSON array and compare length
                                 try:
@@ -803,10 +815,13 @@ class SessionService:
         # PASS 1: Assign hierarchical numbers to ALL questions in the tree
         # This ensures numbering matches the admin view exactly
         question_numbers = {}  # Maps question_id -> hierarchical_number
+        # Track counters per prefix so multiple conditionals referencing the same
+        # triggering question continue numbering instead of restarting at 1
+        prefix_counters = {}  # Maps prefix string -> last counter used
 
         def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
             """Traverse entire tree and assign numbers to all questions."""
-            question_counter = 0
+            question_counter = prefix_counters.get(number_prefix, 0)
             last_question_number = number_prefix
 
             for item in items:
@@ -823,9 +838,21 @@ class SessionService:
                     cond = item['conditional']
                     nested_items = cond.get('nestedItems', [])
                     if nested_items:
-                        # Use last question's number as prefix for nested items
-                        nested_prefix = last_question_number
+                        # Use the triggering question's number as prefix (not last_question_number)
+                        # so conditionals far from their trigger still number correctly
+                        cond_identifier = cond.get('ifIdentifier')
+                        nested_prefix = last_question_number  # default fallback
+                        if cond_identifier:
+                            for qid, q in question_by_id.items():
+                                ident = q.identifier
+                                stripped = ident.split('.', 1)[1] if '.' in ident else ident
+                                if ident == cond_identifier or stripped == cond_identifier:
+                                    if qid in question_numbers:
+                                        nested_prefix = question_numbers[qid]
+                                    break
                         assign_hierarchical_numbers(nested_items, nested_prefix)
+
+            prefix_counters[number_prefix] = question_counter
 
         assign_hierarchical_numbers(group.question_logic)
         _logger.debug(f"Question numbers assigned: {question_numbers}")
@@ -972,6 +999,19 @@ class SessionService:
                                     condition_met = actual_value != expected_value
                             except (json.JSONDecodeError, TypeError, ValueError):
                                 condition_met = actual_value != expected_value
+                        elif operator in ('any_equals', 'none_equals'):
+                            # Check if ANY or NONE of the repeatable group instances match
+                            try:
+                                parsed = json.loads(actual_value)
+                                if isinstance(parsed, list):
+                                    values = [str(v) if v is not None else '' for v in parsed]
+                                else:
+                                    values = [actual_value]
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                values = [actual_value]
+                            any_match = expected_value in values
+                            condition_met = any_match if operator == 'any_equals' else not any_match
+                            _logger.debug(f"{indent}  {operator}: '{expected_value}' in {values} = {condition_met}")
                         elif operator in ('count_greater_than', 'count_equals', 'count_less_than'):
                             # Count operators for repeatable fields - parse JSON array and compare length
                             try:
@@ -1016,7 +1056,10 @@ class SessionService:
                             _logger.debug(f"{indent}  Condition MET - processing nested items")
                             # Skip adding to flat list if this is a repeatable follow-up
                             # (frontend will render per-instance using conditional_followups)
-                            if identifier in repeatable_identifier_to_question_id:
+                            # BUT: any_equals/none_equals are aggregate operators that apply
+                            # across ALL instances, so their nested items belong in the flat list.
+                            is_aggregate_op = operator in ('any_equals', 'none_equals')
+                            if identifier in repeatable_identifier_to_question_id and not is_aggregate_op:
                                 _logger.debug(f"{indent}  Skipping flat list addition (repeatable follow-up)")
                             else:
                                 nested_items = cond.get('nestedItems', [])

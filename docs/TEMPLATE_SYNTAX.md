@@ -137,6 +137,51 @@ This text appears only if the identifier does NOT equal "no".
 
 Note: Comparisons are case-insensitive.
 
+### IF ANY / IF NONE — Aggregate checks on repeatable groups
+
+Use `IF ANY` to include content when **at least one** entry in a repeatable group matches a value. Use `IF NONE` to include content when **no** entries match.
+
+```
+{{ IF ANY <<identifier>> = "value" }}
+This text appears if ANY entry in the repeatable group equals "value".
+{{ END }}
+```
+
+```
+{{ IF NONE <<identifier>> = "value" }}
+This text appears if NO entries in the repeatable group equal "value".
+{{ END }}
+```
+
+Both support `{{ ELSE }}` blocks:
+
+```
+{{ IF ANY <<trustee_type>> = "individual" }}
+At least one trustee is an individual.
+{{ ELSE }}
+All trustees are entities.
+{{ END }}
+```
+
+**Example — Estate distribution with special handling:**
+
+Suppose `beneficiary_type` is a repeatable dropdown (individual / charity / trust) in the same group as `beneficiary`:
+
+```
+{{ IF ANY <<beneficiary_type>> = "charity" }}
+CHARITABLE PROVISIONS: The following charitable distributions shall be made in accordance with IRS guidelines...
+{{ END }}
+
+{{ IF NONE <<beneficiary_type>> = "trust" }}
+No sub-trust provisions are required.
+{{ END }}
+```
+
+- If any beneficiary is a "charity", the charitable provisions paragraph is included
+- If no beneficiary is a "trust", the sub-trust paragraph is skipped
+
+Note: Comparisons are case-insensitive. If the identifier holds a single (non-array) value, `IF ANY` and `IF NONE` treat it as a one-element list.
+
 ### ELSE — Alternate content when condition is false
 
 ```
@@ -210,6 +255,8 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 | `{{ IF NOT <<ident>> }} ... {{ END }}` | Include if empty |
 | `{{ IF <<ident>> = "val" }} ... {{ END }}` | Include if equals value |
 | `{{ IF <<ident>> != "val" }} ... {{ END }}` | Include if not equals value |
+| `{{ IF ANY <<ident>> = "val" }} ... {{ END }}` | Include if any repeatable entry equals value |
+| `{{ IF NONE <<ident>> = "val" }} ... {{ END }}` | Include if no repeatable entry equals value |
 | `{{ IF ... }} ... {{ ELSE }} ... {{ END }}` | Alternate content when condition is false |
 | `[[ ... ]]` | Remove section if any identifier inside is empty |
 | `##` (outside FOREACH) | Auto-incrementing counter |

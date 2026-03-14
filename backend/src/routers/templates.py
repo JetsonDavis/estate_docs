@@ -167,6 +167,29 @@ async def delete_template(
         )
 
 
+@router.post("/{template_id}/duplicate", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+async def duplicate_template(
+    template_id: int,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db)
+) -> TemplateResponse:
+    """
+    Duplicate an existing template.
+
+    - **template_id**: ID of the template to duplicate
+    """
+    template = TemplateService.duplicate_template(
+        db, template_id, get_user_id(current_user)
+    )
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found"
+        )
+
+    return TemplateResponse.model_validate(template)
+
+
 @router.get("/{template_id}/identifiers", response_model=TemplateIdentifiersResponse)
 async def get_template_identifiers(
     template_id: int,

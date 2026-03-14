@@ -394,13 +394,58 @@ This represents:
 
 ### Conditional Operators
 
-| Operator | Description |
-|----------|-------------|
-| `equals` | Value matches exactly |
-| `not_equals` | Value does not match |
-| `count_greater_than` | For repeatable questions: entry count > value |
-| `count_equals` | For repeatable questions: entry count = value |
-| `count_less_than` | For repeatable questions: entry count < value |
+| Operator | Description | Appears when |
+|----------|-------------|--------------|
+| `equals` | Value matches exactly | Always |
+| `not_equals` | Value does not match | Always |
+| `any_equals` | **Any** entry in the repeatable group matches the value | Repeatable questions only |
+| `none_equals` | **No** entries in the repeatable group match the value | Repeatable questions only |
+| `count_greater_than` | Entry count > value | Repeatable questions only |
+| `count_equals` | Entry count = value | Repeatable questions only |
+| `count_less_than` | Entry count < value | Repeatable questions only |
+
+#### `any_equals` / `none_equals` — Aggregate Operators
+
+These operators check across **all instances** of a repeatable question rather than a single instance.
+
+- **"if any equals"** — condition is met when at least one entry in the repeatable group has the specified value
+- **"if none equals"** — condition is met when no entries in the repeatable group have the specified value
+
+**Key difference from `equals`/`not_equals`:** The standard `equals` operator creates per-instance conditional follow-ups (shown/hidden for each individual entry). The `any_equals`/`none_equals` operators create **aggregate** conditionals — their nested questions appear once in the flat question list based on the combined state of all entries.
+
+**Example use case:** A repeatable question asks "What type of beneficiary?" with options "individual", "charity", "trust". You want to show a "Tax ID" question only if **any** beneficiary is a charity:
+
+```json
+{
+  "type": "conditional",
+  "conditional": {
+    "ifIdentifier": "beneficiary_type",
+    "operator": "any_equals",
+    "value": "charity",
+    "nestedItems": [
+      { "type": "question", "questionId": 205 }
+    ]
+  }
+}
+```
+
+In the admin UI, these operators appear in the **Operator** dropdown when the selected "If identifier" question is marked as repeatable.
+
+#### Template Syntax for ANY / NONE
+
+In document templates, you can use the same logic with `{{ IF ANY }}` and `{{ IF NONE }}`:
+
+```
+{{ IF ANY <<beneficiary_type>> = "charity" }}
+CHARITABLE PROVISIONS: ...
+{{ END }}
+
+{{ IF NONE <<beneficiary_type>> = "trust" }}
+No sub-trust provisions are required.
+{{ END }}
+```
+
+See [TEMPLATE_SYNTAX.md](./TEMPLATE_SYNTAX.md) for full template syntax documentation.
 
 ---
 
