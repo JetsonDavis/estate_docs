@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react'
+import React, { useMemo, useEffect, useRef, useCallback } from 'react'
 import ReactQuill, { Quill } from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 
@@ -34,19 +34,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Enter your template content here...',
   height = '600px'
 }) => {
-  // Escape identifiers for display in editor
-  const [editorValue, setEditorValue] = useState(escapeIdentifiers(value))
+  const quillRef = useRef<ReactQuill>(null)
+  // Track the last value we sent to the parent so we can detect truly external changes
+  const lastValueSent = useRef(value)
 
-  // Update editor value when prop value changes
+  // Initial escaped content (computed once, used as defaultValue)
+  const initialValue = useMemo(() => escapeIdentifiers(value), [])
+
+  // Handle external value changes (e.g. file upload) – update editor imperatively
   useEffect(() => {
-    setEditorValue(escapeIdentifiers(value))
+    if (value === lastValueSent.current) return
+    lastValueSent.current = value
+    if (quillRef.current) {
+      const editor = quillRef.current.getEditor()
+      editor.clipboard.dangerouslyPasteHTML(escapeIdentifiers(value))
+    }
   }, [value])
 
-  const handleChange = (content: string) => {
-    setEditorValue(content)
-    // Unescape identifiers before passing to parent
-    onChange(unescapeIdentifiers(content))
-  }
+  const handleChange = useCallback((content: string) => {
+    const unescaped = unescapeIdentifiers(content)
+    lastValueSent.current = unescaped
+    // Defer parent update so Quill can finish its DOM + cursor positioning
+    // before any React re-render triggers a layout recalculation
+    setTimeout(() => onChange(unescaped), 0)
+  }, [onChange])
 
   const modules = useMemo(() => ({
     toolbar: [
@@ -72,8 +83,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   return (
     <div style={{ height }}>
       <ReactQuill
+        ref={quillRef}
         theme="snow"
-        value={editorValue}
+        defaultValue={initialValue}
         onChange={handleChange}
         modules={modules}
         formats={formats}
