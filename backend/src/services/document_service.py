@@ -1479,6 +1479,11 @@ class DocumentService:
         # Clean up double spaces
         merged = re.sub(r'  +', ' ', merged)
 
+        # HTML-aware cleanup: remove empty <p> tags left behind by removed blocks
+        # Matches <p ...> containing only whitespace, &nbsp;, and/or <br> tags
+        _empty_p = r'<p[^>]*>\s*(?:&nbsp;|\s|<br\s*/?>)*\s*</p>'
+        merged = re.sub(_empty_p, '', merged, flags=re.IGNORECASE)
+
         # Collapse 3+ consecutive newlines (with optional whitespace) down to 2
         merged = re.sub(r'(\s*\n){3,}', '\n\n', merged)
 
