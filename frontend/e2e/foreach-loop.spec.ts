@@ -275,4 +275,131 @@ test.describe('FOREACH loop template merge', () => {
     try { await req.delete(`${API}/sessions/${sId}`); } catch {}
     try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
   });
+
+  test('FOREACH WHERE should filter repeatable entries by condition', async () => {
+    const uid3 = Date.now().toString();
+    let gId: number, tId: number, sId: number;
+
+    // 1. Create group
+    const gRes = await req.post(`${API}/question-groups`, {
+      data: { name: `ForeachWhere_${uid3}`, identifier: `foreachwhere_${uid3}`, description: 'WHERE clause test' },
+    });
+    expect(gRes.ok()).toBe(true);
+    const g = await gRes.json();
+    gId = g.id;
+
+    // 2. Create repeatable questions: trustor (free_text) and trustor_deceased (free_text used as flag)
+    const q1Res = await req.post(`${API}/question-groups/${gId}/questions`, {
+      data: {
+        question_group_id: gId,
+        question_text: 'Trustor Name',
+        question_type: 'free_text',
+        identifier: 'trustor_name',
+        repeatable: true,
+        repeatable_group_id: `rgw_${uid3}`,
+        display_order: 1,
+        is_required: false,
+      },
+    });
+    expect(q1Res.ok()).toBe(true);
+    const q1 = await q1Res.json();
+
+    const q2Res = await req.post(`${API}/question-groups/${gId}/questions`, {
+      data: {
+        question_group_id: gId,
+        question_text: 'Trustor Deceased?',
+        question_type: 'free_text',
+        identifier: 'trustor_deceased',
+        repeatable: true,
+        repeatable_group_id: `rgw_${uid3}`,
+        display_order: 2,
+        is_required: false,
+      },
+    });
+    expect(q2Res.ok()).toBe(true);
+    const q2 = await q2Res.json();
+
+    // 3. Template with FOREACH WHERE = and != clauses
+    const tmplMarkdown = [
+      'Deceased trustors:',
+      "{{ FOREACH trustor_name WHERE trustor_deceased = 'Yes' }}",
+      '- <<trustor_name>>',
+      '{{ END FOREACH }}',
+      '',
+      'Living trustors:',
+      "{{ FOREACH trustor_name WHERE trustor_deceased != 'Yes' }}",
+      '- <<trustor_name>>',
+      '{{ END FOREACH }}',
+    ].join('\n');
+
+    const tRes = await req.post(`${API}/templates`, {
+      data: {
+        name: `ForeachWhereTmpl_${uid3}`,
+        template_type: 'direct',
+        markdown_content: tmplMarkdown,
+      },
+    });
+    expect(tRes.ok()).toBe(true);
+    tId = (await tRes.json()).id;
+
+    // 4. Session
+    const sessRes = await req.post(`${API}/sessions`, {
+      data: { client_identifier: `ForeachWhereClient_${uid3}`, starting_group_id: gId },
+    });
+    expect(sessRes.ok()).toBe(true);
+    sId = (await sessRes.json()).id;
+
+    // 5. Save answers: Bill(Yes), Jib(Yes), Andrew(No)
+    const namesArray = JSON.stringify(['Bill', 'Jib', 'Andrew']);
+    const deceasedArray = JSON.stringify(['Yes', 'Yes', 'No']);
+
+    const saveRes = await req.post(`${API}/sessions/${sId}/save-answers`, {
+      data: {
+        answers: [
+          { question_id: q1.id, answer_value: namesArray },
+          { question_id: q2.id, answer_value: deceasedArray },
+        ],
+      },
+    });
+    expect(saveRes.ok()).toBe(true);
+
+    // 6. Preview
+    const prevRes = await req.post(
+      `${API}/documents/preview?session_id=${sId}&template_id=${tId}`,
+    );
+    expect(prevRes.ok()).toBe(true);
+    const prev = await prevRes.json();
+    console.log('FOREACH WHERE preview:', prev.markdown_content);
+
+    const c: string = prev.markdown_content;
+
+    // WHERE = 'Yes' should include Bill and Jib only
+    expect(c).toContain('Bill');
+    expect(c).toContain('Jib');
+
+    // WHERE != 'Yes' should include Andrew only
+    expect(c).toContain('Andrew');
+
+    // Verify filtering: the deceased section should NOT contain Andrew
+    const deceasedSection = c.split('Living trustors:')[0];
+    expect(deceasedSection).toContain('Bill');
+    expect(deceasedSection).toContain('Jib');
+    expect(deceasedSection).not.toContain('Andrew');
+
+    // The living section should NOT contain Bill or Jib
+    const livingSection = c.split('Living trustors:')[1];
+    expect(livingSection).toContain('Andrew');
+    expect(livingSection).not.toContain('Bill');
+    expect(livingSection).not.toContain('Jib');
+
+    // No FOREACH markers left
+    expect(c).not.toContain('FOREACH');
+
+    console.log('FOREACH WHERE test PASSED!');
+
+    // Cleanup
+    try { await req.delete(`${API}/templates/${tId}`); } catch {}
+    try { await req.delete(`${API}/sessions/${sId}`); } catch {}
+    try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
+  });
 });

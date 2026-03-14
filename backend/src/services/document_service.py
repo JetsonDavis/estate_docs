@@ -22,7 +22,7 @@ _logger = logging.getLogger(__name__)
 
 class HTMLToWordConverter(HTMLParser):
     """Custom HTML parser that converts HTML to Word document with proper formatting."""
-    
+
     def __init__(self, doc):
         super().__init__()
         self.doc = doc
@@ -31,19 +31,19 @@ class HTMLToWordConverter(HTMLParser):
         self.style_stack = []  # Stack to track nested formatting
         self.list_level = 0
         self.in_list = False
-        
+
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
-        
+
         if tag == 'p':
             # Create new paragraph
             self.current_paragraph = self.doc.add_paragraph()
             self.current_run = None
-            
+
             # Apply paragraph-level styling from style attribute
             if 'style' in attrs_dict:
                 self._apply_paragraph_style(attrs_dict['style'])
-            
+
             # Handle Quill class-based alignment and indentation
             if 'class' in attrs_dict:
                 classes = attrs_dict['class'].split()
@@ -53,7 +53,7 @@ class HTMLToWordConverter(HTMLParser):
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 elif 'ql-align-justify' in classes:
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                
+
                 # Handle Quill indent classes (ql-indent-1 through ql-indent-8)
                 for cls in classes:
                     if cls.startswith('ql-indent-'):
@@ -63,7 +63,7 @@ class HTMLToWordConverter(HTMLParser):
                             self.current_paragraph.paragraph_format.left_indent = Inches(indent_level * 0.5)
                         except ValueError:
                             pass
-                
+
         elif tag == 'br':
             # Add line break within current paragraph
             if self.current_paragraph is None:
@@ -71,34 +71,34 @@ class HTMLToWordConverter(HTMLParser):
             if self.current_run is None:
                 self.current_run = self.current_paragraph.add_run()
             self.current_run.add_break()
-            
+
         elif tag in ('strong', 'b'):
             style_dict = {'bold': True}
             # Parse inline styles on strong tags too
             if 'style' in attrs_dict:
                 style_dict.update(self._parse_inline_style(attrs_dict['style']))
             self.style_stack.append(style_dict)
-            
+
         elif tag in ('em', 'i'):
             style_dict = {'italic': True}
             # Parse inline styles on em tags too
             if 'style' in attrs_dict:
                 style_dict.update(self._parse_inline_style(attrs_dict['style']))
             self.style_stack.append(style_dict)
-            
+
         elif tag == 'u':
             style_dict = {'underline': True}
             # Parse inline styles on u tags too
             if 'style' in attrs_dict:
                 style_dict.update(self._parse_inline_style(attrs_dict['style']))
             self.style_stack.append(style_dict)
-            
+
         elif tag == 'span':
             # Parse inline styles
             style_dict = {}
             if 'style' in attrs_dict:
                 style_dict = self._parse_inline_style(attrs_dict['style'])
-            
+
             # Handle Quill class-based font sizes (ql-size-*)
             if 'class' in attrs_dict:
                 classes = attrs_dict['class'].split()
@@ -109,45 +109,45 @@ class HTMLToWordConverter(HTMLParser):
                         match = re.match(r'(\d+)px', size_str)
                         if match:
                             style_dict['font_size'] = float(match.group(1))
-            
+
             self.style_stack.append(style_dict)
-            
+
         elif tag in ('ul', 'ol'):
             self.in_list = True
             self.list_level += 1
-            
+
         elif tag == 'li':
             # Create list item paragraph
             self.current_paragraph = self.doc.add_paragraph(style='List Bullet' if self.in_list else None)
             self.current_run = None
-            
+
     def handle_endtag(self, tag):
         if tag == 'p':
             self.current_paragraph = None
             self.current_run = None
-            
+
         elif tag in ('strong', 'b', 'em', 'i', 'u', 'span'):
             if self.style_stack:
                 self.style_stack.pop()
-                
+
         elif tag in ('ul', 'ol'):
             self.list_level -= 1
             if self.list_level == 0:
                 self.in_list = False
-                
+
         elif tag == 'li':
             self.current_paragraph = None
             self.current_run = None
-            
+
     def handle_data(self, data):
         # Skip completely empty data, but preserve whitespace-only if it contains tabs
         if not data.strip() and '\t' not in data:
             return
-            
+
         # Ensure we have a paragraph
         if self.current_paragraph is None:
             self.current_paragraph = self.doc.add_paragraph()
-        
+
         # Handle tabs by converting them to proper Word tab stops
         # Split data by tabs and add tab characters
         if '\t' in data:
@@ -163,7 +163,7 @@ class HTMLToWordConverter(HTMLParser):
             # Create a new run with current styling
             self.current_run = self.current_paragraph.add_run(data)
             self._apply_run_styles(self.current_run)
-    
+
     def _apply_run_styles(self, run):
         """Apply accumulated styles from stack to a run."""
         for style_dict in self.style_stack:
@@ -184,11 +184,11 @@ class HTMLToWordConverter(HTMLParser):
                     pass
             if 'color' in style_dict:
                 run.font.color.rgb = style_dict['color']
-                
+
     def _parse_inline_style(self, style_str):
         """Parse inline CSS style string and return dict of applicable styles."""
         style_dict = {}
-        
+
         # Split by semicolon and parse each property
         for prop in style_str.split(';'):
             if ':' not in prop:
@@ -196,7 +196,7 @@ class HTMLToWordConverter(HTMLParser):
             key, value = prop.split(':', 1)
             key = key.strip().lower()
             value = value.strip()
-            
+
             if key == 'font-size':
                 # Extract numeric value from font-size (e.g., "14px" -> 14, "32px" -> 32)
                 # Remove 'px', 'pt', or other units
@@ -212,7 +212,7 @@ class HTMLToWordConverter(HTMLParser):
                         pass
                 except ValueError:
                     pass
-                    
+
             elif key == 'color':
                 # Parse color (basic support for hex colors)
                 if value.startswith('#'):
@@ -225,21 +225,21 @@ class HTMLToWordConverter(HTMLParser):
                         style_dict['color'] = rgb
                     except:
                         pass
-                        
+
         return style_dict
-        
+
     def _apply_paragraph_style(self, style_str):
         """Apply paragraph-level styles like alignment, spacing, indentation."""
         if not self.current_paragraph:
             return
-            
+
         for prop in style_str.split(';'):
             if ':' not in prop:
                 continue
             key, value = prop.split(':', 1)
             key = key.strip().lower()
             value = value.strip()
-            
+
             if key == 'text-align':
                 if value == 'center':
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -247,7 +247,7 @@ class HTMLToWordConverter(HTMLParser):
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 elif value == 'justify':
                     self.current_paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    
+
             elif key == 'margin-left' or key == 'padding-left':
                 # Convert px to inches (rough approximation: 96px = 1 inch)
                 match = re.match(r'(\d+(?:\.\d+)?)', value)
@@ -450,7 +450,7 @@ class DocumentService:
                     return json.dumps(formatted_dates)
             except (json.JSONDecodeError, TypeError):
                 pass
-            
+
             # Single date value
             try:
                 dt = datetime.strptime(answer_value, '%Y-%m-%d')
@@ -585,7 +585,9 @@ class DocumentService:
 
     # ── Pre-compiled regexes ──────────────────────────────────────────
     _FOREACH_RE = re.compile(
-        r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}'
+        r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?'
+        r'(?:\s+WHERE\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*(=|!=)\s*\'([^\']*)\')?'
+        r'\s*\}\}'
         r'(.*?)'
         r'\{\{\s*END\s+FOREACH\s*\}\}',
         re.DOTALL | re.IGNORECASE
@@ -712,7 +714,10 @@ class DocumentService:
         def _process_block(match):
             counter_start_str = match.group(1)
             loop_identifier = match.group(2).lower()
-            body_template = match.group(3)
+            where_identifier = match.group(3)
+            where_operator = match.group(4)
+            where_value = match.group(5)
+            body_template = match.group(6)
 
             if counter_start_str:
                 global_counter[0] = int(counter_start_str) - 1
@@ -725,7 +730,45 @@ class DocumentService:
                 return ''
 
             instance_count = len(loop_array)
-            _logger.debug(f"FOREACH: iterating '{loop_identifier}' with {instance_count} instances")
+
+            # Build WHERE filter index list
+            if where_identifier and where_operator and where_value is not None:
+                filter_ident = where_identifier.lower()
+                filter_raw = raw_map.get(filter_ident, '') or answer_map.get(filter_ident, '')
+                filter_array = DocumentService._parse_array(filter_raw)
+                if filter_array is None:
+                    filter_array = [filter_raw] * instance_count
+
+                included_indices = []
+                for i in range(instance_count):
+                    item_val = ''
+                    if i < len(filter_array):
+                        item = filter_array[i]
+                        if isinstance(item, str):
+                            try:
+                                decoded = json.loads(item)
+                                if isinstance(decoded, dict):
+                                    item_val = str(decoded.get('name', decoded.get('value', '')))
+                                else:
+                                    item_val = str(decoded)
+                            except (json.JSONDecodeError, TypeError):
+                                item_val = str(item)
+                        elif isinstance(item, dict):
+                            item_val = str(item.get('name', item.get('value', '')))
+                        else:
+                            item_val = str(item)
+
+                    matches = item_val.strip().lower() == where_value.strip().lower()
+                    if where_operator == '=' and matches:
+                        included_indices.append(i)
+                    elif where_operator == '!=' and not matches:
+                        included_indices.append(i)
+
+                _logger.debug(f"FOREACH WHERE: '{filter_ident}' {where_operator} '{where_value}' -> indices {included_indices} of {instance_count}")
+            else:
+                included_indices = list(range(instance_count))
+
+            _logger.debug(f"FOREACH: iterating '{loop_identifier}' with {len(included_indices)} instances (of {instance_count} total)")
 
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
@@ -737,7 +780,7 @@ class DocumentService:
                     identifier_arrays[base_ident] = DocumentService._parse_array(raw)
 
             output_parts = []
-            for idx in range(instance_count):
+            for idx in included_indices:
                 instance_body = body_template
                 global_counter[0] += 1
 
@@ -788,7 +831,7 @@ class DocumentService:
             base_identifier = array_match.group(1)
             array_index = int(array_match.group(2)) - 1  # Convert to 0-based
             field_name = array_match.group(3)  # Optional field after array index
-            
+
             # Get raw value for the base identifier
             raw_json = (raw_answer_map or {}).get(base_identifier, '') or ''
             if raw_json:
@@ -796,19 +839,19 @@ class DocumentService:
                     parsed = json.loads(raw_json)
                     if isinstance(parsed, list) and 0 <= array_index < len(parsed):
                         item = parsed[array_index]
-                        
+
                         # Decode if double-encoded
                         if isinstance(item, str):
                             try:
                                 item = json.loads(item)
                             except (json.JSONDecodeError, TypeError):
                                 pass
-                        
+
                         # If field name specified, extract field from dict
                         if field_name and isinstance(item, dict):
                             val = item.get(field_name)
                             return str(val) if val is not None else ''
-                        
+
                         # Otherwise return the whole item
                         if isinstance(item, dict):
                             name = item.get('name', str(item))
@@ -821,7 +864,7 @@ class DocumentService:
                     # Not valid JSON — if index is 0, return the scalar
                     if array_index == 0:
                         return raw_json
-        
+
         direct = answer_map.get(identifier, '')
         if direct and not DocumentService._is_value_empty(direct):
             return direct
@@ -882,7 +925,24 @@ class DocumentService:
                 try:
                     parsed = json.loads(raw_value)
                     if isinstance(parsed, list):
-                        values = [str(v).lower() if v is not None else '' for v in parsed]
+                        for v in parsed:
+                            if v is None:
+                                values.append('')
+                                continue
+                            # Decode double-encoded JSON strings
+                            item = v
+                            if isinstance(item, str):
+                                try:
+                                    item = json.loads(item)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            # Extract name from person objects (dicts with 'name' key)
+                            if isinstance(item, dict):
+                                name = item.get('name', '')
+                                plain = DocumentService._extract_plain_name(name) if name else str(item)
+                                values.append(plain.lower())
+                            else:
+                                values.append(str(item).lower())
                     else:
                         values = [str(raw_value).lower()]
                 except (json.JSONDecodeError, TypeError, ValueError):
@@ -1066,7 +1126,7 @@ class DocumentService:
         # Process text sequentially to handle resets and counters in order
         # Combine both patterns to process in sequence
         combined_pattern = re.compile(r'(#/A)|(###|##%|##A|##)(?:\+(\d*))?')
-        
+
         def _replacer(match):
             if match.group(1):  # Reset token #/A
                 global_counter[0] = 0
@@ -1077,7 +1137,7 @@ class DocumentService:
                 inc = int(plus_str) if plus_str else 1
                 global_counter[0] += inc
                 return DocumentService._counter_to_str(token, global_counter[0])
-        
+
         return combined_pattern.sub(_replacer, text)
 
     @staticmethod
@@ -1101,9 +1161,9 @@ class DocumentService:
             identifier = match.group(1).lower()
             array_index_str = match.group(2)  # Array index like [1], [2], etc.
             field_name = match.group(3)  # Field name after dot or array index
-            
+
             _logger.debug(f"Replacing identifier: {full_match} -> identifier={identifier}, in_map={identifier in answer_map}")
-            
+
             # Convert array index to integer (1-based, so subtract 1 for 0-based array access)
             array_index = int(array_index_str) - 1 if array_index_str else None
 
@@ -1116,7 +1176,7 @@ class DocumentService:
                     second_index_str = nested_array_match.group(1)
                     second_index = int(second_index_str) - 1  # Convert to 0-based
                     remaining_field = nested_array_match.group(2)  # Any field after second index
-                    
+
                     # Access 2D array: data[array_index][second_index]
                     raw_json = _raw_map.get(identifier, '') or ''
                     if raw_json:
@@ -1130,22 +1190,22 @@ class DocumentService:
                                         inner_array = json.loads(inner_array)
                                     except (json.JSONDecodeError, TypeError):
                                         pass
-                                
+
                                 if isinstance(inner_array, list) and 0 <= second_index < len(inner_array):
                                     item = inner_array[second_index]
-                                    
+
                                     # Decode if double-encoded
                                     if isinstance(item, str):
                                         try:
                                             item = json.loads(item)
                                         except (json.JSONDecodeError, TypeError):
                                             pass
-                                    
+
                                     # If there's a field after the second index, extract it
                                     if remaining_field and isinstance(item, dict):
                                         field_value = item.get(remaining_field)
                                         return str(field_value) if field_value is not None else ''
-                                    
+
                                     # Otherwise return the item
                                     if isinstance(item, dict):
                                         return item.get('name', str(item))
@@ -1159,7 +1219,7 @@ class DocumentService:
             if array_index is not None:
                 raw_json = _raw_map.get(identifier, '') or ''
                 formatted = answer_map.get(identifier, '')
-                
+
                 # 1) Try raw values first (preserves JSON arrays for proper indexing)
                 if raw_json:
                     try:
@@ -1167,15 +1227,15 @@ class DocumentService:
                         if isinstance(data, list):
                             if 0 <= array_index < len(data):
                                 item = data[array_index]
-                                
+
                                 # Decode if double-encoded
                                 decoded = DocumentService._decode_json_item(item)
-                                
+
                                 # If field name specified, extract field from dict
                                 if field_name and isinstance(decoded, dict):
                                     field_value = decoded.get(field_name)
                                     return str(field_value) if field_value is not None else ''
-                                
+
                                 # For dates, format nicely
                                 if not field_name and isinstance(decoded, str):
                                     try:
@@ -1183,7 +1243,7 @@ class DocumentService:
                                         return dt.strftime('%B %-d, %Y')
                                     except (ValueError, TypeError):
                                         pass
-                                
+
                                 # Otherwise return the whole item
                                 if isinstance(decoded, dict):
                                     name = decoded.get('name', str(decoded))
@@ -1209,7 +1269,7 @@ class DocumentService:
                             return str(item)
                     except (json.JSONDecodeError, TypeError):
                         pass
-                
+
                 # 3) Scalar fallback: value is not a JSON array but index is 0
                 if array_index == 0:
                     if raw_json:
@@ -1314,24 +1374,24 @@ class DocumentService:
     def _process_macros(template_content: str) -> str:
         """
         Process macro definitions and usages in template content.
-        
+
         Macro syntax:
         - Definition: @@ macro_name @@ macro content with <<identifiers>> @@
         - Usage: @ macro_name @
-        
+
         Definitions are extracted and removed from the template.
         Usages are replaced with the macro definition content.
-        
+
         Args:
             template_content: Template content with macro definitions and usages
-            
+
         Returns:
             Template content with macros expanded and definitions removed
         """
         # Regex to match macro definitions: @@ name @@ content @@
         # Captures: (1) macro name, (2) macro content
         macro_def_pattern = r'@@\s*(\w+)\s*@@\s*(.*?)\s*@@'
-        
+
         # Extract all macro definitions
         macros = {}
         for match in re.finditer(macro_def_pattern, template_content, re.DOTALL):
@@ -1339,14 +1399,14 @@ class DocumentService:
             macro_content = match.group(2).strip()
             macros[macro_name] = macro_content
             _logger.info(f"Defined macro: {macro_name}")
-        
+
         # Remove all macro definitions from template
         template_content = re.sub(macro_def_pattern, '', template_content, flags=re.DOTALL)
-        
+
         # Replace macro usages with their definitions
         # Regex to match macro usage: @ name @
         macro_usage_pattern = r'@\s*(\w+)\s*@'
-        
+
         def replace_macro(match):
             macro_name = match.group(1).strip()
             if macro_name in macros:
@@ -1355,9 +1415,9 @@ class DocumentService:
             else:
                 _logger.warning(f"Macro not found: {macro_name}")
                 return match.group(0)  # Return original if macro not defined
-        
+
         template_content = re.sub(macro_usage_pattern, replace_macro, template_content)
-        
+
         return template_content
 
     @staticmethod
@@ -1384,13 +1444,13 @@ class DocumentService:
             Merged content with identifiers replaced
         """
         import html
-        
+
         # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
         # Remove span tags but keep their content
         template_content = re.sub(r'<span[^>]*>([^<]*)</span>', r'\1', template_content)
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
-        
+
         raw_map = raw_answer_map if raw_answer_map else answer_map
         global_counter = [0]
 
@@ -1419,8 +1479,14 @@ class DocumentService:
         # Clean up double spaces
         merged = re.sub(r'  +', ' ', merged)
 
+        # Collapse 3+ consecutive newlines (with optional whitespace) down to 2
+        merged = re.sub(r'(\s*\n){3,}', '\n\n', merged)
+
+        # Strip leading/trailing whitespace from the final output
+        merged = merged.strip()
+
         return merged
-    
+
     @staticmethod
     def preview_document(
         db: Session,
@@ -1430,13 +1496,13 @@ class DocumentService:
     ) -> dict:
         """
         Preview a document merge without saving.
-        
+
         Args:
             db: Database session
             session_id: Session ID
             template_id: Template ID
             user_id: User ID
-            
+
         Returns:
             Preview data including merged content and missing identifiers
         """
@@ -1445,49 +1511,49 @@ class DocumentService:
             Template.id == template_id,
             Template.is_active == True
         ).first()
-        
+
         if not template:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Template not found"
             )
-        
+
         # Get session
         session = db.query(InputForm).filter(
             InputForm.id == session_id,
             InputForm.user_id == user_id
         ).first()
-        
+
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Get all answers with their questions in a single joined query
         answer_pairs = db.query(SessionAnswer, Question).join(
             Question, SessionAnswer.question_id == Question.id
         ).filter(
             SessionAnswer.session_id == session_id
         ).all()
-        
+
         answer_map = DocumentService._build_answer_map(answer_pairs)
 
         # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
         raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
-        
+
         # Build conjunction info for repeatable groups
         conj_map, id_grp_map = DocumentService._build_conjunction_info(answer_pairs)
 
         # Get template identifiers
         template_identifiers = template.extract_identifiers()
-        
+
         # Find missing identifiers
         missing_identifiers = [
             identifier for identifier in template_identifiers
             if identifier.lower() not in answer_map
         ]
-        
+
         # Merge content
         merged_content = DocumentService._merge_template(
             template.markdown_content,
@@ -1496,7 +1562,7 @@ class DocumentService:
             conj_map,
             id_grp_map
         )
-        
+
         return {
             "template_name": template.name,
             "session_client": session.client_identifier,
@@ -1504,7 +1570,7 @@ class DocumentService:
             "missing_identifiers": missing_identifiers,
             "available_identifiers": list(answer_map.keys())
         }
-    
+
     @staticmethod
     def get_document(
         db: Session,
@@ -1513,12 +1579,12 @@ class DocumentService:
     ) -> Optional[GeneratedDocument]:
         """
         Get a generated document by ID.
-        
+
         Args:
             db: Database session
             document_id: Document ID
             user_id: User ID
-            
+
         Returns:
             Generated document if found and user has access
         """
@@ -1529,7 +1595,7 @@ class DocumentService:
             GeneratedDocument.id == document_id,
             InputForm.user_id == user_id
         ).first()
-    
+
     @staticmethod
     def list_documents(
         db: Session,
@@ -1539,13 +1605,13 @@ class DocumentService:
     ) -> Tuple[List[GeneratedDocument], int]:
         """
         List generated documents for a user.
-        
+
         Args:
             db: Database session
             user_id: User ID
             skip: Number of records to skip
             limit: Maximum number of records to return
-            
+
         Returns:
             Tuple of (documents list, total count)
         """
@@ -1555,10 +1621,10 @@ class DocumentService:
         ).filter(
             InputForm.user_id == user_id
         )
-        
+
         total = query.count()
         documents = query.order_by(GeneratedDocument.generated_at.desc()).offset(skip).limit(limit).all()
-        
+
         # Download markdown content from S3 for each document
         for doc in documents:
             if doc.s3_key:
@@ -1567,9 +1633,9 @@ class DocumentService:
                 except Exception as e:
                     _logger.error(f"Failed to download markdown from S3 for document {doc.id}: {e}")
                     doc.markdown_content = "[Error loading document content]"
-        
+
         return documents, total
-    
+
     @staticmethod
     def delete_document(
         db: Session,
@@ -1578,19 +1644,19 @@ class DocumentService:
     ) -> bool:
         """
         Delete a generated document.
-        
+
         Args:
             db: Database session
             document_id: Document ID
             user_id: User ID
-            
+
         Returns:
             True if deleted, False if not found
         """
         document = DocumentService.get_document(db, document_id, user_id)
         if not document:
             return False
-        
+
         # Delete from S3 if s3_key exists
         if document.s3_key:
             try:
@@ -1598,12 +1664,12 @@ class DocumentService:
             except Exception as e:
                 _logger.error(f"Failed to delete document from S3: {e}")
                 # Continue with database deletion even if S3 deletion fails
-        
+
         db.delete(document)
         db.commit()
-        
+
         return True
-    
+
     @staticmethod
     def merge_document(
         db: Session,
@@ -1613,13 +1679,13 @@ class DocumentService:
     ) -> bytes:
         """
         Merge a template with session data and return a Word document.
-        
+
         Args:
             db: Database session
             session_id: Document session ID
             template_id: Template ID
             user_id: User ID
-            
+
         Returns:
             Bytes of the generated Word document
         """
@@ -1628,32 +1694,32 @@ class DocumentService:
             Template.id == template_id,
             Template.is_active == True
         ).first()
-        
+
         if not template:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Template not found"
             )
-        
+
         # Get session (verify user owns it)
         session = db.query(InputForm).filter(
             InputForm.id == session_id,
             InputForm.user_id == user_id
         ).first()
-        
+
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found"
             )
-        
+
         # Get all answers with their questions in a single joined query
         answer_pairs = db.query(SessionAnswer, Question).join(
             Question, SessionAnswer.question_id == Question.id
         ).filter(
             SessionAnswer.session_id == session_id
         ).all()
-        
+
         # Build answer maps and conjunction info from the joined pairs
         raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
         answer_map = DocumentService._build_answer_map(answer_pairs)
@@ -1663,14 +1729,14 @@ class DocumentService:
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
         merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map, conj_map, id_grp_map)
-        
+
         # Create a Word document
         doc = Document()
-        
+
         # Clean and prepare HTML content
         # The merged_content now contains HTML from the rich text editor
         html_content = merged_content
-        
+
         # Write HTML to debug file for inspection
         try:
             with open('/tmp/quill_html_debug.html', 'w') as f:
@@ -1679,24 +1745,24 @@ class DocumentService:
                 f.write("\n\n")
         except:
             pass
-        
+
         # Remove Quill editor wrapper divs if present
         html_content = re.sub(r'<div class="ql-editor[^"]*"[^>]*>', '', html_content)
         html_content = html_content.replace('</div>', '')
-        
+
         # Normalize line breaks - Quill uses <p> tags, ensure we don't double them
         # Remove empty paragraphs that cause double spacing
         html_content = re.sub(r'<p>\s*<br\s*/?>\s*</p>', '<p></p>', html_content)
         html_content = re.sub(r'<p>\s*</p>', '', html_content)
-        
+
         # Convert <br> to proper paragraph breaks
         # Split on <br> and wrap in <p> tags if not already in one
         html_content = re.sub(r'<br\s*/?>', '</p><p>', html_content)
-        
+
         # Ensure content is wrapped in paragraphs
         if not html_content.strip().startswith('<p'):
             html_content = f'<p>{html_content}</p>'
-        
+
         # Write processed HTML to debug file
         try:
             with open('/tmp/quill_html_debug.html', 'a') as f:
@@ -1704,14 +1770,14 @@ class DocumentService:
                 f.write(html_content)
         except:
             pass
-        
+
         # Parse HTML and convert to Word with custom parser
         parser = HTMLToWordConverter(doc)
         parser.feed(html_content)
-        
+
         # Save to bytes
         doc_bytes = io.BytesIO()
         doc.save(doc_bytes)
         doc_bytes.seek(0)
-        
+
         return doc_bytes.getvalue()

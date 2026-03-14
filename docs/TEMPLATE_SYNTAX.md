@@ -77,6 +77,53 @@ If you have a repeatable group with identifiers `beneficiary` (person type) and 
 3. Bob Johnson, residing at 789 Pine Rd, Houston, TX 77001, shall receive 20% of the estate.
 ```
 
+### WHERE Clause (Filtered Loops)
+
+Add a `WHERE` clause to only iterate over entries that match a condition:
+
+```
+{{ FOREACH identifier WHERE filter_identifier = 'value' }}
+...body...
+{{ END FOREACH }}
+```
+
+Supported operators: `=` (equals) and `!=` (not equals). Comparisons are case-insensitive.
+
+**Example:**
+
+If you have a repeatable group with `trustor` (person), `trustor_deceased` (dropdown: Yes/No), and the user entered:
+
+| trustor | trustor_deceased |
+|---------|-----------------|
+| Bill    | Yes             |
+| Jib     | Yes             |
+| Andrew  | No              |
+
+**Template:**
+```
+{{ FOREACH trustor WHERE trustor_deceased = 'Yes' }}
+<<trustor.name>> is deceased.
+{{ END FOREACH }}
+```
+
+**Output:**
+```
+Bill is deceased.
+Jib is deceased.
+```
+
+Andrew is excluded because `trustor_deceased` is "No".
+
+The `!=` operator inverts the filter:
+
+```
+{{ FOREACH trustor WHERE trustor_deceased != 'Yes' }}
+<<trustor.name>> is living.
+{{ END FOREACH }}
+```
+
+Would produce only: `Andrew is living.`
+
 ### Inline Usage (Outside FOREACH)
 
 When a repeatable group identifier is used **outside** a FOREACH loop (e.g., `<<beneficiary_share>>`), the array values are automatically joined using the **conjunction** set on the person entries in the same repeatable group.
@@ -250,6 +297,7 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 | `<<identifier>>` | Replace with answer value (arrays joined with group conjunction) |
 | `<<person.field>>` | Replace with person field value |
 | `{{ FOREACH ident }} ... {{ END FOREACH }}` | Loop over repeatable group |
+| `{{ FOREACH ident WHERE filter = 'val' }}` | Loop with filtered entries (`=` or `!=`) |
 | `##` (inside FOREACH) | 1-based loop index |
 | `{{ IF <<ident>> }} ... {{ END }}` | Include if has value |
 | `{{ IF NOT <<ident>> }} ... {{ END }}` | Include if empty |
