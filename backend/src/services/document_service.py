@@ -318,7 +318,7 @@ class DocumentService:
         # Build answer map: identifier -> formatted answer_value
         answer_map = DocumentService._build_answer_map(answer_pairs)
 
-        # Build raw answer map (unformatted) so FOREACH can parse JSON arrays
+        # Build raw answer map (unformatted) so FOR EACH can parse JSON arrays
         raw_answer_map = DocumentService._build_raw_answer_map(answer_pairs)
 
         # Build conjunction info for repeatable groups
@@ -399,7 +399,7 @@ class DocumentService:
         """
         Build a map of question identifiers to raw (unformatted) answer values.
 
-        Raw values preserve JSON arrays so FOREACH loops can parse them.
+        Raw values preserve JSON arrays so FOR EACH loops can parse them.
 
         Args:
             answer_question_pairs: List of (SessionAnswer, Question) tuples from a joined query
@@ -585,11 +585,11 @@ class DocumentService:
 
     # ── Pre-compiled regexes ──────────────────────────────────────────
     _FOREACH_RE = re.compile(
-        r'\{\{\s*FOREACH(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?'
+        r'\{\{\s*(?:FOR\s+EACH|FOREACH)(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?'
         r'(?:\s+WHERE\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*(=|!=)\s*\'([^\']*)\')?'
         r'\s*\}\}'
         r'(.*?)'
-        r'\{\{\s*END\s+FOREACH\s*\}\}',
+        r'\{\{\s*END\s+(?:FOR\s+EACH|FOREACH)\s*\}\}',
         re.DOTALL | re.IGNORECASE
     )
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
@@ -700,16 +700,16 @@ class DocumentService:
 
     @staticmethod
     def _process_foreach_blocks(text: str, answer_map: dict, raw_map: dict, global_counter: list) -> str:
-        """Process {{ FOREACH identifier }} ... {{ END FOREACH }} blocks.
+        """Process {{ FOR EACH identifier }} ... {{ END FOR EACH }} blocks.
 
         Args:
-            text: Template text potentially containing FOREACH blocks
+            text: Template text potentially containing FOR EACH blocks
             answer_map: Formatted identifier -> value map
             raw_map: Raw (unformatted) identifier -> value map
             global_counter: Mutable [int] shared counter for ## tokens
 
         Returns:
-            Text with FOREACH blocks expanded
+            Text with FOR EACH blocks expanded
         """
         def _process_block(match):
             counter_start_str = match.group(1)
@@ -726,7 +726,7 @@ class DocumentService:
             loop_array = DocumentService._parse_array(raw_value)
 
             if not loop_array or len(loop_array) == 0:
-                _logger.debug(f"FOREACH: identifier '{loop_identifier}' has no array data, removing block")
+                _logger.debug(f"FOR EACH: identifier '{loop_identifier}' has no array data, removing block")
                 return ''
 
             instance_count = len(loop_array)
@@ -764,11 +764,11 @@ class DocumentService:
                     elif where_operator == '!=' and not matches:
                         included_indices.append(i)
 
-                _logger.debug(f"FOREACH WHERE: '{filter_ident}' {where_operator} '{where_value}' -> indices {included_indices} of {instance_count}")
+                _logger.debug(f"FOR EACH WHERE: '{filter_ident}' {where_operator} '{where_value}' -> indices {included_indices} of {instance_count}")
             else:
                 included_indices = list(range(instance_count))
 
-            _logger.debug(f"FOREACH: iterating '{loop_identifier}' with {len(included_indices)} instances (of {instance_count} total)")
+            _logger.debug(f"FOR EACH: iterating '{loop_identifier}' with {len(included_indices)} instances (of {instance_count} total)")
 
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
@@ -1427,7 +1427,7 @@ class DocumentService:
 
         Orchestrates six passes in order:
         0. Macros — extract and expand macro definitions
-        1. FOREACH loops — expand repeatable blocks
+        1. FOR EACH loops — expand repeatable blocks
         2. IF / ELSE conditionals — evaluate nested conditional blocks
         3. [[ ... ]] conditional sections — remove sections with empty identifiers
         4. Counter tokens (##, ###, ##%) — replace with running numbers
@@ -1457,7 +1457,7 @@ class DocumentService:
         # Pass 0: Process macros
         merged = DocumentService._process_macros(template_content)
 
-        # Pass 1: FOREACH loops
+        # Pass 1: FOR EACH loops
         merged = DocumentService._process_foreach_blocks(
             merged, answer_map, raw_map, global_counter
         )

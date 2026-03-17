@@ -2568,9 +2568,12 @@ const InputForms: React.FC = () => {
             }}
           >
             <option value="">Select an option...</option>
-            {question.options?.map((option, index) => (
-              <option key={index} value={option.value}>{option.label}</option>
-            ))}
+            {question.options?.map((option, index) => {
+              const optionValue = option.value || option.label
+              return (
+                <option key={index} value={optionValue}>{option.label}</option>
+              )
+            })}
           </QuestionSelect>
         )
 

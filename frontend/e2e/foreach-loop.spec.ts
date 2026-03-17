@@ -3,7 +3,7 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 const BASE = 'http://localhost:8005';
 const API = '/api/v1';
 
-test.describe('FOREACH loop template merge', () => {
+test.describe('FOR EACH loop template merge', () => {
   let req: APIRequestContext;
   let groupId: number;
   let questionIds: number[] = [];
@@ -26,10 +26,10 @@ test.describe('FOREACH loop template merge', () => {
     await req.dispose();
   });
 
-  test('FOREACH should expand repeatable answers into repeated blocks', async () => {
+  test('FOR EACH should expand repeatable answers into repeated blocks', async () => {
     // 1. Create a question group with repeatable text questions
     const groupRes = await req.post(`${API}/question-groups`, {
-      data: { name: `ForeachTest_${uid}`, identifier: `foreachtest_${uid}`, description: 'Test group for FOREACH' },
+      data: { name: `ForeachTest_${uid}`, identifier: `foreachtest_${uid}`, description: 'Test group for FOR EACH' },
     });
     expect(groupRes.ok()).toBe(true);
     const group = await groupRes.json();
@@ -71,16 +71,16 @@ test.describe('FOREACH loop template merge', () => {
     questionIds.push(q2.id);
     console.log('Created q2:', q2.id, 'full identifier:', q2.identifier);
 
-    // 3. Create a template that uses FOREACH with the identifiers
+    // 3. Create a template that uses FOR EACH with the identifiers
     // NOTE: The question identifiers are namespaced as "group_identifier.question_identifier"
     // Templates can use either the full namespaced or stripped identifier.
     // Let's test with the stripped identifier first (as shown in docs)
     const templateMarkdown = [
       'LAST WILL AND TESTAMENT',
       '',
-      '{{ FOREACH beneficiary_name }}',
+      '{{ FOR EACH beneficiary_name }}',
       '##. <<beneficiary_name>> shall receive <<beneficiary_share>> of the estate.',
-      '{{ END FOREACH }}',
+      '{{ END FOR EACH }}',
       '',
       'End of document.',
     ].join('\n');
@@ -90,7 +90,7 @@ test.describe('FOREACH loop template merge', () => {
     const tmplRes = await req.post(`${API}/templates`, {
       data: {
         name: `ForeachTemplate_${uid}`,
-        description: 'Test template with FOREACH',
+        description: 'Test template with FOR EACH',
         template_type: 'direct',
         markdown_content: templateMarkdown,
       },
@@ -144,7 +144,7 @@ test.describe('FOREACH loop template merge', () => {
     console.log('available_identifiers:', JSON.stringify(preview.available_identifiers));
     console.log('=== END PREVIEW ===');
 
-    // 8. Verify FOREACH expanded correctly
+    // 8. Verify FOR EACH expanded correctly
     const content: string = preview.markdown_content;
     expect(content).toContain('Alice');
     expect(content).toContain('Bob');
@@ -153,20 +153,20 @@ test.describe('FOREACH loop template merge', () => {
     expect(content).toContain('30%');
     expect(content).toContain('20%');
 
-    // Should NOT contain the FOREACH markers anymore
-    expect(content).not.toContain('FOREACH');
-    expect(content).not.toContain('END FOREACH');
+    // Should NOT contain the FOR EACH markers anymore
+    expect(content).not.toContain('FOR EACH');
+    expect(content).not.toContain('END FOR EACH');
 
-    console.log('FOREACH loop test PASSED!');
+    console.log('FOR EACH loop test PASSED!');
   });
 
-  test('FOREACH should expand person-type repeatable answers via preview', async () => {
+  test('FOR EACH should expand person-type repeatable answers via preview', async () => {
     const uid2 = Date.now().toString();
     let gId: number, tId: number, sId: number;
 
     // 1. Create group
     const gRes = await req.post(`${API}/question-groups`, {
-      data: { name: `ForeachPerson_${uid2}`, identifier: `foreachperson_${uid2}`, description: 'Person FOREACH test' },
+      data: { name: `ForeachPerson_${uid2}`, identifier: `foreachperson_${uid2}`, description: 'Person FOR EACH test' },
     });
     expect(gRes.ok()).toBe(true);
     const g = await gRes.json();
@@ -203,11 +203,11 @@ test.describe('FOREACH loop template merge', () => {
     expect(sRes2.ok()).toBe(true);
     const sQ = await sRes2.json();
 
-    // 3. Template using FOREACH with person dot notation
+    // 3. Template using FOR EACH with person dot notation
     const tmpl = [
-      '{{ FOREACH bene_person }}',
+      '{{ FOR EACH bene_person }}',
       '##. <<bene_person.name>> shall receive <<bene_share>>.',
-      '{{ END FOREACH }}',
+      '{{ END FOR EACH }}',
     ].join('\n');
 
     const tRes = await req.post(`${API}/templates`, {
@@ -249,14 +249,14 @@ test.describe('FOREACH loop template merge', () => {
     );
     expect(prevRes.ok()).toBe(true);
     const prev = await prevRes.json();
-    console.log('Person FOREACH preview:', prev.markdown_content);
+    console.log('Person FOR EACH preview:', prev.markdown_content);
 
     const c: string = prev.markdown_content;
     expect(c).toContain('Alice Smith');
     expect(c).toContain('Bob Jones');
     expect(c).toContain('60%');
     expect(c).toContain('40%');
-    expect(c).not.toContain('FOREACH');
+    expect(c).not.toContain('FOR EACH');
 
     // 7. Also test generate_document (should also work)
     const genRes = await req.post(`${API}/documents/generate`, {
@@ -264,11 +264,11 @@ test.describe('FOREACH loop template merge', () => {
     });
     expect(genRes.ok()).toBe(true);
     const gen = await genRes.json();
-    console.log('Person FOREACH generated:', gen.markdown_content);
+    console.log('Person FOR EACH generated:', gen.markdown_content);
     expect(gen.markdown_content).toContain('Alice Smith');
     expect(gen.markdown_content).toContain('Bob Jones');
 
-    console.log('Person-type FOREACH test PASSED!');
+    console.log('Person-type FOR EACH test PASSED!');
 
     // Cleanup
     try { await req.delete(`${API}/templates/${tId}`); } catch {}
@@ -276,7 +276,7 @@ test.describe('FOREACH loop template merge', () => {
     try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
   });
 
-  test('FOREACH WHERE should filter repeatable entries by condition', async () => {
+  test('FOR EACH WHERE should filter repeatable entries by condition', async () => {
     const uid3 = Date.now().toString();
     let gId: number, tId: number, sId: number;
 
@@ -319,17 +319,17 @@ test.describe('FOREACH loop template merge', () => {
     expect(q2Res.ok()).toBe(true);
     const q2 = await q2Res.json();
 
-    // 3. Template with FOREACH WHERE = and != clauses
+    // 3. Template with FOR EACH WHERE = and != clauses
     const tmplMarkdown = [
       'Deceased trustors:',
-      "{{ FOREACH trustor_name WHERE trustor_deceased = 'Yes' }}",
+      "{{ FOR EACH trustor_name WHERE trustor_deceased = 'Yes' }}",
       '- <<trustor_name>>',
-      '{{ END FOREACH }}',
+      '{{ END FOR EACH }}',
       '',
       'Living trustors:',
-      "{{ FOREACH trustor_name WHERE trustor_deceased != 'Yes' }}",
+      "{{ FOR EACH trustor_name WHERE trustor_deceased != 'Yes' }}",
       '- <<trustor_name>>',
-      '{{ END FOREACH }}',
+      '{{ END FOR EACH }}',
     ].join('\n');
 
     const tRes = await req.post(`${API}/templates`, {
@@ -369,7 +369,7 @@ test.describe('FOREACH loop template merge', () => {
     );
     expect(prevRes.ok()).toBe(true);
     const prev = await prevRes.json();
-    console.log('FOREACH WHERE preview:', prev.markdown_content);
+    console.log('FOR EACH WHERE preview:', prev.markdown_content);
 
     const c: string = prev.markdown_content;
 
@@ -392,10 +392,10 @@ test.describe('FOREACH loop template merge', () => {
     expect(livingSection).not.toContain('Bill');
     expect(livingSection).not.toContain('Jib');
 
-    // No FOREACH markers left
-    expect(c).not.toContain('FOREACH');
+    // No FOR EACH markers left
+    expect(c).not.toContain('FOR EACH');
 
-    console.log('FOREACH WHERE test PASSED!');
+    console.log('FOR EACH WHERE test PASSED!');
 
     // Cleanup
     try { await req.delete(`${API}/templates/${tId}`); } catch {}

@@ -37,14 +37,14 @@ Available person fields:
 
 ---
 
-## FOREACH Loops (Repeatable Groups)
+## FOR EACH Loops (Repeatable Groups)
 
-Use `FOREACH` to repeat a section once per entry in a repeatable group.
+Use `FOR EACH` to repeat a section once per entry in a repeatable group.
 
 ```
-{{ FOREACH identifier }}
+{{ FOR EACH identifier }}
 ...body repeated for each entry...
-{{ END FOREACH }}
+{{ END FOR EACH }}
 ```
 
 ### Inside the loop body:
@@ -65,9 +65,9 @@ If you have a repeatable group with identifiers `beneficiary` (person type) and 
 
 **Template:**
 ```
-{{ FOREACH beneficiary }}
+{{ FOR EACH beneficiary }}
 ##. <<beneficiary.name>>, residing at <<beneficiary.mailing_address.line1>>, <<beneficiary.mailing_address.city>>, <<beneficiary.mailing_address.state>> <<beneficiary.mailing_address.zip>>, shall receive <<beneficiary_share>> of the estate.
-{{ END FOREACH }}
+{{ END FOR EACH }}
 ```
 
 **Output:**
@@ -82,9 +82,9 @@ If you have a repeatable group with identifiers `beneficiary` (person type) and 
 Add a `WHERE` clause to only iterate over entries that match a condition:
 
 ```
-{{ FOREACH identifier WHERE filter_identifier = 'value' }}
+{{ FOR EACH identifier WHERE filter_identifier = 'value' }}
 ...body...
-{{ END FOREACH }}
+{{ END FOR EACH }}
 ```
 
 Supported operators: `=` (equals) and `!=` (not equals). Comparisons are case-insensitive.
@@ -101,9 +101,9 @@ If you have a repeatable group with `trustor` (person), `trustor_deceased` (drop
 
 **Template:**
 ```
-{{ FOREACH trustor WHERE trustor_deceased = 'Yes' }}
+{{ FOR EACH trustor WHERE trustor_deceased = 'Yes' }}
 <<trustor.name>> is deceased.
-{{ END FOREACH }}
+{{ END FOR EACH }}
 ```
 
 **Output:**
@@ -117,16 +117,16 @@ Andrew is excluded because `trustor_deceased` is "No".
 The `!=` operator inverts the filter:
 
 ```
-{{ FOREACH trustor WHERE trustor_deceased != 'Yes' }}
+{{ FOR EACH trustor WHERE trustor_deceased != 'Yes' }}
 <<trustor.name>> is living.
-{{ END FOREACH }}
+{{ END FOR EACH }}
 ```
 
 Would produce only: `Andrew is living.`
 
-### Inline Usage (Outside FOREACH)
+### Inline Usage (Outside FOR EACH)
 
-When a repeatable group identifier is used **outside** a FOREACH loop (e.g., `<<beneficiary_share>>`), the array values are automatically joined using the **conjunction** set on the person entries in the same repeatable group.
+When a repeatable group identifier is used **outside** a FOR EACH loop (e.g., `<<beneficiary_share>>`), the array values are automatically joined using the **conjunction** set on the person entries in the same repeatable group.
 
 The conjunction (and, or, then) is configured per-entry on the person question's "Relationship to Previous Entry" dropdown during data input.
 
@@ -286,7 +286,7 @@ If either `attorney_name` or `attorney_address` is empty, the entire clause (inc
 | `##` | Replaced with an auto-incrementing number (1, 2, 3, ...) |
 | `#^.` | Replaced with the current counter value **without** incrementing |
 
-These are useful for numbered paragraphs or clauses outside of FOREACH loops.
+These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 
 ---
 
@@ -296,9 +296,9 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 |--------|---------|
 | `<<identifier>>` | Replace with answer value (arrays joined with group conjunction) |
 | `<<person.field>>` | Replace with person field value |
-| `{{ FOREACH ident }} ... {{ END FOREACH }}` | Loop over repeatable group |
-| `{{ FOREACH ident WHERE filter = 'val' }}` | Loop with filtered entries (`=` or `!=`) |
-| `##` (inside FOREACH) | 1-based loop index |
+| `{{ FOR EACH ident }} ... {{ END FOR EACH }}` | Loop over repeatable group |
+| `{{ FOR EACH ident WHERE filter = 'val' }}` | Loop with filtered entries (`=` or `!=`) |
+| `##` (inside FOR EACH) | 1-based loop index |
 | `{{ IF <<ident>> }} ... {{ END }}` | Include if has value |
 | `{{ IF NOT <<ident>> }} ... {{ END }}` | Include if empty |
 | `{{ IF <<ident>> = "val" }} ... {{ END }}` | Include if equals value |
@@ -307,5 +307,5 @@ These are useful for numbered paragraphs or clauses outside of FOREACH loops.
 | `{{ IF NONE <<ident>> = "val" }} ... {{ END }}` | Include if no repeatable entry equals value |
 | `{{ IF ... }} ... {{ ELSE }} ... {{ END }}` | Alternate content when condition is false |
 | `[[ ... ]]` | Remove section if any identifier inside is empty |
-| `##` (outside FOREACH) | Auto-incrementing counter |
+| `##` (outside FOR EACH) | Auto-incrementing counter |
 | `#^.` | Current counter (no increment) |

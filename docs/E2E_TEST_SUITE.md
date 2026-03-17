@@ -8,7 +8,7 @@
 
 | Category | File | Tests |
 |----------|------|-------|
-| FOREACH Template Merge | `foreach-loop.spec.ts` | 2 |
+| FOR EACH Template Merge | `foreach-loop.spec.ts` | 3 |
 | Conditional Insertion | `insert-conditional-button.spec.ts` | 2 |
 | Multiple Repeatable Groups | `multiple-repeatable-groups.spec.ts` | 4 |
 | Nested Question Persistence | `nested-question-persistence.spec.ts` | 1 |
@@ -29,12 +29,13 @@
 
 ## Full Test List
 
-### 1. FOREACH Loop Template Merge (`foreach-loop.spec.ts`)
+### 1. FOR EACH Loop Template Merge (`foreach-loop.spec.ts`)
 
 | # | Test Name |
 |---|-----------|
-| 1 | FOREACH should expand repeatable answers into repeated blocks |
-| 2 | FOREACH should expand person-type repeatable answers via preview |
+| 1 | FOR EACH should expand repeatable answers into repeated blocks |
+| 2 | FOR EACH should expand person-type repeatable answers via preview |
+| 3 | FOR EACH WHERE should filter repeatable entries by condition |
 
 ### 2. Insert Conditional Button (`insert-conditional-button.spec.ts`)
 

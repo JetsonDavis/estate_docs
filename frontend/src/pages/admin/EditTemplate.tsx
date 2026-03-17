@@ -110,7 +110,7 @@ const EditTemplate: React.FC = () => {
     }
   }, [isEditing, markdownContent])
 
-  // Color-code IF/FOREACH blocks and escape identifiers for the formatted display view
+  // Color-code IF/FOR EACH blocks and escape identifiers for the formatted display view
   const colorCodeForDisplay = (html: string): string => {
     const colors = [
       '#2563eb', // Blue for level 0
@@ -127,11 +127,11 @@ const EditTemplate: React.FC = () => {
     result = result.replace(/\{\{([^}]+)\}\}/g, (_match, inner) => {
       const upper = inner.trim().toUpperCase()
 
-      if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOREACH')) {
+      if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOR EACH') || upper.startsWith('FOREACH')) {
         const color = colors[Math.min(depth, colors.length - 1)]
         depth++
         return `<strong style="color: ${color};">{{${inner}}}</strong>`
-      } else if (upper === 'END FOREACH' || upper === 'END') {
+      } else if (upper === 'END FOR EACH' || upper === 'END FOREACH' || upper === 'END') {
         depth = Math.max(0, depth - 1)
         const color = colors[Math.min(depth, colors.length - 1)]
         return `<strong style="color: ${color};">{{${inner}}}</strong>`
@@ -148,31 +148,31 @@ const EditTemplate: React.FC = () => {
 
 
 
-  // Validate matching IF/END and FOREACH/END FOREACH blocks
+  // Validate matching IF/END and FOR EACH/END FOR EACH blocks
   const validateBlocks = (text: string): string[] => {
     const errors: string[] = []
-    const blockRegex = /\{\{\s*(IF\s|FOREACH\s|ELSE|END FOREACH|END)\s*/gi
+    const blockRegex = /\{\{\s*(IF\s|FOR\s+EACH\s|FOREACH\s|ELSE|END\s+FOR\s+EACH|END\s+FOREACH|END)\s*/gi
     const stack: { type: string; line: number }[] = []
     const lines = text.split('\n')
 
     for (let lineNum = 0; lineNum < lines.length; lineNum++) {
       const line = lines[lineNum]
       let match: RegExpExecArray | null
-      const lineRegex = /\{\{\s*(IF\s[^}]*|FOREACH(?:\(\d+\))?\s[^}]*|ELSE|END FOREACH|END)\s*\}\}/gi
+      const lineRegex = /\{\{\s*(IF\s[^}]*|(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s[^}]*|ELSE|END\s+(?:FOR\s+EACH|FOREACH)|END)\s*\}\}/gi
 
       while ((match = lineRegex.exec(line)) !== null) {
         const keyword = match[1].trim().toUpperCase()
 
         if (keyword.startsWith('IF ') || keyword === 'IF') {
           stack.push({ type: 'IF', line: lineNum + 1 })
-        } else if (keyword.startsWith('FOREACH')) {
-          stack.push({ type: 'FOREACH', line: lineNum + 1 })
-        } else if (keyword === 'END FOREACH') {
+        } else if (keyword.startsWith('FOR EACH') || keyword.startsWith('FOREACH')) {
+          stack.push({ type: 'FOR EACH', line: lineNum + 1 })
+        } else if (keyword === 'END FOR EACH' || keyword === 'END FOREACH') {
           const last = stack.pop()
           if (!last) {
-            errors.push(`Line ${lineNum + 1}: {{ END FOREACH }} without a matching {{ FOREACH }}`)
-          } else if (last.type !== 'FOREACH') {
-            errors.push(`Line ${lineNum + 1}: {{ END FOREACH }} but expected {{ END }} to close {{ IF }} from line ${last.line}`)
+            errors.push(`Line ${lineNum + 1}: {{ END FOR EACH }} without a matching {{ FOR EACH }}`)
+          } else if (last.type !== 'FOR EACH') {
+            errors.push(`Line ${lineNum + 1}: {{ END FOR EACH }} but expected {{ END }} to close {{ IF }} from line ${last.line}`)
             stack.push(last) // put it back
           }
         } else if (keyword === 'END') {
@@ -180,7 +180,7 @@ const EditTemplate: React.FC = () => {
           if (!last) {
             errors.push(`Line ${lineNum + 1}: {{ END }} without a matching {{ IF }}`)
           } else if (last.type !== 'IF') {
-            errors.push(`Line ${lineNum + 1}: {{ END }} but expected {{ END FOREACH }} to close {{ FOREACH }} from line ${last.line}`)
+            errors.push(`Line ${lineNum + 1}: {{ END }} but expected {{ END FOR EACH }} to close {{ FOR EACH }} from line ${last.line}`)
             stack.push(last) // put it back
           }
         }
@@ -192,7 +192,7 @@ const EditTemplate: React.FC = () => {
       if (unclosed.type === 'IF') {
         errors.push(`Line ${unclosed.line}: {{ IF }} is never closed with {{ END }}`)
       } else {
-        errors.push(`Line ${unclosed.line}: {{ FOREACH }} is never closed with {{ END FOREACH }}`)
+        errors.push(`Line ${unclosed.line}: {{ FOR EACH }} is never closed with {{ END FOR EACH }}`)
       }
     }
 
@@ -282,7 +282,7 @@ const EditTemplate: React.FC = () => {
     const errors = validateBlocks(markdownContent)
     setBlockErrors(errors)
     if (errors.length > 0) {
-      toast('Warning: there are mismatched IF/FOREACH blocks. Saving anyway.', 'warning')
+      toast('Warning: there are mismatched IF/FOR EACH blocks. Saving anyway.', 'warning')
     }
 
     try {
