@@ -699,7 +699,7 @@ class DocumentService:
             return str(n)
 
     @staticmethod
-    def _process_foreach_blocks(text: str, answer_map: dict, raw_map: dict, global_counter: list) -> str:
+    def _process_foreach_blocks(text: str, answer_map: dict, raw_map: dict, global_counter: list, identifier_group_map: dict = None) -> str:
         """Process {{ FOR EACH identifier }} ... {{ END FOR EACH }} blocks.
 
         Args:
@@ -707,10 +707,15 @@ class DocumentService:
             answer_map: Formatted identifier -> value map
             raw_map: Raw (unformatted) identifier -> value map
             global_counter: Mutable [int] shared counter for ## tokens
+            identifier_group_map: {identifier: repeatable_group_id} so we only
+                index into arrays for identifiers in the same repeatable group
+                as the loop identifier; other-group identifiers use the
+                conjunction-joined value from answer_map instead.
 
         Returns:
             Text with FOR EACH blocks expanded
         """
+        id_grp = identifier_group_map or {}
         def _process_block(match):
             counter_start_str = match.group(1)
             loop_identifier = match.group(2).lower()
@@ -772,12 +777,28 @@ class DocumentService:
 
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
+            # Determine the repeatable group of the loop identifier
+            loop_group = id_grp.get(loop_identifier)
+
             identifier_arrays = {}
+            # Track which base identifiers are in the same repeatable group
+            same_group = set()
             for ident in body_identifiers_raw:
                 base_ident = ident.split('.', 1)[0].lower() if '.' in ident else ident.lower()
                 if base_ident not in identifier_arrays:
-                    raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
-                    identifier_arrays[base_ident] = DocumentService._parse_array(raw)
+                    ident_group = id_grp.get(base_ident)
+                    if loop_group and ident_group == loop_group:
+                        # Same repeatable group — parse as array for parallel iteration
+                        raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
+                        identifier_arrays[base_ident] = DocumentService._parse_array(raw)
+                        same_group.add(base_ident)
+                    elif ident_group and ident_group != loop_group:
+                        # Different repeatable group — do NOT index; use scalar
+                        identifier_arrays[base_ident] = None
+                    else:
+                        # Not a repeatable identifier, or no group info — try array
+                        raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
+                        identifier_arrays[base_ident] = DocumentService._parse_array(raw)
 
             output_parts = []
             for idx in included_indices:
@@ -800,11 +821,13 @@ class DocumentService:
                         base_ident, field_name = ident, None
 
                     arr = identifier_arrays.get(base_ident)
-                    if arr is not None and idx < len(arr):
+                    if arr is not None and base_ident in same_group and idx < len(arr):
+                        # Same repeatable group — parallel iteration
                         replacement = DocumentService._format_item(arr[idx], field_name)
-                    elif arr is not None:
+                    elif arr is not None and base_ident in same_group:
                         replacement = ''
                     else:
+                        # Different group or non-array — use formatted scalar
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
                         replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
 
@@ -1452,6 +1475,7 @@ class DocumentService:
         template_content = html.unescape(template_content)
 
         raw_map = raw_answer_map if raw_answer_map else answer_map
+        _id_grp_map = identifier_group_map or {}
         global_counter = [0]
 
         # Pass 0: Process macros
@@ -1459,7 +1483,7 @@ class DocumentService:
 
         # Pass 1: FOR EACH loops
         merged = DocumentService._process_foreach_blocks(
-            merged, answer_map, raw_map, global_counter
+            merged, answer_map, raw_map, global_counter, _id_grp_map
         )
 
         # Pass 2: IF / ELSE conditionals
