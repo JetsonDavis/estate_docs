@@ -953,6 +953,25 @@ class DocumentService:
                 for ph, original in placeholders.items():
                     instance_body = instance_body.replace(ph, original)
 
+                # ── Process IF blocks with per-iteration answer maps ──
+                # Same-group identifiers must resolve to their per-iteration
+                # scalar values (not the full array) so that conditions like
+                # {{IF <<amendment_type>> = "Update SSTEE"}} work correctly.
+                iter_answer = dict(answer_map)
+                iter_raw = dict(raw_map)
+                for orig_ident in body_identifiers_raw:
+                    ident = orig_ident.lower()
+                    base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+                    arr = identifier_arrays.get(base_ident)
+                    if arr is not None and base_ident in same_group and idx < len(arr):
+                        field_name = ident.split('.', 1)[1] if '.' in ident else None
+                        val = DocumentService._format_item(arr[idx], field_name)
+                        iter_answer[ident] = val
+                        iter_raw[ident] = val
+                instance_body = DocumentService._process_if_blocks(
+                    instance_body, iter_answer, iter_raw
+                )
+
                 output_parts.append(instance_body)
 
             expanded = ''.join(output_parts)
