@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import Dict, List
 
 from ..database import get_db
 from ..middleware.auth_middleware import require_auth, get_user_id
@@ -281,14 +281,15 @@ async def navigate_session(
     return InputFormResponse.model_validate(session)
 
 
-@router.get("/{session_id}/identifiers", response_model=List[str])
+@router.get("/{session_id}/identifiers", response_model=Dict[str, str])
 async def get_session_identifiers(
     session_id: int,
     current_user: dict = Depends(require_auth),
     db: Session = Depends(get_db)
-) -> List[str]:
+) -> Dict[str, str]:
     """
-    Get all question identifiers from a session that have been answered.
+    Get all question identifiers from a session that have been answered,
+    along with their formatted display values.
 
     - **session_id**: Session ID
     """

@@ -103,10 +103,10 @@ export const sessionService = {
   },
 
   /**
-   * Get identifiers from a session
+   * Get identifiers and their values from a session
    */
-  getSessionIdentifiers: async (sessionId: number): Promise<string[]> => {
-    const response = await apiClient.get<string[]>(`/sessions/${sessionId}/identifiers`)
+  getSessionIdentifiers: async (sessionId: number): Promise<Record<string, string>> => {
+    const response = await apiClient.get<Record<string, string>>(`/sessions/${sessionId}/identifiers`)
     return response.data
   },
 

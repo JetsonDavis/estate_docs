@@ -1317,9 +1317,10 @@ class SessionService:
         return session
 
     @staticmethod
-    def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[List[str]]:
+    def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[Dict[str, str]]:
         """
-        Get all question identifiers from a session that have been answered.
+        Get all question identifiers from a session that have been answered,
+        along with their formatted display values.
 
         Args:
             db: Database session
@@ -1327,23 +1328,31 @@ class SessionService:
             user_id: User ID (for authorization)
 
         Returns:
-            List of identifiers if session found, None otherwise
+            Dict mapping identifier -> formatted value, or None if session not found
         """
+        from .document_service import DocumentService
+
         session = SessionService.get_session(db, session_id, user_id)
         if not session:
             return None
 
-        # Get all answers for this session with their question identifiers
-        answers = db.query(SessionAnswer, Question.identifier).join(
+        # Get all answers for this session with their questions
+        answer_pairs = db.query(SessionAnswer, Question).join(
             Question, SessionAnswer.question_id == Question.id
         ).filter(
             SessionAnswer.session_id == session_id
         ).all()
 
-        # Extract unique identifiers
-        identifiers = list(set([identifier for _, identifier in answers]))
+        # Build formatted answer map using DocumentService for consistent formatting
+        identifier_values: Dict[str, str] = {}
+        for answer, question in answer_pairs:
+            formatted_value = DocumentService._format_answer_value(
+                answer.answer_value,
+                question.question_type
+            )
+            identifier_values[question.identifier] = formatted_value
 
-        return sorted(identifiers)
+        return identifier_values
 
     @staticmethod
     def copy_session(db: Session, session_id: int, user_id: int) -> InputForm:

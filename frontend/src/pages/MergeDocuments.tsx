@@ -277,6 +277,10 @@ const IdentifierItem = styled.li<{ $missing?: boolean; $placeholder?: boolean }>
   border-radius: 0.375rem;
   font-size: 0.875rem;
   font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
 
   ${props => props.$placeholder ? `
     background-color: transparent;
@@ -291,6 +295,21 @@ const IdentifierItem = styled.li<{ $missing?: boolean; $placeholder?: boolean }>
     color: #374151;
     border: 1px solid #d1d5db;
   `}
+`
+
+const IdentifierName = styled.span`
+  flex-shrink: 0;
+`
+
+const IdentifierValue = styled.span`
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
 `
 
 const MergeDocuments: React.FC = () => {
@@ -308,7 +327,7 @@ const MergeDocuments: React.FC = () => {
     const saved = localStorage.getItem('mergeDocuments_selectedTemplateId')
     return saved ? parseInt(saved, 10) : null
   })
-  const [sessionIdentifiers, setSessionIdentifiers] = useState<string[]>([])
+  const [sessionIdentifiers, setSessionIdentifiers] = useState<Record<string, string>>({})
   const [templateIdentifiers, setTemplateIdentifiers] = useState<string[]>([])
   const [loadingIdentifiers, setLoadingIdentifiers] = useState(false)
   const [mergedContent, setMergedContent] = useState<string | null>(null)
@@ -340,7 +359,7 @@ const MergeDocuments: React.FC = () => {
     if (selectedSessionId) {
       loadSessionIdentifiers(selectedSessionId)
     } else {
-      setSessionIdentifiers([])
+      setSessionIdentifiers({})
     }
   }, [selectedSessionId])
 
@@ -373,13 +392,16 @@ const MergeDocuments: React.FC = () => {
     try {
       setLoadingIdentifiers(true)
       const identifiers = await sessionService.getSessionIdentifiers(sessionId)
-      // Strip namespace prefix (e.g., "bene_test_20.Special_bene" -> "Special_bene")
-      const stripped = identifiers.map(id => id.includes('.') ? id.split('.').slice(1).join('.') : id)
-      // Sort alphabetically
-      setSessionIdentifiers([...stripped].sort((a, b) => a.localeCompare(b)))
+      // Strip namespace prefix from keys (e.g., "bene_test_20.Special_bene" -> "Special_bene")
+      const stripped: Record<string, string> = {}
+      for (const [key, value] of Object.entries(identifiers)) {
+        const strippedKey = key.includes('.') ? key.split('.').slice(1).join('.') : key
+        stripped[strippedKey] = value
+      }
+      setSessionIdentifiers(stripped)
     } catch (err: any) {
       console.error('Failed to load session identifiers:', err)
-      setSessionIdentifiers([])
+      setSessionIdentifiers({})
     } finally {
       setLoadingIdentifiers(false)
     }
@@ -417,6 +439,9 @@ const MergeDocuments: React.FC = () => {
     setSelectedTemplateId(templateId)
   }
 
+  // Derive session identifier names list from the Record keys
+  const sessionIdentifierNames = useMemo(() => Object.keys(sessionIdentifiers).sort((a, b) => a.localeCompare(b)), [sessionIdentifiers])
+
   // Sort identifiers so matching ones line up between the two columns
   // Returns { sessionSorted, templateSorted } where matching identifiers are at the same index
   const { sessionSorted, templateSorted } = useMemo(() => {
@@ -426,18 +451,18 @@ const MergeDocuments: React.FC = () => {
     }
     
     // Find identifiers that exist in both lists (ignoring subscripts)
-    const inBoth = sessionIdentifiers.filter(id => 
+    const inBoth = sessionIdentifierNames.filter(id => 
       templateIdentifiers.some(tid => stripSubscript(id) === stripSubscript(tid))
     ).sort()
     
     // Find identifiers only in session (not in template)
-    const onlyInSession = sessionIdentifiers.filter(id => 
+    const onlyInSession = sessionIdentifierNames.filter(id => 
       !templateIdentifiers.some(tid => stripSubscript(id) === stripSubscript(tid))
     ).sort()
     
     // Find identifiers only in template (not in session)
     const onlyInTemplate = templateIdentifiers.filter(id => 
-      !sessionIdentifiers.some(sid => stripSubscript(id) === stripSubscript(sid))
+      !sessionIdentifierNames.some(sid => stripSubscript(id) === stripSubscript(sid))
     ).sort()
     
     // Build aligned lists:
@@ -465,7 +490,7 @@ const MergeDocuments: React.FC = () => {
     }
     
     return { sessionSorted: sSorted, templateSorted: tSorted }
-  }, [sessionIdentifiers, templateIdentifiers])
+  }, [sessionIdentifierNames, templateIdentifiers])
 
   const handleMergeDocuments = async () => {
     if (!selectedSessionId || !selectedTemplateId) {
@@ -686,7 +711,7 @@ const MergeDocuments: React.FC = () => {
                   <IdentifiersColumns>
                     <IdentifiersColumn>
                       <ColumnTitle>Input Form Identifiers</ColumnTitle>
-                      {sessionIdentifiers.length === 0 ? (
+                      {sessionIdentifierNames.length === 0 ? (
                         <EmptyList>No session selected or no identifiers found</EmptyList>
                       ) : (
                         <IdentifierItems>
@@ -695,13 +720,15 @@ const MergeDocuments: React.FC = () => {
                             const isMissing = identifier !== null && !templateIdentifiers.some(tid => 
                               stripSubscript(identifier) === stripSubscript(tid)
                             )
+                            const value = identifier ? sessionIdentifiers[identifier] || '' : ''
                             return (
                               <IdentifierItem
                                 key={identifier || `placeholder-${index}`}
                                 $placeholder={identifier === null}
                                 $missing={isMissing}
                               >
-                                {identifier ? stripSubscript(identifier) : '\u00A0'}
+                                <IdentifierName>{identifier ? stripSubscript(identifier) : '\u00A0'}</IdentifierName>
+                                {identifier && value && <IdentifierValue title={value}>{value}</IdentifierValue>}
                               </IdentifierItem>
                             )
                           })}
@@ -716,7 +743,7 @@ const MergeDocuments: React.FC = () => {
                         <IdentifierItems>
                           {templateSorted.map((identifier, index) => {
                             const stripSubscript = (id: string): string => id.replace(/\[\d+\]$/, '')
-                            const isMissing = identifier !== null && !sessionIdentifiers.some(sid => 
+                            const isMissing = identifier !== null && !sessionIdentifierNames.some(sid => 
                               stripSubscript(identifier) === stripSubscript(sid)
                             )
                             return (
