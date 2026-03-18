@@ -447,7 +447,14 @@ class DocumentService:
                             formatted_dates.append(dt.strftime('%B %-d, %Y'))
                         except (ValueError, TypeError):
                             formatted_dates.append(date_str)
-                    return json.dumps(formatted_dates)
+                    # Join with conjunctions for display (e.g., "March 10, 2026 and March 14, 2026")
+                    if len(formatted_dates) == 0:
+                        return ''
+                    if len(formatted_dates) == 1:
+                        return formatted_dates[0]
+                    if len(formatted_dates) == 2:
+                        return f'{formatted_dates[0]} and {formatted_dates[1]}'
+                    return ', '.join(formatted_dates[:-1]) + ', and ' + formatted_dates[-1]
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -584,13 +591,24 @@ class DocumentService:
     ]
 
     # ── Pre-compiled regexes ──────────────────────────────────────────
-    _FOREACH_RE = re.compile(
+    _FOREACH_OPEN_RE = re.compile(
         r'\{\{\s*(?:FOR\s+EACH|FOREACH)(?:\((\d+)\))?\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?'
-        r'(?:\s+WHERE\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*(=|!=)\s*\'([^\']*)\')?'
-        r'\s*\}\}'
-        r'(.*?)'
+        r'(?:\s+WHERE\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*(=|!=)\s*["\']([^"\']*)["\'])?'
+        r'\s*\}\}',
+        re.IGNORECASE
+    )
+    _FOREACH_CLOSE_RE = re.compile(
         r'\{\{\s*END\s+(?:FOR\s+EACH|FOREACH)\s*\}\}',
-        re.DOTALL | re.IGNORECASE
+        re.IGNORECASE
+    )
+    # Block-level regexes for depth counting across IF and FOREACH
+    _BLOCK_OPEN_RE = re.compile(
+        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|IF\s)',
+        re.IGNORECASE
+    )
+    _BLOCK_CLOSE_RE = re.compile(
+        r'\{\{\s*END(?:\s+(?:FOR\s+EACH|FOREACH))?\s*\}\}',
+        re.IGNORECASE
     )
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
     _END_RE = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
@@ -702,6 +720,10 @@ class DocumentService:
     def _process_foreach_blocks(text: str, answer_map: dict, raw_map: dict, global_counter: list, identifier_group_map: dict = None) -> str:
         """Process {{ FOR EACH identifier }} ... {{ END FOR EACH }} blocks.
 
+        Uses depth-counting to find the matching closing tag so that
+        nested FOREACH blocks are handled correctly.  After expanding the
+        outer body, any inner FOREACH blocks are processed recursively.
+
         Args:
             text: Template text potentially containing FOR EACH blocks
             answer_map: Formatted identifier -> value map
@@ -716,14 +738,66 @@ class DocumentService:
             Text with FOR EACH blocks expanded
         """
         id_grp = identifier_group_map or {}
-        def _process_block(match):
-            counter_start_str = match.group(1)
-            loop_identifier = match.group(2).lower()
-            where_identifier = match.group(3)
-            where_operator = match.group(4)
-            where_value = match.group(5)
-            body_template = match.group(6)
+        # Splits text into {{ }} tags, \x00 placeholders, and plain text
+        _seg_split = re.compile(r'(\{\{.*?\}\}|\x00NF\d+\x00)')
 
+        result = []
+        pos = 0
+
+        while pos < len(text):
+            open_match = DocumentService._FOREACH_OPEN_RE.search(text, pos)
+            if not open_match:
+                result.append(text[pos:])
+                break
+
+            # Text before the opening tag
+            result.append(text[pos:open_match.start()])
+
+            counter_start_str = open_match.group(1)
+            loop_identifier = open_match.group(2).lower()
+            where_identifier = open_match.group(3)
+            where_operator = open_match.group(4)
+            where_value = open_match.group(5)
+            body_start = open_match.end()
+
+            # ── Depth-count to find matching close ──────────────────────
+            # Track ALL block opens (IF + FOREACH) and closes (END, END
+            # FOR EACH, END FOREACH) so that {{END}} used as a FOREACH
+            # closer is handled correctly.
+            depth = 1
+            scan = body_start
+            body_end = None
+            close_end = None
+
+            while depth > 0 and scan < len(text):
+                next_open = DocumentService._BLOCK_OPEN_RE.search(text, scan)
+                next_close = DocumentService._BLOCK_CLOSE_RE.search(text, scan)
+
+                if next_close is None:
+                    break
+
+                if next_open and next_open.start() < next_close.start():
+                    depth += 1
+                    scan = next_open.end()
+                else:
+                    depth -= 1
+                    if depth == 0:
+                        body_end = next_close.start()
+                        close_end = next_close.end()
+                    else:
+                        scan = next_close.end()
+
+            if body_end is None:
+                # No explicit matching close found.  Treat end-of-text as
+                # an implicit close so the FOREACH still expands (handles
+                # templates whose outer FOREACH omits its closing tag).
+                _logger.debug(f"FOR EACH: no matching close for '{loop_identifier}', using end-of-text as implicit close")
+                body_end = len(text)
+                close_end = len(text)
+
+            body_template = text[body_start:body_end]
+
+            # ── Resolve loop array ─────────────────────────────────────
             if counter_start_str:
                 global_counter[0] = int(counter_start_str) - 1
 
@@ -732,13 +806,14 @@ class DocumentService:
 
             if not loop_array or len(loop_array) == 0:
                 _logger.debug(f"FOR EACH: identifier '{loop_identifier}' has no array data, removing block")
-                return ''
+                pos = close_end
+                continue
 
             instance_count = len(loop_array)
 
-            # Build WHERE filter index list
+            # ── Build WHERE filter ─────────────────────────────────────
             if where_identifier and where_operator and where_value is not None:
-                filter_ident = where_identifier.lower()
+                filter_ident = where_identifier.strip('"\'').lower()
                 filter_raw = raw_map.get(filter_ident, '') or answer_map.get(filter_ident, '')
                 filter_array = DocumentService._parse_array(filter_raw)
                 if filter_array is None:
@@ -781,25 +856,22 @@ class DocumentService:
             loop_group = id_grp.get(loop_identifier)
 
             identifier_arrays = {}
-            # Track which base identifiers are in the same repeatable group
             same_group = set()
             for ident in body_identifiers_raw:
                 base_ident = ident.split('.', 1)[0].lower() if '.' in ident else ident.lower()
                 if base_ident not in identifier_arrays:
                     ident_group = id_grp.get(base_ident)
                     if loop_group and ident_group == loop_group:
-                        # Same repeatable group — parse as array for parallel iteration
                         raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
                         identifier_arrays[base_ident] = DocumentService._parse_array(raw)
                         same_group.add(base_ident)
                     elif ident_group and ident_group != loop_group:
-                        # Different repeatable group — do NOT index; use scalar
                         identifier_arrays[base_ident] = None
                     else:
-                        # Not a repeatable identifier, or no group info — try array
                         raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
                         identifier_arrays[base_ident] = DocumentService._parse_array(raw)
 
+            # ── Expand body for each included index ────────────────────
             output_parts = []
             for idx in included_indices:
                 instance_body = body_template
@@ -813,6 +885,47 @@ class DocumentService:
 
                 instance_body = DocumentService._COUNTER_RE.sub(_foreach_counter_replace, instance_body)
 
+                # ── Protect nested FOREACH blocks with placeholders ────
+                # so their identifiers are NOT replaced by the outer loop.
+                # Use _BLOCK_OPEN/CLOSE_RE so {{END}} closers and nested
+                # IF blocks inside the inner FOREACH are tracked correctly.
+                placeholders = {}
+                protected = instance_body
+                ph_idx = 0
+                s_pos = 0
+                while True:
+                    i_open = DocumentService._FOREACH_OPEN_RE.search(protected, s_pos)
+                    if not i_open:
+                        break
+                    d = 1
+                    s = i_open.end()
+                    i_close_end = None
+                    while d > 0 and s < len(protected):
+                        n_o = DocumentService._BLOCK_OPEN_RE.search(protected, s)
+                        n_c = DocumentService._BLOCK_CLOSE_RE.search(protected, s)
+                        if n_c is None:
+                            break
+                        if n_o and n_o.start() < n_c.start():
+                            d += 1
+                            s = n_o.end()
+                        else:
+                            d -= 1
+                            if d == 0:
+                                i_close_end = n_c.end()
+                            else:
+                                s = n_c.end()
+                    if i_close_end is not None:
+                        ph = f'\x00NF{ph_idx}\x00'
+                        placeholders[ph] = protected[i_open.start():i_close_end]
+                        protected = protected[:i_open.start()] + ph + protected[i_close_end:]
+                        ph_idx += 1
+                        s_pos = i_open.start() + len(ph)
+                    else:
+                        s_pos = i_open.end()
+
+                # Split into {{ }} tags, placeholders, and plain text
+                segments = _seg_split.split(protected)
+
                 for orig_ident in body_identifiers_raw:
                     ident = orig_ident.lower()
                     if '.' in ident:
@@ -822,22 +935,37 @@ class DocumentService:
 
                     arr = identifier_arrays.get(base_ident)
                     if arr is not None and base_ident in same_group and idx < len(arr):
-                        # Same repeatable group — parallel iteration
                         replacement = DocumentService._format_item(arr[idx], field_name)
                     elif arr is not None and base_ident in same_group:
                         replacement = ''
                     else:
-                        # Different group or non-array — use formatted scalar
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
                         replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
 
-                    instance_body = instance_body.replace(f'<<{orig_ident}>>', replacement)
+                    target = f'<<{orig_ident}>>'
+                    for j in range(len(segments)):
+                        if not segments[j].startswith('{{') and not segments[j].startswith('\x00'):
+                            segments[j] = segments[j].replace(target, replacement)
+
+                instance_body = ''.join(segments)
+
+                # Restore nested FOREACH blocks
+                for ph, original in placeholders.items():
+                    instance_body = instance_body.replace(ph, original)
 
                 output_parts.append(instance_body)
 
-            return ''.join(output_parts)
+            expanded = ''.join(output_parts)
 
-        return DocumentService._FOREACH_RE.sub(_process_block, text)
+            # Recursively process nested FOREACH blocks
+            expanded = DocumentService._process_foreach_blocks(
+                expanded, answer_map, raw_map, global_counter, identifier_group_map
+            )
+
+            result.append(expanded)
+            pos = close_end
+
+        return ''.join(result)
 
     @staticmethod
     def _resolve_identifier_value(identifier: str, answer_map: dict, raw_answer_map: dict) -> str:
@@ -1391,7 +1519,13 @@ class DocumentService:
                 return value
             return ''
 
-        return DocumentService._IDENTIFIER_RE.sub(_replace, text)
+        # Avoid replacing identifiers inside {{ }} control-flow tags
+        _tag_re = re.compile(r'(\{\{.*?\}\})')
+        parts = _tag_re.split(text)
+        for i in range(len(parts)):
+            if not parts[i].startswith('{{'):
+                parts[i] = DocumentService._IDENTIFIER_RE.sub(_replace, parts[i])
+        return ''.join(parts)
 
     @staticmethod
     def _process_macros(template_content: str) -> str:

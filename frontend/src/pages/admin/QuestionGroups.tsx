@@ -3366,8 +3366,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {!collapsedItems.has(`nq-${nestedQuestion.id}`) && <>
               {/* Identifier */}
               <div className="form-group">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                  <label className="form-label form-label-inline" style={{ marginBottom: 0, whiteSpace: 'nowrap', minWidth: '80px' }}>Identifier *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                  <label style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '0.875rem', fontWeight: 600, color: '#374151', lineHeight: 1 }}>Identifier *</label>
                   {(() => {
                     // Find the previous repeatable question within this nested context (same nesting level only)
                     let prevRepeatableNestedQuestion: QuestionFormData | null = null
@@ -3428,7 +3428,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     } else {
                       // First/only question in a conditional — show checkbox to start its own repeatable group
                       return (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', margin: 0, lineHeight: 1, cursor: 'pointer' }}>
                           <input
                             type="checkbox"
                             checked={nestedQuestion.repeatable}
@@ -3442,6 +3442,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                 updateQuestionFields(nestedQuestion.id, { repeatable: false, repeatable_group_id: undefined })
                               }
                             }}
+                            style={{ margin: 0 }}
                           />
                           Start New Repeatable Group
                         </label>
@@ -4528,8 +4529,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
               {!collapsedItems.has(`q-${question.id}`) && <QuestionBuilderContent>
                 <div className="form-group">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                    <label className="form-label form-label-inline" style={{ whiteSpace: 'nowrap', minWidth: '80px' }}>Identifier *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                    <label style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '0.875rem', fontWeight: 600, color: '#374151', lineHeight: 1 }}>Identifier *</label>
                     {(() => {
                       // Find the previous repeatable question by checking the actual order in questionLogic
                       // This handles cases where there's a conditional between questions
@@ -4599,7 +4600,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       } else {
                         // Show simple checkbox
                         return (
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#374151', margin: 0, lineHeight: 1, cursor: 'pointer' }}>
                             <input
                               type="checkbox"
                               checked={question.repeatable}
@@ -4610,7 +4611,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                                   updateQuestionFields(question.id, { repeatable: false, repeatable_group_id: undefined })
                                 }
                               }}
-                              style={{ margin: 0, verticalAlign: 'middle' }}
+                              style={{ margin: 0 }}
                             />
                             Repeatable
                           </label>
