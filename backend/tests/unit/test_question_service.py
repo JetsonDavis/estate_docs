@@ -1642,3 +1642,360 @@ class TestUserInteractionScenarios:
         ben_share_db = QuestionService.get_question_by_id(db_session, ben_share.id)
         assert ben_name_db.repeatable == True
         assert ben_share_db.repeatable_group_id == str(ben_name.id)
+
+
+class TestCopyQuestionGroup:
+    """Test suite for copying/duplicating question groups.
+
+    Verifies that every field on the group and its questions is accurately
+    preserved, that identifiers are correctly re-namespaced, and that
+    question_logic JSON (questionId refs, ifIdentifier refs, nested items)
+    is remapped to point at the new copied questions.
+    """
+
+    def _create_group(self, db_session: Session, identifier: str, **kwargs) -> QuestionGroup:
+        group_data = QuestionGroupCreate(
+            name=f"Test Group {identifier}",
+            identifier=identifier,
+            **kwargs
+        )
+        return QuestionGroupService.create_question_group(db_session, group_data)
+
+    def _create_question(
+        self,
+        db_session: Session,
+        group_id: int,
+        identifier: str,
+        question_type: QuestionType = QuestionType.FREE_TEXT,
+        **kwargs
+    ) -> Question:
+        q_data = QuestionCreate(
+            question_group_id=group_id,
+            question_text=f"Question: {identifier}",
+            question_type=question_type,
+            identifier=identifier,
+            **kwargs
+        )
+        return QuestionService.create_question(db_session, q_data)
+
+    def _update_logic(self, db_session: Session, group_id: int, logic: list) -> QuestionGroup:
+        update_data = QuestionGroupUpdate(question_logic=logic)
+        return QuestionGroupService.update_question_group(db_session, group_id, update_data)
+
+    @pytest.fixture
+    def complex_group(self, db_session: Session):
+        """Create a complex group with diverse question types and features."""
+        group = self._create_group(db_session, "estate_plan", description="Estate planning group")
+
+        # Q1: free text with help_text and validation
+        q_client_name = self._create_question(
+            db_session, group.id, "client_name",
+            question_type=QuestionType.FREE_TEXT,
+            help_text="Enter the client's full legal name",
+            is_required=True,
+            display_order=0,
+            validation_rules={"min_length": 2, "max_length": 200}
+        )
+
+        # Q2: multiple choice with options
+        q_marital = self._create_question(
+            db_session, group.id, "marital_status",
+            question_type=QuestionType.MULTIPLE_CHOICE,
+            options=[
+                QuestionOption(value="single", label="Single"),
+                QuestionOption(value="married", label="Married"),
+                QuestionOption(value="divorced", label="Divorced"),
+            ],
+            display_order=1
+        )
+
+        # Q3: person type with person_display_mode (repeatable)
+        q_trustee = self._create_question(
+            db_session, group.id, "new_sstee",
+            question_type=QuestionType.PERSON,
+            person_display_mode="autocomplete",
+            repeatable=True,
+            display_order=2
+        )
+
+        # Q4: free text in same repeatable group as Q3
+        q_relation = self._create_question(
+            db_session, group.id, "sstee_relation",
+            question_type=QuestionType.FREE_TEXT,
+            repeatable=True,
+            repeatable_group_id=str(q_trustee.id),
+            display_order=3
+        )
+
+        # Q5: date with include_time
+        q_sign_date = self._create_question(
+            db_session, group.id, "signing_date",
+            question_type=QuestionType.DATE,
+            include_time=True,
+            display_order=4
+        )
+
+        # Q6: conditional target (shown only when marital_status = married)
+        q_spouse = self._create_question(
+            db_session, group.id, "spouse_name",
+            question_type=QuestionType.FREE_TEXT,
+            display_order=5
+        )
+
+        # Q7: nested conditional target
+        q_spouse_trust = self._create_question(
+            db_session, group.id, "spouse_trust_pct",
+            question_type=QuestionType.FREE_TEXT,
+            display_order=6,
+            validation_rules={"pattern": "^\\d{1,3}$"}
+        )
+
+        # Build question_logic matching actual frontend QuestionLogicItem structure
+        question_logic = [
+            # Top-level question
+            {"id": "item-1", "type": "question", "questionId": q_client_name.id, "depth": 0},
+            # Top-level question
+            {"id": "item-2", "type": "question", "questionId": q_marital.id, "depth": 0},
+            # Conditional on marital_status
+            {
+                "id": "item-3",
+                "type": "conditional",
+                "depth": 0,
+                "conditional": {
+                    "ifIdentifier": "estate_plan.marital_status",
+                    "operator": "equals",
+                    "value": "married",
+                    "nestedItems": [
+                        {"id": "item-4", "type": "question", "questionId": q_spouse.id, "depth": 1},
+                        # Nested conditional inside first conditional
+                        {
+                            "id": "item-5",
+                            "type": "conditional",
+                            "depth": 1,
+                            "conditional": {
+                                "ifIdentifier": "estate_plan.spouse_name",
+                                "operator": "not_equals",
+                                "value": "",
+                                "nestedItems": [
+                                    {"id": "item-6", "type": "question", "questionId": q_spouse_trust.id, "depth": 2}
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            # Repeatable questions
+            {"id": "item-7", "type": "question", "questionId": q_trustee.id, "depth": 0},
+            {"id": "item-8", "type": "question", "questionId": q_relation.id, "depth": 0},
+            # Date question
+            {"id": "item-9", "type": "question", "questionId": q_sign_date.id, "depth": 0},
+        ]
+
+        group = self._update_logic(db_session, group.id, question_logic)
+
+        questions = {
+            "client_name": q_client_name,
+            "marital_status": q_marital,
+            "new_sstee": q_trustee,
+            "sstee_relation": q_relation,
+            "signing_date": q_sign_date,
+            "spouse_name": q_spouse,
+            "spouse_trust_pct": q_spouse_trust,
+        }
+        return group, questions
+
+    def test_copy_group_name_and_identifier(self, db_session: Session, complex_group):
+        """Copied group gets unique name and identifier."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        assert copied.id != original_group.id
+        assert copied.name == f"{original_group.name} copy"
+        assert copied.identifier == f"{original_group.identifier}_copy"
+        assert copied.description == original_group.description
+        assert copied.is_active == original_group.is_active
+
+    def test_copy_preserves_all_question_fields(self, db_session: Session, complex_group):
+        """Every field on every question is preserved in the copy."""
+        original_group, orig_questions = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+        assert len(copied_questions) == len(orig_questions)
+
+        # Build lookup by base identifier (strip namespace)
+        def base_id(q):
+            ns = f"{q.question_group.identifier}." if q.question_group else ""
+            return q.identifier[len(ns):] if q.identifier.startswith(ns) else q.identifier
+
+        copied_by_base = {base_id(q): q for q in copied_questions}
+
+        for key, orig in orig_questions.items():
+            cq = copied_by_base.get(key)
+            assert cq is not None, f"Missing copied question for '{key}'"
+
+            # Identifier should be re-namespaced
+            assert cq.identifier == f"{copied.identifier}.{key}"
+            assert cq.identifier != orig.identifier
+
+            # All other fields should match
+            assert cq.question_text == orig.question_text
+            assert cq.question_type == orig.question_type
+            assert cq.repeatable == orig.repeatable
+            assert cq.display_order == orig.display_order
+            assert cq.is_required == orig.is_required
+            assert cq.help_text == orig.help_text
+            assert cq.options == orig.options
+            assert cq.database_table == orig.database_table
+            assert cq.database_value_column == orig.database_value_column
+            assert cq.database_label_column == orig.database_label_column
+            assert cq.person_display_mode == orig.person_display_mode
+            assert cq.include_time == orig.include_time
+            assert cq.validation_rules == orig.validation_rules
+            assert cq.is_active == orig.is_active
+
+    def test_copy_person_display_mode(self, db_session: Session, complex_group):
+        """person_display_mode is preserved on person-type questions."""
+        original_group, orig_questions = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+
+        trustee_copy = next((q for q in copied_questions if q.identifier.endswith(".new_sstee")), None)
+        assert trustee_copy is not None
+        assert trustee_copy.person_display_mode == "autocomplete"
+
+    def test_copy_include_time(self, db_session: Session, complex_group):
+        """include_time is preserved on date-type questions."""
+        original_group, orig_questions = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+
+        date_copy = next((q for q in copied_questions if q.identifier.endswith(".signing_date")), None)
+        assert date_copy is not None
+        assert date_copy.include_time == True
+
+    def test_copy_repeatable_group_id(self, db_session: Session, complex_group):
+        """repeatable_group_id is preserved (questions stay linked)."""
+        original_group, orig_questions = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+
+        trustee_copy = next((q for q in copied_questions if q.identifier.endswith(".new_sstee")), None)
+        relation_copy = next((q for q in copied_questions if q.identifier.endswith(".sstee_relation")), None)
+
+        assert trustee_copy is not None
+        assert relation_copy is not None
+        assert trustee_copy.repeatable == True
+        assert relation_copy.repeatable == True
+        assert relation_copy.repeatable_group_id == orig_questions["sstee_relation"].repeatable_group_id
+
+    def test_copy_question_logic_questionId_remapped(self, db_session: Session, complex_group):
+        """questionId fields in question_logic point to the NEW copied questions."""
+        original_group, orig_questions = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+        copied_ids = {q.id for q in copied_questions}
+        original_ids = {q.id for q in orig_questions.values()}
+
+        # Collect all questionId values from the copied logic
+        def collect_question_ids(items):
+            ids = []
+            for item in (items or []):
+                if item.get("type") == "question" and "questionId" in item:
+                    ids.append(item["questionId"])
+                if item.get("type") == "conditional" and "conditional" in item:
+                    ids.extend(collect_question_ids(item["conditional"].get("nestedItems", [])))
+            return ids
+
+        logic_question_ids = collect_question_ids(copied.question_logic)
+        assert len(logic_question_ids) > 0, "question_logic should contain questionId references"
+
+        for qid in logic_question_ids:
+            assert qid in copied_ids, f"questionId {qid} should reference a copied question"
+            assert qid not in original_ids, f"questionId {qid} still references an original question"
+
+    def test_copy_question_logic_ifIdentifier_remapped(self, db_session: Session, complex_group):
+        """ifIdentifier fields in conditionals use the new group namespace."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        def collect_if_identifiers(items):
+            ids = []
+            for item in (items or []):
+                if item.get("type") == "conditional" and "conditional" in item:
+                    cond = item["conditional"]
+                    if "ifIdentifier" in cond:
+                        ids.append(cond["ifIdentifier"])
+                    ids.extend(collect_if_identifiers(cond.get("nestedItems", [])))
+            return ids
+
+        if_identifiers = collect_if_identifiers(copied.question_logic)
+        assert len(if_identifiers) >= 2, "Should have at least 2 conditional ifIdentifiers"
+
+        for ident in if_identifiers:
+            assert ident.startswith(f"{copied.identifier}."), \
+                f"ifIdentifier '{ident}' should start with '{copied.identifier}.'"
+            assert not ident.startswith(f"{original_group.identifier}."), \
+                f"ifIdentifier '{ident}' still uses original namespace"
+
+    def test_copy_question_logic_nested_structure_preserved(self, db_session: Session, complex_group):
+        """Nested conditional structure (depth 2) is preserved after copy."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        # Find the outer conditional
+        outer_cond = None
+        for item in copied.question_logic:
+            if item.get("type") == "conditional":
+                outer_cond = item
+                break
+
+        assert outer_cond is not None, "Should have a conditional in logic"
+        nested = outer_cond["conditional"]["nestedItems"]
+        assert len(nested) == 2, "Outer conditional should have 2 nested items"
+
+        # First nested item is a question
+        assert nested[0]["type"] == "question"
+
+        # Second nested item is another conditional
+        inner_cond = nested[1]
+        assert inner_cond["type"] == "conditional"
+        assert len(inner_cond["conditional"]["nestedItems"]) == 1
+        assert inner_cond["conditional"]["nestedItems"][0]["type"] == "question"
+
+    def test_copy_validation_rules_preserved(self, db_session: Session, complex_group):
+        """validation_rules JSON is preserved on copied questions."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+
+        client_name_copy = next((q for q in copied_questions if q.identifier.endswith(".client_name")), None)
+        assert client_name_copy is not None
+        assert client_name_copy.validation_rules == {"min_length": 2, "max_length": 200}
+
+        spouse_trust_copy = next((q for q in copied_questions if q.identifier.endswith(".spouse_trust_pct")), None)
+        assert spouse_trust_copy is not None
+        assert spouse_trust_copy.validation_rules == {"pattern": "^\\d{1,3}$"}
+
+    def test_copy_options_preserved(self, db_session: Session, complex_group):
+        """Multiple choice options are preserved on copied questions."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
+
+        marital_copy = next((q for q in copied_questions if q.identifier.endswith(".marital_status")), None)
+        assert marital_copy is not None
+        assert len(marital_copy.options) == 3
+        assert marital_copy.options[0]["value"] == "single"
+
+    def test_double_copy_unique_names(self, db_session: Session, complex_group):
+        """Copying twice yields distinct names/identifiers."""
+        original_group, _ = complex_group
+        copy1 = QuestionGroupService.copy_question_group(db_session, original_group.id)
+        copy2 = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        assert copy1.name != copy2.name
+        assert copy1.identifier != copy2.identifier
+        assert copy2.name == f"{original_group.name} copy copy"
+        assert copy2.identifier == f"{original_group.identifier}_copy_copy"

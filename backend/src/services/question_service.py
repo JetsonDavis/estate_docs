@@ -161,8 +161,11 @@ class QuestionGroupService:
             # Copy all questions from the original group
             original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
 
-            # Build a mapping of old identifiers to new identifiers for updating question_logic
+            # Build mappings for updating question_logic:
+            # identifier_mapping: old string identifier -> new string identifier
+            # id_mapping: old numeric question ID -> new numeric question ID
             identifier_mapping = {}
+            id_mapping = {}
 
             for original_question in original_questions:
                 # Strip the old namespace prefix and add the new one
@@ -190,6 +193,8 @@ class QuestionGroupService:
                     database_table=original_question.database_table,
                     database_value_column=original_question.database_value_column,
                     database_label_column=original_question.database_label_column,
+                    person_display_mode=original_question.person_display_mode,
+                    include_time=original_question.include_time,
                     validation_rules=original_question.validation_rules,
                     is_active=original_question.is_active
                 )
@@ -197,39 +202,40 @@ class QuestionGroupService:
                 db.add(new_question)
                 db.flush()  # Flush each question immediately to avoid bulk insert issues
 
-            # Update question_logic to use new identifiers
+                id_mapping[original_question.id] = new_question.id
+
+            # Update question_logic to use new question IDs and identifiers.
+            # Actual structure (matches frontend QuestionLogicItem):
+            #   question:    { type: 'question', questionId: <int>, ... }
+            #   conditional: { type: 'conditional', conditional: {
+            #                    ifIdentifier: <str>, nestedItems: [...] }, ... }
             if new_group.question_logic:
-                def update_nested_identifiers(items, mapping):
+                def remap_logic_items(items, id_map, ident_map):
                     if not items:
                         return items
-                    updated_items = []
+                    updated = []
                     for item in items:
-                        updated_nested = item.copy()
-                        if item.get('type') == 'question' and 'identifier' in item:
-                            if item['identifier'] in mapping:
-                                updated_nested['identifier'] = mapping[item['identifier']]
-                        elif item.get('type') == 'conditional':
-                            if 'ifIdentifier' in item and item['ifIdentifier'] in mapping:
-                                updated_nested['ifIdentifier'] = mapping[item['ifIdentifier']]
-                            if 'items' in item:
-                                updated_nested['items'] = update_nested_identifiers(item['items'], mapping)
-                        updated_items.append(updated_nested)
-                    return updated_items
+                        out = dict(item)
+                        if item.get('type') == 'question':
+                            if 'questionId' in item and item['questionId'] in id_map:
+                                out['questionId'] = id_map[item['questionId']]
+                            if 'identifier' in item and item['identifier'] in ident_map:
+                                out['identifier'] = ident_map[item['identifier']]
+                        elif item.get('type') == 'conditional' and 'conditional' in item:
+                            cond = dict(item['conditional'])
+                            if 'ifIdentifier' in cond and cond['ifIdentifier'] in ident_map:
+                                cond['ifIdentifier'] = ident_map[cond['ifIdentifier']]
+                            if 'nestedItems' in cond:
+                                cond['nestedItems'] = remap_logic_items(
+                                    cond['nestedItems'], id_map, ident_map
+                                )
+                            out['conditional'] = cond
+                        updated.append(out)
+                    return updated
 
-                updated_logic = []
-                for logic_item in new_group.question_logic:
-                    updated_item = logic_item.copy()
-
-                    # Update ifIdentifier if it exists
-                    if 'ifIdentifier' in updated_item and updated_item['ifIdentifier'] in identifier_mapping:
-                        updated_item['ifIdentifier'] = identifier_mapping[updated_item['ifIdentifier']]
-
-                    if 'items' in updated_item:
-                        updated_item['items'] = update_nested_identifiers(updated_item['items'], identifier_mapping)
-
-                    updated_logic.append(updated_item)
-
-                new_group.question_logic = updated_logic
+                new_group.question_logic = remap_logic_items(
+                    new_group.question_logic, id_mapping, identifier_mapping
+                )
 
             db.commit()
             db.refresh(new_group)
@@ -319,6 +325,8 @@ class QuestionService:
             database_table=question_data.database_table,
             database_value_column=question_data.database_value_column,
             database_label_column=question_data.database_label_column,
+            person_display_mode=question_data.person_display_mode,
+            include_time=question_data.include_time,
             validation_rules=question_data.validation_rules
         )
         
