@@ -601,13 +601,26 @@ class DocumentService:
         r'\{\{\s*END\s+(?:FOR\s+EACH|FOREACH)\s*\}\}',
         re.IGNORECASE
     )
-    # Block-level regexes for depth counting across IF and FOREACH
+    _PEOPLELOOP_OPEN_RE = re.compile(
+        r'\{\{\s*PEOPLELOOP\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*\}\}',
+        re.IGNORECASE
+    )
+    _PEOPLELOOP_CLOSE_RE = re.compile(
+        r'\{\{\s*END\s+PEOPLELOOP\s*\}\}',
+        re.IGNORECASE
+    )
+    # Matches any loop-opening tag (FOREACH or PEOPLELOOP) for placeholder protection
+    _NESTED_LOOP_RE = re.compile(
+        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|PEOPLELOOP\s+)',
+        re.IGNORECASE
+    )
+    # Block-level regexes for depth counting across IF, FOREACH, and PEOPLELOOP
     _BLOCK_OPEN_RE = re.compile(
-        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|IF\s)',
+        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|PEOPLELOOP\s+|IF\s)',
         re.IGNORECASE
     )
     _BLOCK_CLOSE_RE = re.compile(
-        r'\{\{\s*END(?:\s+(?:FOR\s+EACH|FOREACH))?\s*\}\}',
+        r'\{\{\s*END(?:\s+(?:FOR\s+EACH|FOREACH|PEOPLELOOP))?\s*\}\}',
         re.IGNORECASE
     )
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
@@ -875,26 +888,20 @@ class DocumentService:
             output_parts = []
             for idx in included_indices:
                 instance_body = body_template
-                global_counter[0] += 1
 
-                def _foreach_counter_replace(m, _gc=global_counter):
-                    token = m.group(1)
-                    plus_str = m.group(2)
-                    inc = int(plus_str) if plus_str else 0
-                    return DocumentService._counter_to_str(token, _gc[0] + inc)
-
-                instance_body = DocumentService._COUNTER_RE.sub(_foreach_counter_replace, instance_body)
-
-                # ── Protect nested FOREACH blocks with placeholders ────
-                # so their identifiers are NOT replaced by the outer loop.
-                # Use _BLOCK_OPEN/CLOSE_RE so {{END}} closers and nested
-                # IF blocks inside the inner FOREACH are tracked correctly.
+                # ── Protect nested loop blocks with placeholders ─────
+                # MUST happen before counter replacement so that ##%
+                # tokens inside nested FOREACH/PEOPLELOOP blocks are
+                # preserved for their own loop processing.
+                # Matches both FOREACH and PEOPLELOOP opens; uses
+                # _BLOCK_OPEN/CLOSE_RE for depth counting so {{END}}
+                # closers and nested IF blocks are tracked correctly.
                 placeholders = {}
                 protected = instance_body
                 ph_idx = 0
                 s_pos = 0
                 while True:
-                    i_open = DocumentService._FOREACH_OPEN_RE.search(protected, s_pos)
+                    i_open = DocumentService._NESTED_LOOP_RE.search(protected, s_pos)
                     if not i_open:
                         break
                     d = 1
@@ -923,8 +930,24 @@ class DocumentService:
                     else:
                         s_pos = i_open.end()
 
+                instance_body = protected
+
+                # Only manage counter tokens when FOREACH explicitly
+                # specifies a counter start (e.g. {{ FOR EACH 1 <<id>> }}).
+                # Without a counter start, leave tokens for PEOPLELOOP / Pass 4.
+                if counter_start_str:
+                    global_counter[0] += 1
+
+                    def _foreach_counter_replace(m, _gc=global_counter):
+                        token = m.group(1)
+                        plus_str = m.group(2)
+                        inc = int(plus_str) if plus_str else 0
+                        return DocumentService._counter_to_str(token, _gc[0] + inc)
+
+                    instance_body = DocumentService._COUNTER_RE.sub(_foreach_counter_replace, instance_body)
+
                 # Split into {{ }} tags, placeholders, and plain text
-                segments = _seg_split.split(protected)
+                segments = _seg_split.split(instance_body)
 
                 for orig_ident in body_identifiers_raw:
                     ident = orig_ident.lower()
@@ -978,6 +1001,290 @@ class DocumentService:
 
             # Recursively process nested FOREACH blocks
             expanded = DocumentService._process_foreach_blocks(
+                expanded, answer_map, raw_map, global_counter, identifier_group_map
+            )
+
+            result.append(expanded)
+            pos = close_end
+
+        return ''.join(result)
+
+    @staticmethod
+    def _group_people_by_then(raw_json: str) -> list:
+        """Split a person-type JSON array into groups separated by 'then' conjunctions.
+
+        Each group is a list of dicts with 'name' and 'conjunction' keys.
+        A new group starts whenever an entry (other than the first) has
+        conjunction == 'then'.
+
+        Returns:
+            List of groups, where each group is a list of person dicts.
+        """
+        try:
+            parsed = json.loads(raw_json)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        if not isinstance(parsed, list) or len(parsed) == 0:
+            return []
+
+        # Normalise each element
+        normalised = []
+        for item in parsed:
+            decoded = DocumentService._decode_json_item(item)
+            if isinstance(decoded, dict):
+                normalised.append(decoded)
+            elif isinstance(decoded, str):
+                normalised.append({'name': decoded})
+            else:
+                normalised.append({'name': str(decoded)})
+
+        groups: list = []
+        current_group: list = []
+
+        for i, person in enumerate(normalised):
+            conj = (person.get('conjunction', '') or '').lower()
+            if i > 0 and conj == 'then':
+                # Close the current group and start a new one
+                if current_group:
+                    groups.append(current_group)
+                current_group = []
+            current_group.append(person)
+
+        if current_group:
+            groups.append(current_group)
+
+        return groups
+
+    @staticmethod
+    def _format_people_group(group: list) -> str:
+        """Join a group of person dicts into a single display string.
+
+        Uses each person's conjunction ('and', 'or') to join names.
+        The first person in the group has no preceding conjunction.
+        """
+        parts = []
+        for j, person in enumerate(group):
+            name = DocumentService._extract_plain_name(person.get('name', ''))
+            if not name:
+                continue
+            if j > 0:
+                conj = (person.get('conjunction', '') or 'and').lower()
+                # 'then' shouldn't appear inside a group, but fall back to 'and'
+                if conj == 'then':
+                    conj = 'and'
+                parts.append(conj)
+            parts.append(name)
+        return ' '.join(parts)
+
+    @staticmethod
+    def _get_group_type(group: list) -> str:
+        """Determine the type of a PEOPLELOOP group.
+
+        Returns:
+            'single'    — one person in the group
+            'joint-and' — multiple people joined by 'and'
+            'joint-or'  — multiple people joined by 'or'
+        """
+        if len(group) <= 1:
+            return 'single'
+        # Check conjunctions within the group (persons after the first)
+        for person in group[1:]:
+            conj = (person.get('conjunction', '') or 'and').lower()
+            if conj == 'or':
+                return 'joint-or'
+        return 'joint-and'
+
+    @staticmethod
+    def _process_peopleloop_blocks(text: str, answer_map: dict, raw_map: dict,
+                                    global_counter: list,
+                                    identifier_group_map: dict = None) -> str:
+        """Process {{ PEOPLELOOP <<identifier>> }} ... {{ END PEOPLELOOP }} blocks.
+
+        Groups a person-type repeatable field by 'then' conjunctions.
+        Each group becomes one loop iteration where <<identifier>> is
+        replaced with the names joined by 'and'/'or'.
+
+        Same-group identifiers are resolved for the FIRST person index
+        in each group so that fields like <<sstee_relation>> work.
+        """
+        id_grp = identifier_group_map or {}
+        _seg_split = re.compile(r'(\{\{.*?\}\}|\x00NF\d+\x00)')
+        _counter_reset_re = re.compile(r'\{\{\s*COUNTER\s+RESET\s*\}\}|##/', re.IGNORECASE)
+
+        result = []
+        pos = 0
+
+        while pos < len(text):
+            open_match = DocumentService._PEOPLELOOP_OPEN_RE.search(text, pos)
+            if not open_match:
+                # Process any COUNTER RESET tags in remaining text
+                remaining = text[pos:]
+                if _counter_reset_re.search(remaining):
+                    global_counter[0] = 0
+                    remaining = _counter_reset_re.sub('', remaining)
+                result.append(remaining)
+                break
+
+            # Text before this PEOPLELOOP — check for COUNTER RESET tags
+            before_text = text[pos:open_match.start()]
+            if _counter_reset_re.search(before_text):
+                global_counter[0] = 0
+                before_text = _counter_reset_re.sub('', before_text)
+            result.append(before_text)
+
+            loop_identifier = open_match.group(1).lower()
+            body_start = open_match.end()
+
+            # ── Depth-count to find matching close ──────────────────────
+            depth = 1
+            scan = body_start
+            body_end = None
+            close_end = None
+
+            while depth > 0 and scan < len(text):
+                next_open = DocumentService._BLOCK_OPEN_RE.search(text, scan)
+                next_close = DocumentService._BLOCK_CLOSE_RE.search(text, scan)
+
+                if next_close is None:
+                    break
+
+                if next_open and next_open.start() < next_close.start():
+                    depth += 1
+                    scan = next_open.end()
+                else:
+                    depth -= 1
+                    if depth == 0:
+                        body_end = next_close.start()
+                        close_end = next_close.end()
+                    else:
+                        scan = next_close.end()
+
+            if body_end is None:
+                body_end = len(text)
+                close_end = len(text)
+
+            body_template = text[body_start:body_end]
+
+            # ── Get person array and group by 'then' ────────────────────
+            raw_value = raw_map.get(loop_identifier, '') or ''
+            groups = DocumentService._group_people_by_then(raw_value)
+
+            if not groups:
+                pos = close_end
+                continue
+
+            # Determine loop group for same-group resolution
+            loop_group = id_grp.get(loop_identifier)
+
+            # Collect all identifiers referenced in the body
+            body_identifiers_raw = DocumentService._IDENTIFIER_RE.findall(body_template)
+            # body_identifiers_raw is list of tuples: (ident, subscript, field)
+            # Flatten to just the identifier names
+            body_ident_names = set()
+            for ident_tuple in body_identifiers_raw:
+                base = ident_tuple[0].lower() if isinstance(ident_tuple, tuple) else ident_tuple.lower()
+                body_ident_names.add(base)
+
+            # Parse same-group arrays for parallel resolution
+            identifier_arrays = {}
+            same_group = set()
+            for ident in body_ident_names:
+                base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+                if base_ident not in identifier_arrays:
+                    ident_group = id_grp.get(base_ident)
+                    if loop_group and ident_group == loop_group:
+                        raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
+                        identifier_arrays[base_ident] = DocumentService._parse_array(raw)
+                        same_group.add(base_ident)
+
+            # ── Expand body for each people group ───────────────────────
+            # Track the starting raw index for each group so parallel
+            # same-group identifiers can be resolved.
+            group_start_indices = []
+            raw_idx = 0
+            for group in groups:
+                group_start_indices.append(raw_idx)
+                raw_idx += len(group)
+
+            output_parts = []
+            for g_idx, group in enumerate(groups):
+                instance_body = body_template
+                global_counter[0] += 1
+
+                def _pl_counter_replace(m, _gc=global_counter):
+                    token = m.group(1)
+                    plus_str = m.group(2)
+                    inc = int(plus_str) if plus_str else 0
+                    return DocumentService._counter_to_str(token, _gc[0] + inc)
+
+                instance_body = DocumentService._COUNTER_RE.sub(_pl_counter_replace, instance_body)
+
+                # The joined name string for this group
+                group_name = DocumentService._format_people_group(group)
+                first_idx = group_start_indices[g_idx]
+
+                # Split body into segments and replace identifiers
+                segments = _seg_split.split(instance_body)
+
+                for ident_tuple in body_identifiers_raw:
+                    if isinstance(ident_tuple, tuple):
+                        orig_ident = ident_tuple[0]
+                        field_name = ident_tuple[2] if len(ident_tuple) > 2 and ident_tuple[2] else None
+                    else:
+                        orig_ident = ident_tuple
+                        field_name = None
+
+                    ident = orig_ident.lower()
+                    base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+
+                    if base_ident == loop_identifier:
+                        replacement = group_name
+                    elif base_ident in same_group:
+                        arr = identifier_arrays.get(base_ident)
+                        if arr is not None and first_idx < len(arr):
+                            fld = ident.split('.', 1)[1] if '.' in ident else field_name
+                            replacement = DocumentService._format_item(arr[first_idx], fld)
+                        else:
+                            replacement = ''
+                    else:
+                        scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
+                        replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
+
+                    target = f'<<{orig_ident}>>'
+                    for j in range(len(segments)):
+                        if not segments[j].startswith('{{') and not segments[j].startswith('\x00'):
+                            segments[j] = segments[j].replace(target, replacement)
+
+                instance_body = ''.join(segments)
+
+                # Process IF blocks with per-group answer maps
+                iter_answer = dict(answer_map)
+                iter_raw = dict(raw_map)
+                iter_answer[loop_identifier] = group_name
+                iter_raw[loop_identifier] = group_name
+                # Make type() function available for IF conditions
+                group_type = DocumentService._get_group_type(group)
+                iter_answer[f'type({loop_identifier})'] = group_type
+                iter_raw[f'type({loop_identifier})'] = group_type
+                for ident in body_ident_names:
+                    base_ident = ident.split('.', 1)[0] if '.' in ident else ident
+                    if base_ident in same_group and base_ident != loop_identifier:
+                        arr = identifier_arrays.get(base_ident)
+                        if arr is not None and first_idx < len(arr):
+                            fld = ident.split('.', 1)[1] if '.' in ident else None
+                            val = DocumentService._format_item(arr[first_idx], fld)
+                            iter_answer[ident] = val
+                            iter_raw[ident] = val
+                instance_body = DocumentService._process_if_blocks(
+                    instance_body, iter_answer, iter_raw
+                )
+
+                output_parts.append(instance_body)
+
+            expanded = ''.join(output_parts)
+
+            # Recursively process nested loops
+            expanded = DocumentService._process_peopleloop_blocks(
                 expanded, answer_map, raw_map, global_counter, identifier_group_map
             )
 
@@ -1078,8 +1385,24 @@ class DocumentService:
         """
         cond = condition_text.strip()
 
-        # ANY / NONE aggregate operators for repeatable fields
+        # type() function for PEOPLELOOP group classification
         _q = r'["\'\u201c\u201d\u2018\u2019\u00ab\u00bb]'
+        type_match = re.match(
+            r'type\s*\(\s*(?:<<)?([^>=!\s\}>)]+)(?:>>)?\s*\)\s*(=|!=)\s*' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?',
+            cond, re.IGNORECASE
+        )
+        if type_match:
+            identifier = type_match.group(1).lower()
+            operator = type_match.group(2)
+            expected = (type_match.group(3) or '').strip()
+            type_key = f'type({identifier})'
+            actual = (answer_map or {}).get(type_key, '')
+            _logger.debug(f"IF type(): type({identifier}) {operator} '{expected}' -> actual='{actual}'")
+            if operator == '!=':
+                return actual.lower() != expected.lower()
+            return actual.lower() == expected.lower()
+
+        # ANY / NONE aggregate operators for repeatable fields
         any_none_match = re.match(
             r'(ANY|NONE)\s+(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*=\s*' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?',
             cond, re.IGNORECASE
@@ -1295,10 +1618,10 @@ class DocumentService:
         """
         # Process text sequentially to handle resets and counters in order
         # Combine both patterns to process in sequence
-        combined_pattern = re.compile(r'(#/A)|(###|##%|##A|##)(?:\+(\d*))?')
+        combined_pattern = re.compile(r'(##/|#/A)|(###|##%|##A|##)(?:\+(\d*))?')
 
         def _replacer(match):
-            if match.group(1):  # Reset token #/A
+            if match.group(1):  # Reset token ##/ or #/A
                 global_counter[0] = 0
                 return ''
             else:  # Counter token
@@ -1636,6 +1959,11 @@ class DocumentService:
 
         # Pass 1: FOR EACH loops
         merged = DocumentService._process_foreach_blocks(
+            merged, answer_map, raw_map, global_counter, _id_grp_map
+        )
+
+        # Pass 1.5: PEOPLELOOP blocks (groups person entries by 'then' conjunction)
+        merged = DocumentService._process_peopleloop_blocks(
             merged, answer_map, raw_map, global_counter, _id_grp_map
         )
 

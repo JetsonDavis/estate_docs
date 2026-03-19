@@ -12,6 +12,7 @@ interface RichTextEditorProps {
   onChange: (value: string) => void
   placeholder?: string
   height?: string
+  editorRef?: React.MutableRefObject<ReactQuill | null>
 }
 
 // Escape template identifiers so they don't get stripped by Quill
@@ -32,9 +33,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
   placeholder = 'Enter your template content here...',
-  height = '600px'
+  height = '600px',
+  editorRef
 }) => {
-  const quillRef = useRef<ReactQuill>(null)
+  const internalRef = useRef<ReactQuill>(null)
+  const quillRef = editorRef || internalRef
   // Track the last value we sent to the parent so we can detect truly external changes
   const lastValueSent = useRef(value)
 

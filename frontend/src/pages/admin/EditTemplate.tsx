@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { templateService } from '../../services/templateService'
 import { Template } from '../../types/template'
 import { useToast } from '../../hooks/useToast'
+import ReactQuill from 'react-quill'
 import RichTextEditor from '../../components/common/RichTextEditor'
 import 'react-quill/dist/quill.snow.css'
 import './Templates.css'
@@ -32,50 +33,18 @@ const EditTemplate: React.FC = () => {
   const lastSavedRef = useRef({ name: '', description: '', markdownContent: '' })
   const [isEditing, setIsEditing] = useState(false)
   const [blockErrors, setBlockErrors] = useState<string[]>([])
-  const textareaInitializedRef = useRef(false)
   const scrollRatioRef = useRef<number>(0)
   const pageScrollRef = useRef<number>(0)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const formattedDivRef = useRef<HTMLDivElement | null>(null)
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  const quillEditorRef = useRef<ReactQuill | null>(null)
 
   useEffect(() => { nameRef.current = name }, [name])
   useEffect(() => { descriptionRef.current = description }, [description])
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
 
-  // Ref callback for textarea: runs exactly when the element mounts
-  const textareaRefCallback = useCallback((el: HTMLTextAreaElement | null) => {
-    textareaRef.current = el
-    if (el && !textareaInitializedRef.current) {
-      textareaInitializedRef.current = true
-      const savedRatio = scrollRatioRef.current
-      const savedPageScroll = pageScrollRef.current
-
-      // Use setTimeout to let React finish rendering the value, then focus
-      setTimeout(() => {
-        if (textareaRef.current) {
-          const maxScroll = textareaRef.current.scrollHeight - textareaRef.current.clientHeight
-          const targetScroll = Math.round(savedRatio * maxScroll)
-
-          textareaRef.current.focus({ preventScroll: true })
-          textareaRef.current.scrollTop = targetScroll
-          window.scrollTo({ top: savedPageScroll })
-
-          // One more override after the browser settles
-          requestAnimationFrame(() => {
-            if (textareaRef.current) {
-              const max = textareaRef.current.scrollHeight - textareaRef.current.clientHeight
-              textareaRef.current.scrollTop = Math.round(savedRatio * max)
-            }
-            window.scrollTo({ top: savedPageScroll })
-          })
-        }
-      }, 0)
-    }
-  }, [])
-
-  // Restore scroll position when switching back to formatted view
+  // Restore scroll position on the display overlay when leaving edit mode
   useEffect(() => {
     if (!isEditing && formattedDivRef.current) {
       const savedRatio = scrollRatioRef.current
@@ -99,6 +68,13 @@ const EditTemplate: React.FC = () => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement
       if (editorContainerRef.current && !editorContainerRef.current.contains(target)) {
+        // Save Quill scroll position before exiting
+        const qlEditor = editorContainerRef.current.querySelector('.ql-editor') as HTMLElement | null
+        if (qlEditor) {
+          const maxScroll = qlEditor.scrollHeight - qlEditor.clientHeight
+          scrollRatioRef.current = maxScroll > 0 ? qlEditor.scrollTop / maxScroll : 0
+        }
+        pageScrollRef.current = window.scrollY
         setIsEditing(false)
         setBlockErrors(validateBlocks(markdownContent))
       }
@@ -404,44 +380,98 @@ const EditTemplate: React.FC = () => {
                   ))}
                 </div>
               )}
-              {isEditing ? (
-                <div ref={editorContainerRef}>
-                  <RichTextEditor
-                    value={markdownContent}
-                    onChange={setMarkdownContent}
-                    placeholder="Enter your template content here..."
-                    height="600px"
-                  />
-                </div>
-              ) : (
-                <div
-                  ref={formattedDivRef}
-                  onClick={(e) => {
-                    const div = e.currentTarget
-                    const maxScroll = div.scrollHeight - div.clientHeight
-                    scrollRatioRef.current = maxScroll > 0 ? div.scrollTop / maxScroll : 0
-                    pageScrollRef.current = window.scrollY
-                    setIsEditing(true)
-                  }}
-                  className="ql-editor"
-                  style={{
-                    width: '100%',
-                    height: '600px',
-                    padding: '0.875rem 1rem',
-                    border: '2px solid #d1d5db',
-                    borderRadius: '0.75rem',
-                    fontSize: '1rem',
-                    boxSizing: 'border-box',
-                    overflowY: 'auto',
-                    backgroundColor: 'white',
-                    color: '#111827',
-                    cursor: 'text'
-                  }}
-                  dangerouslySetInnerHTML={{
-                    __html: colorCodeForDisplay(markdownContent)
-                  }}
+              <div ref={editorContainerRef} style={{ position: 'relative', height: '600px' }}>
+                {/* Editor is ALWAYS mounted — no mount/unmount cycle */}
+                <RichTextEditor
+                  value={markdownContent}
+                  onChange={setMarkdownContent}
+                  placeholder="Enter your template content here..."
+                  height="600px"
+                  editorRef={quillEditorRef}
                 />
-              )}
+                {/* Display overlay sits on top when not editing */}
+                {!isEditing && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      zIndex: 10,
+                      cursor: 'text'
+                    }}
+                    onClick={() => {
+                      const scrollDiv = formattedDivRef.current
+                      if (scrollDiv) {
+                        const maxScroll = scrollDiv.scrollHeight - scrollDiv.clientHeight
+                        scrollRatioRef.current = maxScroll > 0 ? scrollDiv.scrollTop / maxScroll : 0
+                      }
+                      pageScrollRef.current = window.scrollY
+
+                      // Sync Quill scroll to match overlay
+                      const qlEditor = editorContainerRef.current?.querySelector('.ql-editor') as HTMLElement | null
+                      if (qlEditor) {
+                        const maxScroll = qlEditor.scrollHeight - qlEditor.clientHeight
+                        qlEditor.scrollTop = Math.round(scrollRatioRef.current * maxScroll)
+                      }
+
+                      setIsEditing(true)
+
+                      // Focus the already-live editor after overlay is removed
+                      requestAnimationFrame(() => {
+                        const quill = quillEditorRef.current?.getEditor()
+                        if (quill) {
+                          quill.focus()
+                        }
+                        // Restore scroll positions
+                        if (qlEditor) {
+                          const maxScroll = qlEditor.scrollHeight - qlEditor.clientHeight
+                          qlEditor.scrollTop = Math.round(scrollRatioRef.current * maxScroll)
+                        }
+                        window.scrollTo({ top: pageScrollRef.current })
+                      })
+                    }}
+                  >
+                    {/* Fake toolbar matching Quill toolbar height */}
+                    <div
+                      style={{
+                        height: '42px',
+                        border: '1px solid #ccc',
+                        borderBottom: 'none',
+                        borderTopLeftRadius: '0.5rem',
+                        borderTopRightRadius: '0.5rem',
+                        backgroundColor: '#f9fafb',
+                        display: 'flex',
+                        alignItems: 'center',
+                        paddingLeft: '12px'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>Click to edit</span>
+                    </div>
+                    <div
+                      ref={formattedDivRef}
+                      className="ql-editor"
+                      style={{
+                        width: '100%',
+                        height: 'calc(600px - 42px)',
+                        padding: '12px 15px',
+                        border: '1px solid #ccc',
+                        borderBottomLeftRadius: '0.5rem',
+                        borderBottomRightRadius: '0.5rem',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        overflowY: 'auto',
+                        backgroundColor: 'white',
+                        color: '#111827'
+                      }}
+                      dangerouslySetInnerHTML={{
+                        __html: colorCodeForDisplay(markdownContent)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="form-actions" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
