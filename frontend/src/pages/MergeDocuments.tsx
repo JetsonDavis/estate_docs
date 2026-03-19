@@ -364,12 +364,12 @@ const MergeDocuments: React.FC = () => {
   }, [selectedSessionId])
 
   useEffect(() => {
-    if (selectedTemplateId) {
+    if (selectedTemplateId && templates.length > 0) {
       loadTemplateIdentifiers(selectedTemplateId)
-    } else {
+    } else if (!selectedTemplateId) {
       setTemplateIdentifiers([])
     }
-  }, [selectedTemplateId])
+  }, [selectedTemplateId, templates])
 
   const loadData = async () => {
     try {
@@ -407,27 +407,19 @@ const MergeDocuments: React.FC = () => {
     }
   }
 
-  const loadTemplateIdentifiers = async (templateId: number) => {
-    try {
-      setLoadingIdentifiers(true)
-      const template = templates.find(t => t.id === templateId)
-      if (template && template.identifiers) {
-        // For template identifiers, only use text before the period (if there is one)
-        const identifiers = template.identifiers.split(',').map(id => {
-          const trimmed = id.trim()
-          const dotIndex = trimmed.indexOf('.')
-          return dotIndex !== -1 ? trimmed.substring(0, dotIndex) : trimmed
-        })
-        // Sort alphabetically
-        setTemplateIdentifiers([...identifiers].sort((a, b) => a.localeCompare(b)))
-      } else {
-        setTemplateIdentifiers([])
-      }
-    } catch (err: any) {
-      console.error('Failed to load template identifiers:', err)
+  const loadTemplateIdentifiers = (templateId: number) => {
+    const template = templates.find(t => t.id === templateId)
+    if (template && template.identifiers) {
+      // For template identifiers, only use text before the period (if there is one)
+      const identifiers = template.identifiers.split(',').map(id => {
+        const trimmed = id.trim()
+        const dotIndex = trimmed.indexOf('.')
+        return dotIndex !== -1 ? trimmed.substring(0, dotIndex) : trimmed
+      })
+      // Sort alphabetically
+      setTemplateIdentifiers([...identifiers].sort((a, b) => a.localeCompare(b)))
+    } else {
       setTemplateIdentifiers([])
-    } finally {
-      setLoadingIdentifiers(false)
     }
   }
 

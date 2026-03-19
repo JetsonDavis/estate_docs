@@ -972,11 +972,10 @@ class DocumentService:
 
                 instance_body = ''.join(segments)
 
-                # Restore nested FOREACH blocks
-                for ph, original in placeholders.items():
-                    instance_body = instance_body.replace(ph, original)
-
                 # ── Process IF blocks with per-iteration answer maps ──
+                # MUST happen BEFORE restoring nested loop placeholders so
+                # that IF blocks inside PEOPLELOOP/FOREACH bodies are
+                # preserved for their own loop processing (e.g. IF TYPE()).
                 # Same-group identifiers must resolve to their per-iteration
                 # scalar values (not the full array) so that conditions like
                 # {{IF <<amendment_type>> = "Update SSTEE"}} work correctly.
@@ -994,6 +993,10 @@ class DocumentService:
                 instance_body = DocumentService._process_if_blocks(
                     instance_body, iter_answer, iter_raw
                 )
+
+                # Restore nested FOREACH/PEOPLELOOP blocks AFTER IF processing
+                for ph, original in placeholders.items():
+                    instance_body = instance_body.replace(ph, original)
 
                 output_parts.append(instance_body)
 
@@ -1077,6 +1080,32 @@ class DocumentService:
         return ' '.join(parts)
 
     @staticmethod
+    def _format_people_group_field(group: list, arr: list, start_idx: int, field: str = None) -> str:
+        """Join a same-group identifier's values using the group's conjunction pattern.
+
+        Mirrors _format_people_group but extracts field values from `arr`
+        instead of names from the group dicts.  For example, if group is
+        [Mary(and), Sally] and arr has ['daughter', 'wife'], this returns
+        'daughter and wife'.
+        """
+        parts = []
+        for j, person in enumerate(group):
+            idx = start_idx + j
+            if idx < len(arr):
+                val = DocumentService._format_item(arr[idx], field)
+            else:
+                val = ''
+            if not val:
+                continue
+            if j > 0 and parts:
+                conj = (person.get('conjunction', '') or 'and').lower()
+                if conj == 'then':
+                    conj = 'and'
+                parts.append(conj)
+            parts.append(val)
+        return ' '.join(parts)
+
+    @staticmethod
     def _get_group_type(group: list) -> str:
         """Determine the type of a PEOPLELOOP group.
 
@@ -1117,19 +1146,21 @@ class DocumentService:
         while pos < len(text):
             open_match = DocumentService._PEOPLELOOP_OPEN_RE.search(text, pos)
             if not open_match:
-                # Process any COUNTER RESET tags in remaining text
+                # Process counter tokens and COUNTER RESET tags in remaining text
                 remaining = text[pos:]
                 if _counter_reset_re.search(remaining):
                     global_counter[0] = 0
                     remaining = _counter_reset_re.sub('', remaining)
+                remaining = DocumentService._replace_counter_tokens(remaining, global_counter)
                 result.append(remaining)
                 break
 
-            # Text before this PEOPLELOOP — check for COUNTER RESET tags
+            # Text before this PEOPLELOOP — process counter tokens and resets
             before_text = text[pos:open_match.start()]
             if _counter_reset_re.search(before_text):
                 global_counter[0] = 0
                 before_text = _counter_reset_re.sub('', before_text)
+            before_text = DocumentService._replace_counter_tokens(before_text, global_counter)
             result.append(before_text)
 
             loop_identifier = open_match.group(1).lower()
@@ -1209,15 +1240,6 @@ class DocumentService:
             output_parts = []
             for g_idx, group in enumerate(groups):
                 instance_body = body_template
-                global_counter[0] += 1
-
-                def _pl_counter_replace(m, _gc=global_counter):
-                    token = m.group(1)
-                    plus_str = m.group(2)
-                    inc = int(plus_str) if plus_str else 0
-                    return DocumentService._counter_to_str(token, _gc[0] + inc)
-
-                instance_body = DocumentService._COUNTER_RE.sub(_pl_counter_replace, instance_body)
 
                 # The joined name string for this group
                 group_name = DocumentService._format_people_group(group)
@@ -1243,7 +1265,9 @@ class DocumentService:
                         arr = identifier_arrays.get(base_ident)
                         if arr is not None and first_idx < len(arr):
                             fld = ident.split('.', 1)[1] if '.' in ident else field_name
-                            replacement = DocumentService._format_item(arr[first_idx], fld)
+                            replacement = DocumentService._format_people_group_field(
+                                group, arr, first_idx, fld
+                            )
                         else:
                             replacement = ''
                     else:
@@ -1272,12 +1296,18 @@ class DocumentService:
                         arr = identifier_arrays.get(base_ident)
                         if arr is not None and first_idx < len(arr):
                             fld = ident.split('.', 1)[1] if '.' in ident else None
-                            val = DocumentService._format_item(arr[first_idx], fld)
+                            val = DocumentService._format_people_group_field(
+                                group, arr, first_idx, fld
+                            )
                             iter_answer[ident] = val
                             iter_raw[ident] = val
                 instance_body = DocumentService._process_if_blocks(
                     instance_body, iter_answer, iter_raw
                 )
+
+                # Replace counter tokens AFTER IF processing so only
+                # surviving ##% tokens consume counter values.
+                instance_body = DocumentService._replace_counter_tokens(instance_body, global_counter)
 
                 output_parts.append(instance_body)
 
