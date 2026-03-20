@@ -568,16 +568,32 @@ const InputForms: React.FC = () => {
           }
         }
       }
-      data.questions.forEach(q => {
-        if (q.repeatable && initialAnswers[q.id]) {
-          try {
-            const parsed = JSON.parse(initialAnswers[q.id])
-            if (Array.isArray(parsed) && parsed.length >= 1) {
-              seedFollowupSyntheticIds(q.conditional_followups || undefined, parsed.length)
+      // Recursively walk ALL questions (including those nested in conditional
+      // followups) to find repeatable ones and seed their followups.
+      // Without this, nested repeatables like special_gift_type (inside a
+      // conditional of special_gifts) would never have their followup
+      // synthetic IDs seeded, causing values to disappear on page refresh.
+      const seedAllRepeatableFollowups = (questions: any[]) => {
+        for (const q of questions) {
+          if (q.repeatable && initialAnswers[q.id]) {
+            try {
+              const parsed = JSON.parse(initialAnswers[q.id])
+              if (Array.isArray(parsed) && parsed.length >= 1) {
+                seedFollowupSyntheticIds(q.conditional_followups || undefined, parsed.length)
+              }
+            } catch { /* not a JSON array */ }
+          }
+          // Recurse into conditional followups to find nested repeatable questions
+          if (q.conditional_followups) {
+            for (const cfu of q.conditional_followups) {
+              if (cfu.questions) {
+                seedAllRepeatableFollowups(cfu.questions)
+              }
             }
-          } catch { /* not a JSON array */ }
+          }
         }
-      })
+      }
+      seedAllRepeatableFollowups(data.questions)
 
       setAnswers(initialAnswers)
       setPersonAnswers(initialPersonAnswers)
@@ -889,6 +905,50 @@ const InputForms: React.FC = () => {
           }
         })
 
+        // Re-seed synthetic IDs for non-repeatable followups inside repeatable parents
+        const seedFollowupsInRadio = (cfus: any[] | undefined, instanceCount: number) => {
+          if (!cfus) return
+          for (const cfu of cfus) {
+            for (const fq of (cfu.questions || [])) {
+              if (!fq.repeatable && newAnswers[fq.id] !== undefined) {
+                try {
+                  const parsed = JSON.parse(newAnswers[fq.id])
+                  if (Array.isArray(parsed)) {
+                    for (let i = 1; i < instanceCount; i++) {
+                      const synId = fq.id * 100000 + i
+                      if (newAnswers[synId] === undefined) {
+                        newAnswers[synId] = parsed[i] !== undefined ? parsed[i] : ''
+                      }
+                    }
+                    newAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                  }
+                } catch { /* Not JSON */ }
+              }
+              seedFollowupsInRadio(fq.conditional_followups, instanceCount)
+            }
+          }
+        }
+        const seedAllInRadio = (questions: any[]) => {
+          for (const q of questions) {
+            if (q.repeatable && newAnswers[q.id]) {
+              try {
+                const parsed = JSON.parse(newAnswers[q.id])
+                if (Array.isArray(parsed) && parsed.length >= 1) {
+                  seedFollowupsInRadio(q.conditional_followups || undefined, parsed.length)
+                }
+              } catch { /* not a JSON array */ }
+            }
+            if (q.conditional_followups) {
+              for (const cfu of q.conditional_followups) {
+                if (cfu.questions) {
+                  seedAllInRadio(cfu.questions)
+                }
+              }
+            }
+          }
+        }
+        seedAllInRadio(data.questions)
+
         return newAnswers
       })
 
@@ -1131,17 +1191,28 @@ const InputForms: React.FC = () => {
           }
         }
 
-        // Seed followups for all repeatable questions
-        data.questions.forEach(q => {
-          if (q.repeatable && newAnswers[q.id]) {
-            try {
-              const parsed = JSON.parse(newAnswers[q.id])
-              if (Array.isArray(parsed) && parsed.length >= 1) {
-                seedFollowupsInAnswers(q.conditional_followups || undefined, parsed.length)
+        // Recursively walk ALL questions (including nested conditional
+        // followups) to find repeatable ones and re-seed their followups.
+        const seedAllInAnswers = (questions: any[]) => {
+          for (const q of questions) {
+            if (q.repeatable && newAnswers[q.id]) {
+              try {
+                const parsed = JSON.parse(newAnswers[q.id])
+                if (Array.isArray(parsed) && parsed.length >= 1) {
+                  seedFollowupsInAnswers(q.conditional_followups || undefined, parsed.length)
+                }
+              } catch { /* not a JSON array */ }
+            }
+            if (q.conditional_followups) {
+              for (const cfu of q.conditional_followups) {
+                if (cfu.questions) {
+                  seedAllInAnswers(cfu.questions)
+                }
               }
-            } catch { /* not a JSON array */ }
+            }
           }
-        })
+        }
+        seedAllInAnswers(data.questions)
 
         return newAnswers
       })
