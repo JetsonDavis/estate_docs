@@ -529,6 +529,7 @@ const InputForms: React.FC = () => {
             } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
               // If the real ID contains an array, distribute values to each synthetic ID
+              const isPerson = fq.question_type === 'person' || fq.question_type === 'person_backup'
               try {
                 const parsed = JSON.parse(initialAnswers[fq.id])
                 if (Array.isArray(parsed)) {
@@ -539,9 +540,29 @@ const InputForms: React.FC = () => {
                       const valueToSeed = parsed[i] !== undefined ? parsed[i] : ''
                       initialAnswers[synId] = valueToSeed
                     }
+                    // For person questions, parse the distributed value into personAnswers
+                    if (isPerson && initialAnswers[synId]) {
+                      try {
+                        const personParsed = JSON.parse(initialAnswers[synId])
+                        if (Array.isArray(personParsed) && personParsed.length > 0 && typeof personParsed[0] === 'object' && 'name' in personParsed[0]) {
+                          initialPersonAnswers[synId] = personParsed.map((p: any) => p.name)
+                          initialPersonConjunctions[synId] = personParsed.map((p: any) => p.conjunction).filter((c: any) => c)
+                        }
+                      } catch { /* not valid person JSON */ }
+                    }
                   }
                   // Instance 0 gets the first value
                   initialAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                  // For person questions, also re-parse instance 0's value
+                  if (isPerson && initialAnswers[fq.id]) {
+                    try {
+                      const personParsed = JSON.parse(initialAnswers[fq.id])
+                      if (Array.isArray(personParsed) && personParsed.length > 0 && typeof personParsed[0] === 'object' && 'name' in personParsed[0]) {
+                        initialPersonAnswers[fq.id] = personParsed.map((p: any) => p.name)
+                        initialPersonConjunctions[fq.id] = personParsed.map((p: any) => p.conjunction).filter((c: any) => c)
+                      }
+                    } catch { /* not valid person JSON */ }
+                  }
                 } else {
                   // Not an array — value belongs to instance 0 only.
                   // Initialize synthetic IDs for instances 1+ to empty strings.
@@ -549,6 +570,9 @@ const InputForms: React.FC = () => {
                     const synId = fq.id * 100000 + i
                     if (initialAnswers[synId] === undefined) {
                       initialAnswers[synId] = ''
+                    }
+                    if (isPerson) {
+                      initialPersonAnswers[synId] = ['']
                     }
                   }
                 }
@@ -559,6 +583,9 @@ const InputForms: React.FC = () => {
                   const synId = fq.id * 100000 + i
                   if (initialAnswers[synId] === undefined) {
                     initialAnswers[synId] = ''
+                  }
+                  if (isPerson) {
+                    initialPersonAnswers[synId] = ['']
                   }
                 }
               }
@@ -1300,10 +1327,62 @@ const InputForms: React.FC = () => {
           conjunction: conjunctions[idx] || undefined
         }))
 
-        const answerValue = JSON.stringify(personData)
+        const realQuestionId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
+        let answerValue = JSON.stringify(personData)
+
+        // For non-repeatable person questions inside repeatable parents,
+        // combine all instances' person data into a flat array.
+        // This mirrors handleAnswerBlur's multi-instance save logic.
+        const question = findQuestionById(questionId)
+        if (question && !question.repeatable) {
+          // Helper to build person JSON for a given instance's questionId
+          const buildInstanceJson = (qId: number): string => {
+            const instValues = (qId === questionId) ? filteredValues : (personAnswers[qId] || ['']).filter((v: string) => v.trim() !== '')
+            const instConj = (qId === questionId) ? conjunctions : (personConjunctions[qId] || [])
+            return JSON.stringify(instValues.map((name: string, idx: number) => ({
+              name,
+              conjunction: instConj[idx] || undefined
+            })))
+          }
+
+          if (questionId >= 100000) {
+            // Synthetic ID — combine all instances
+            const instanceIdx = questionId % 100000
+            let maxIdx = instanceIdx
+            for (const key of Object.keys(personAnswers)) {
+              const numKey = Number(key)
+              if (numKey >= 100000 && Math.floor(numKey / 100000) === realQuestionId) {
+                const idx = numKey % 100000
+                if (idx > maxIdx) maxIdx = idx
+              }
+            }
+            const arr: string[] = [buildInstanceJson(realQuestionId)]
+            for (let i = 1; i <= maxIdx; i++) {
+              arr.push(buildInstanceJson(realQuestionId * 100000 + i))
+            }
+            answerValue = JSON.stringify(arr)
+          } else {
+            // Real ID — check if synthetic siblings exist
+            let maxSiblingIdx = 0
+            for (const key of Object.keys(personAnswers)) {
+              const numKey = Number(key)
+              if (numKey >= 100000 && Math.floor(numKey / 100000) === questionId) {
+                const idx = numKey % 100000
+                if (idx > maxSiblingIdx) maxSiblingIdx = idx
+              }
+            }
+            if (maxSiblingIdx > 0) {
+              const arr: string[] = [buildInstanceJson(questionId)]
+              for (let i = 1; i <= maxSiblingIdx; i++) {
+                arr.push(buildInstanceJson(questionId * 100000 + i))
+              }
+              answerValue = JSON.stringify(arr)
+            }
+          }
+        }
 
         await sessionService.saveAnswers(sessionData.session_id, {
-          answers: [{ question_id: questionId, answer_value: answerValue }]
+          answers: [{ question_id: realQuestionId, answer_value: answerValue }]
         })
       } catch (err) {
         console.error('Failed to save person answer:', err)
