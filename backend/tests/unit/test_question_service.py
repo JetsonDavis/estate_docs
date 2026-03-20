@@ -807,9 +807,9 @@ class TestUserInteractionScenarios:
         return QuestionGroupService.create_question_group(db_session, group_data)
 
     def _create_question(
-        self, 
-        db_session: Session, 
-        group_id: int, 
+        self,
+        db_session: Session,
+        group_id: int,
         identifier: str,
         question_type: QuestionType = QuestionType.FREE_TEXT,
         repeatable: bool = False,
@@ -842,12 +842,12 @@ class TestUserInteractionScenarios:
         Expected: Logic should have questions 1 and 3 in order.
         """
         group = self._create_group(db_session, "scenario_01")
-        
+
         # User adds 3 questions
         q1 = self._create_question(db_session, group.id, "q1")
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
-        
+
         # Set initial logic
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -855,17 +855,17 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # User deletes q2
         QuestionService.delete_question(db_session, q2.id)
-        
+
         # Update logic to remove q2
         new_logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, new_logic)
-        
+
         assert len(updated.question_logic) == 2
         assert updated.question_logic[0]["questionId"] == q1.id
         assert updated.question_logic[1]["questionId"] == q3.id
@@ -878,16 +878,16 @@ class TestUserInteractionScenarios:
         User adds 2 questions, inserts a conditional after q1, adds 2 nested questions.
         """
         group = self._create_group(db_session, "scenario_02")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         q2 = self._create_question(db_session, group.id, "q2")
-        
+
         # Add nested questions
         nested1 = self._create_question(db_session, group.id, "nested1")
         nested2 = self._create_question(db_session, group.id, "nested2")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_conditional_logic_item(
@@ -903,7 +903,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q2.id, "2"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 3
         assert updated.question_logic[1]["type"] == "conditional"
         assert len(updated.question_logic[1]["conditional"]["nestedItems"]) == 2
@@ -916,13 +916,13 @@ class TestUserInteractionScenarios:
         User creates conditional with 2 nested questions, deletes second, adds new one.
         """
         group = self._create_group(db_session, "scenario_03")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         nested1 = self._create_question(db_session, group.id, "nested1")
         nested2 = self._create_question(db_session, group.id, "nested2")
-        
+
         # Initial logic with conditional
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -935,13 +935,13 @@ class TestUserInteractionScenarios:
             ),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Delete nested2
         QuestionService.delete_question(db_session, nested2.id)
-        
+
         # Add new nested question
         nested3 = self._create_question(db_session, group.id, "nested3")
-        
+
         # Update logic
         new_logic = [
             create_question_logic_item(q1.id, "1"),
@@ -954,7 +954,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, new_logic)
-        
+
         nested_items = updated.question_logic[1]["conditional"]["nestedItems"]
         assert len(nested_items) == 2
         assert nested_items[0]["questionId"] == nested1.id
@@ -968,21 +968,21 @@ class TestUserInteractionScenarios:
         User has 3 questions, inserts a new one between q1 and q2.
         """
         group = self._create_group(db_session, "scenario_04")
-        
+
         q1 = self._create_question(db_session, group.id, "q1")
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q2.id, "2"),
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Insert new question between q1 and q2
         q_new = self._create_question(db_session, group.id, "q_new")
-        
+
         new_logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q_new.id, "new"),
@@ -990,7 +990,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, new_logic)
-        
+
         assert len(updated.question_logic) == 4
         assert updated.question_logic[1]["questionId"] == q_new.id
 
@@ -1002,14 +1002,14 @@ class TestUserInteractionScenarios:
         User has 3 questions, inserts a conditional between q2 and q3.
         """
         group = self._create_group(db_session, "scenario_05")
-        
+
         q1 = self._create_question(db_session, group.id, "q1")
         q2 = self._create_question(db_session, group.id, "q2", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         q3 = self._create_question(db_session, group.id, "q3")
         nested = self._create_question(db_session, group.id, "nested")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q2.id, "2"),
@@ -1020,7 +1020,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 4
         assert updated.question_logic[2]["type"] == "conditional"
         assert updated.question_logic[3]["questionId"] == q3.id
@@ -1033,14 +1033,14 @@ class TestUserInteractionScenarios:
         User deletes a conditional and moves its nested questions to root level.
         """
         group = self._create_group(db_session, "scenario_06")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         nested1 = self._create_question(db_session, group.id, "nested1")
         nested2 = self._create_question(db_session, group.id, "nested2")
         q2 = self._create_question(db_session, group.id, "q2")
-        
+
         # Initial with conditional
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1054,7 +1054,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q2.id, "2"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Remove conditional, promote nested to root
         new_logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1063,7 +1063,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q2.id, "2"),
         ]
         updated = self._update_logic(db_session, group.id, new_logic)
-        
+
         assert len(updated.question_logic) == 4
         assert all(item["type"] == "question" for item in updated.question_logic)
 
@@ -1075,12 +1075,12 @@ class TestUserInteractionScenarios:
         User reorders questions: q1, q2, q3, q4 -> q3, q1, q4, q2
         """
         group = self._create_group(db_session, "scenario_07")
-        
+
         q1 = self._create_question(db_session, group.id, "q1")
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
         q4 = self._create_question(db_session, group.id, "q4")
-        
+
         # New order
         logic = [
             create_question_logic_item(q3.id, "3"),
@@ -1089,7 +1089,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q2.id, "2"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert updated.question_logic[0]["questionId"] == q3.id
         assert updated.question_logic[1]["questionId"] == q1.id
         assert updated.question_logic[2]["questionId"] == q4.id
@@ -1103,28 +1103,28 @@ class TestUserInteractionScenarios:
         User creates a repeatable group with 3 questions that repeat together.
         """
         group = self._create_group(db_session, "scenario_08")
-        
+
         # First question starts the repeatable group
         q1 = self._create_question(db_session, group.id, "ben_name", repeatable=True)
-        
+
         # Other questions join the group
-        q2 = self._create_question(db_session, group.id, "ben_share", 
+        q2 = self._create_question(db_session, group.id, "ben_share",
                                    repeatable=True, repeatable_group_id=str(q1.id))
         q3 = self._create_question(db_session, group.id, "ben_relation",
                                    repeatable=True, repeatable_group_id=str(q1.id))
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q2.id, "2"),
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         # Verify all questions are in the same repeatable group
         q1_db = QuestionService.get_question_by_id(db_session, q1.id)
         q2_db = QuestionService.get_question_by_id(db_session, q2.id)
         q3_db = QuestionService.get_question_by_id(db_session, q3.id)
-        
+
         assert q1_db.repeatable == True
         assert q2_db.repeatable_group_id == str(q1.id)
         assert q3_db.repeatable_group_id == str(q1.id)
@@ -1138,18 +1138,18 @@ class TestUserInteractionScenarios:
         This tests the bug where Add Question was inserting at wrong position.
         """
         group = self._create_group(db_session, "scenario_09")
-        
+
         q1 = self._create_question(db_session, group.id, "q1")
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q2.id, "2"),
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Insert in middle
         q_middle = self._create_question(db_session, group.id, "q_middle")
         logic = [
@@ -1159,7 +1159,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Add at end
         q_end = self._create_question(db_session, group.id, "q_end")
         logic = [
@@ -1170,7 +1170,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q_end.id, "end"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 5
         assert updated.question_logic[4]["questionId"] == q_end.id
 
@@ -1182,7 +1182,7 @@ class TestUserInteractionScenarios:
         User creates multiple conditionals one after another.
         """
         group = self._create_group(db_session, "scenario_10")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
@@ -1191,7 +1191,7 @@ class TestUserInteractionScenarios:
                                            QuestionOption(value="no", label="No")])
         nested1 = self._create_question(db_session, group.id, "nested1")
         nested2 = self._create_question(db_session, group.id, "nested2")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_conditional_logic_item(
@@ -1205,7 +1205,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 4
         assert updated.question_logic[1]["type"] == "conditional"
         assert updated.question_logic[3]["type"] == "conditional"
@@ -1218,7 +1218,7 @@ class TestUserInteractionScenarios:
         User creates conditionals nested 3 levels deep.
         """
         group = self._create_group(db_session, "scenario_11")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
@@ -1229,7 +1229,7 @@ class TestUserInteractionScenarios:
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         q4 = self._create_question(db_session, group.id, "q4")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             {
@@ -1273,14 +1273,14 @@ class TestUserInteractionScenarios:
             }
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         # Verify structure
         level1 = updated.question_logic[1]["conditional"]["nestedItems"]
         assert len(level1) == 2
-        
+
         level2 = level1[1]["conditional"]["nestedItems"]
         assert len(level2) == 2
-        
+
         level3 = level2[1]["conditional"]["nestedItems"]
         assert len(level3) == 1
         assert level3[0]["questionId"] == q4.id
@@ -1293,34 +1293,34 @@ class TestUserInteractionScenarios:
         User deletes all questions and creates new ones.
         """
         group = self._create_group(db_session, "scenario_12")
-        
+
         # Create initial questions
         q1 = self._create_question(db_session, group.id, "old1")
         q2 = self._create_question(db_session, group.id, "old2")
-        
+
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_question_logic_item(q2.id, "2"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Delete all
         QuestionService.delete_question(db_session, q1.id)
         QuestionService.delete_question(db_session, q2.id)
         self._update_logic(db_session, group.id, [])
-        
+
         # Create new questions
         new1 = self._create_question(db_session, group.id, "new1")
         new2 = self._create_question(db_session, group.id, "new2")
         new3 = self._create_question(db_session, group.id, "new3")
-        
+
         logic = [
             create_question_logic_item(new1.id, "1"),
             create_question_logic_item(new2.id, "2"),
             create_question_logic_item(new3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 3
 
     # =========================================================================
@@ -1331,13 +1331,13 @@ class TestUserInteractionScenarios:
         User moves an existing root-level question into a conditional.
         """
         group = self._create_group(db_session, "scenario_13")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
-        
+
         # Initial: all at root level
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1345,7 +1345,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Move q2 into a conditional
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1356,7 +1356,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 3
         assert updated.question_logic[1]["type"] == "conditional"
         assert updated.question_logic[1]["conditional"]["nestedItems"][0]["questionId"] == q2.id
@@ -1369,13 +1369,13 @@ class TestUserInteractionScenarios:
         User moves a nested question out of a conditional to root level.
         """
         group = self._create_group(db_session, "scenario_14")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         q2 = self._create_question(db_session, group.id, "q2")
         q3 = self._create_question(db_session, group.id, "q3")
-        
+
         # Initial: q2 nested
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1386,7 +1386,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Move q2 to root, remove conditional
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1394,7 +1394,7 @@ class TestUserInteractionScenarios:
             create_question_logic_item(q3.id, "3"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 3
         assert all(item["type"] == "question" for item in updated.question_logic)
 
@@ -1406,12 +1406,12 @@ class TestUserInteractionScenarios:
         User changes the operator of a conditional from 'equals' to 'not_equals'.
         """
         group = self._create_group(db_session, "scenario_15")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         nested = self._create_question(db_session, group.id, "nested")
-        
+
         # Initial with equals
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1421,7 +1421,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Change to not_equals
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1431,7 +1431,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert updated.question_logic[1]["conditional"]["operator"] == "not_equals"
 
     # =========================================================================
@@ -1442,18 +1442,18 @@ class TestUserInteractionScenarios:
         User creates an empty conditional, then adds a question to it.
         """
         group = self._create_group(db_session, "scenario_16")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
-        
+
         # Empty conditional
         logic = [
             create_question_logic_item(q1.id, "1"),
             create_conditional_logic_item("cond1", "scenario_16.q1", "equals", "yes", []),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Add nested question
         nested = self._create_question(db_session, group.id, "nested")
         logic = [
@@ -1464,7 +1464,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic[1]["conditional"]["nestedItems"]) == 1
 
     # =========================================================================
@@ -1475,14 +1475,14 @@ class TestUserInteractionScenarios:
         User reorders questions within a conditional.
         """
         group = self._create_group(db_session, "scenario_17")
-        
+
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
         n1 = self._create_question(db_session, group.id, "n1")
         n2 = self._create_question(db_session, group.id, "n2")
         n3 = self._create_question(db_session, group.id, "n3")
-        
+
         # Initial order: n1, n2, n3
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1496,7 +1496,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Reorder to: n3, n1, n2
         logic = [
             create_question_logic_item(q1.id, "1"),
@@ -1510,7 +1510,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         nested = updated.question_logic[1]["conditional"]["nestedItems"]
         assert nested[0]["questionId"] == n3.id
         assert nested[1]["questionId"] == n1.id
@@ -1524,12 +1524,12 @@ class TestUserInteractionScenarios:
         User changes a free text question to multiple choice and adds options.
         """
         group = self._create_group(db_session, "scenario_18")
-        
+
         q1 = self._create_question(db_session, group.id, "q1")
-        
+
         logic = [create_question_logic_item(q1.id, "1")]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Change to multiple choice
         update_data = QuestionUpdate(
             question_type=QuestionType.MULTIPLE_CHOICE,
@@ -1539,7 +1539,7 @@ class TestUserInteractionScenarios:
             ]
         )
         updated_q = QuestionService.update_question(db_session, q1.id, update_data)
-        
+
         assert updated_q.question_type == QuestionType.MULTIPLE_CHOICE
         assert len(updated_q.options) == 2
 
@@ -1551,15 +1551,15 @@ class TestUserInteractionScenarios:
         User adds a question, then immediately creates a conditional based on it.
         """
         group = self._create_group(db_session, "scenario_19")
-        
+
         # Add first question
         q1 = self._create_question(db_session, group.id, "q1", QuestionType.MULTIPLE_CHOICE,
                                    options=[QuestionOption(value="yes", label="Yes"),
                                            QuestionOption(value="no", label="No")])
-        
+
         logic = [create_question_logic_item(q1.id, "1")]
         self._update_logic(db_session, group.id, logic)
-        
+
         # Add conditional immediately
         nested = self._create_question(db_session, group.id, "nested")
         logic = [
@@ -1570,7 +1570,7 @@ class TestUserInteractionScenarios:
             ),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         assert len(updated.question_logic) == 2
         assert updated.question_logic[1]["conditional"]["ifIdentifier"] == "scenario_19.q1"
 
@@ -1583,28 +1583,28 @@ class TestUserInteractionScenarios:
         conditionals, and repeatable groups.
         """
         group = self._create_group(db_session, "scenario_20")
-        
+
         # Step 1: Add basic info questions
         name = self._create_question(db_session, group.id, "client_name")
         dob = self._create_question(db_session, group.id, "dob", QuestionType.DATE)
         married = self._create_question(db_session, group.id, "married", QuestionType.MULTIPLE_CHOICE,
                                         options=[QuestionOption(value="yes", label="Yes"),
                                                 QuestionOption(value="no", label="No")])
-        
+
         # Step 2: Add spouse info (conditional on married=yes)
         spouse_name = self._create_question(db_session, group.id, "spouse_name")
         spouse_dob = self._create_question(db_session, group.id, "spouse_dob", QuestionType.DATE)
-        
+
         # Step 3: Add children (repeatable)
         child_name = self._create_question(db_session, group.id, "child_name", repeatable=True)
         child_dob = self._create_question(db_session, group.id, "child_dob", QuestionType.DATE,
                                           repeatable=True, repeatable_group_id=str(child_name.id))
-        
+
         # Step 4: Add beneficiaries (repeatable)
         ben_name = self._create_question(db_session, group.id, "ben_name", repeatable=True)
         ben_share = self._create_question(db_session, group.id, "ben_share",
                                           repeatable=True, repeatable_group_id=str(ben_name.id))
-        
+
         # Build complete logic
         logic = [
             create_question_logic_item(name.id, "1"),
@@ -1623,21 +1623,21 @@ class TestUserInteractionScenarios:
             create_question_logic_item(ben_share.id, "ben_share"),
         ]
         updated = self._update_logic(db_session, group.id, logic)
-        
+
         # Verify structure
         assert len(updated.question_logic) == 8
-        
+
         # Verify conditional
         cond = updated.question_logic[3]
         assert cond["type"] == "conditional"
         assert len(cond["conditional"]["nestedItems"]) == 2
-        
+
         # Verify repeatable groups
         child_name_db = QuestionService.get_question_by_id(db_session, child_name.id)
         child_dob_db = QuestionService.get_question_by_id(db_session, child_dob.id)
         assert child_name_db.repeatable == True
         assert child_dob_db.repeatable_group_id == str(child_name.id)
-        
+
         ben_name_db = QuestionService.get_question_by_id(db_session, ben_name.id)
         ben_share_db = QuestionService.get_question_by_id(db_session, ben_share.id)
         assert ben_name_db.repeatable == True
@@ -1684,8 +1684,24 @@ class TestCopyQuestionGroup:
 
     @pytest.fixture
     def complex_group(self, db_session: Session):
-        """Create a complex group with diverse question types and features."""
+        """Create a complex group with diverse question types and features.
+
+        Mirrors real production data: uses UUID localQuestionId values in
+        question_logic, UUID repeatable_group_id linking repeatable questions,
+        and bare (non-namespaced) ifIdentifier in conditionals.
+        """
+        import uuid as _uuid
+
         group = self._create_group(db_session, "estate_plan", description="Estate planning group")
+
+        # Pre-generate UUIDs for localQuestionId / repeatable_group_id
+        uuid_client = str(_uuid.uuid4())
+        uuid_marital = str(_uuid.uuid4())
+        uuid_trustee = str(_uuid.uuid4())   # also used as repeatable_group_id
+        uuid_relation = str(_uuid.uuid4())
+        uuid_sign = str(_uuid.uuid4())
+        uuid_spouse = str(_uuid.uuid4())
+        uuid_spouse_trust = str(_uuid.uuid4())
 
         # Q1: free text with help_text and validation
         q_client_name = self._create_question(
@@ -1710,11 +1726,13 @@ class TestCopyQuestionGroup:
         )
 
         # Q3: person type with person_display_mode (repeatable)
+        # Uses uuid_trustee as the repeatable_group_id for this group
         q_trustee = self._create_question(
             db_session, group.id, "new_sstee",
             question_type=QuestionType.PERSON,
             person_display_mode="autocomplete",
             repeatable=True,
+            repeatable_group_id=uuid_trustee,
             display_order=2
         )
 
@@ -1723,7 +1741,7 @@ class TestCopyQuestionGroup:
             db_session, group.id, "sstee_relation",
             question_type=QuestionType.FREE_TEXT,
             repeatable=True,
-            repeatable_group_id=str(q_trustee.id),
+            repeatable_group_id=uuid_trustee,
             display_order=3
         )
 
@@ -1751,44 +1769,47 @@ class TestCopyQuestionGroup:
         )
 
         # Build question_logic matching actual frontend QuestionLogicItem structure
+        # Uses UUID ids and localQuestionId, bare ifIdentifier (no namespace)
         question_logic = [
-            # Top-level question
-            {"id": "item-1", "type": "question", "questionId": q_client_name.id, "depth": 0},
-            # Top-level question
-            {"id": "item-2", "type": "question", "questionId": q_marital.id, "depth": 0},
-            # Conditional on marital_status
+            {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_client_name.id,
+             "localQuestionId": uuid_client, "depth": 0},
+            {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_marital.id,
+             "localQuestionId": uuid_marital, "depth": 0},
             {
-                "id": "item-3",
+                "id": str(_uuid.uuid4()),
                 "type": "conditional",
                 "depth": 0,
                 "conditional": {
-                    "ifIdentifier": "estate_plan.marital_status",
+                    "ifIdentifier": "marital_status",
                     "operator": "equals",
                     "value": "married",
                     "nestedItems": [
-                        {"id": "item-4", "type": "question", "questionId": q_spouse.id, "depth": 1},
-                        # Nested conditional inside first conditional
+                        {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_spouse.id,
+                         "localQuestionId": uuid_spouse, "depth": 1},
                         {
-                            "id": "item-5",
+                            "id": str(_uuid.uuid4()),
                             "type": "conditional",
                             "depth": 1,
                             "conditional": {
-                                "ifIdentifier": "estate_plan.spouse_name",
+                                "ifIdentifier": "spouse_name",
                                 "operator": "not_equals",
                                 "value": "",
                                 "nestedItems": [
-                                    {"id": "item-6", "type": "question", "questionId": q_spouse_trust.id, "depth": 2}
+                                    {"id": str(_uuid.uuid4()), "type": "question",
+                                     "questionId": q_spouse_trust.id,
+                                     "localQuestionId": uuid_spouse_trust, "depth": 2}
                                 ]
                             }
                         }
                     ]
                 }
             },
-            # Repeatable questions
-            {"id": "item-7", "type": "question", "questionId": q_trustee.id, "depth": 0},
-            {"id": "item-8", "type": "question", "questionId": q_relation.id, "depth": 0},
-            # Date question
-            {"id": "item-9", "type": "question", "questionId": q_sign_date.id, "depth": 0},
+            {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_trustee.id,
+             "localQuestionId": uuid_trustee, "depth": 0},
+            {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_relation.id,
+             "localQuestionId": uuid_relation, "depth": 0},
+            {"id": str(_uuid.uuid4()), "type": "question", "questionId": q_sign_date.id,
+             "localQuestionId": uuid_sign, "depth": 0},
         ]
 
         group = self._update_logic(db_session, group.id, question_logic)
@@ -1874,8 +1895,8 @@ class TestCopyQuestionGroup:
         assert date_copy is not None
         assert date_copy.include_time == True
 
-    def test_copy_repeatable_group_id(self, db_session: Session, complex_group):
-        """repeatable_group_id is preserved (questions stay linked)."""
+    def test_copy_repeatable_group_id_remapped(self, db_session: Session, complex_group):
+        """repeatable_group_id gets new UUIDs but questions stay internally linked."""
         original_group, orig_questions = complex_group
         copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
         copied_questions = QuestionService.list_questions_by_group(db_session, copied.id, include_inactive=True)
@@ -1887,7 +1908,13 @@ class TestCopyQuestionGroup:
         assert relation_copy is not None
         assert trustee_copy.repeatable == True
         assert relation_copy.repeatable == True
-        assert relation_copy.repeatable_group_id == orig_questions["sstee_relation"].repeatable_group_id
+
+        # They should share the SAME new repeatable_group_id
+        assert trustee_copy.repeatable_group_id == relation_copy.repeatable_group_id
+
+        # But it must be DIFFERENT from the original UUID
+        assert trustee_copy.repeatable_group_id != orig_questions["new_sstee"].repeatable_group_id
+        assert relation_copy.repeatable_group_id != orig_questions["sstee_relation"].repeatable_group_id
 
     def test_copy_question_logic_questionId_remapped(self, db_session: Session, complex_group):
         """questionId fields in question_logic point to the NEW copied questions."""
@@ -1915,8 +1942,8 @@ class TestCopyQuestionGroup:
             assert qid in copied_ids, f"questionId {qid} should reference a copied question"
             assert qid not in original_ids, f"questionId {qid} still references an original question"
 
-    def test_copy_question_logic_ifIdentifier_remapped(self, db_session: Session, complex_group):
-        """ifIdentifier fields in conditionals use the new group namespace."""
+    def test_copy_question_logic_ifIdentifier_preserved(self, db_session: Session, complex_group):
+        """ifIdentifier fields use bare names (no namespace) and are preserved as-is."""
         original_group, _ = complex_group
         copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
 
@@ -1932,12 +1959,9 @@ class TestCopyQuestionGroup:
 
         if_identifiers = collect_if_identifiers(copied.question_logic)
         assert len(if_identifiers) >= 2, "Should have at least 2 conditional ifIdentifiers"
-
-        for ident in if_identifiers:
-            assert ident.startswith(f"{copied.identifier}."), \
-                f"ifIdentifier '{ident}' should start with '{copied.identifier}.'"
-            assert not ident.startswith(f"{original_group.identifier}."), \
-                f"ifIdentifier '{ident}' still uses original namespace"
+        # Bare names (no namespace prefix) — should be unchanged
+        assert "marital_status" in if_identifiers
+        assert "spouse_name" in if_identifiers
 
     def test_copy_question_logic_nested_structure_preserved(self, db_session: Session, complex_group):
         """Nested conditional structure (depth 2) is preserved after copy."""
@@ -1988,6 +2012,31 @@ class TestCopyQuestionGroup:
         assert marital_copy is not None
         assert len(marital_copy.options) == 3
         assert marital_copy.options[0]["value"] == "single"
+
+    def test_copy_logic_uuids_remapped(self, db_session: Session, complex_group):
+        """All UUIDs (id, localQuestionId) in question_logic get fresh values."""
+        original_group, _ = complex_group
+        copied = QuestionGroupService.copy_question_group(db_session, original_group.id)
+
+        def collect_uuids(items):
+            uuids = set()
+            for item in (items or []):
+                if 'id' in item:
+                    uuids.add(item['id'])
+                if 'localQuestionId' in item:
+                    uuids.add(item['localQuestionId'])
+                if item.get('type') == 'conditional' and 'conditional' in item:
+                    uuids |= collect_uuids(item['conditional'].get('nestedItems', []))
+            return uuids
+
+        orig_uuids = collect_uuids(original_group.question_logic)
+        copy_uuids = collect_uuids(copied.question_logic)
+
+        assert len(orig_uuids) > 0
+        assert len(copy_uuids) == len(orig_uuids)
+        # No UUID should be shared between original and copy
+        assert orig_uuids.isdisjoint(copy_uuids), \
+            f"Shared UUIDs: {orig_uuids & copy_uuids}"
 
     def test_double_copy_unique_names(self, db_session: Session, complex_group):
         """Copying twice yields distinct names/identifiers."""

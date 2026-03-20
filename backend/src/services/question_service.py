@@ -135,6 +135,8 @@ class QuestionGroupService:
             )
 
         try:
+            import uuid as _uuid
+
             # Get all existing group names and identifiers for uniqueness check
             all_groups = db.query(QuestionGroup).all()
             existing_names = [g.name for g in all_groups]
@@ -144,7 +146,33 @@ class QuestionGroupService:
             new_name = generate_copy_name(original_group.name, existing_names)
             new_identifier = generate_copy_identifier(original_group.identifier, existing_identifiers)
 
-            # Create the new group
+            # ── Build UUID mapping ──
+            # Collect every UUID used in question_logic (id, localQuestionId)
+            # and in questions (repeatable_group_id) so we can generate fresh
+            # UUIDs for the copy while preserving internal linkages.
+            uuid_map = {}  # old UUID string -> new UUID string
+
+            def _ensure_uuid(old_val):
+                """Get or create a new UUID for an old UUID value."""
+                if old_val and old_val not in uuid_map:
+                    uuid_map[old_val] = str(_uuid.uuid4())
+
+            def _collect_logic_uuids(items):
+                for item in (items or []):
+                    _ensure_uuid(item.get('id'))
+                    _ensure_uuid(item.get('localQuestionId'))
+                    if item.get('type') == 'conditional' and 'conditional' in item:
+                        cond = item['conditional']
+                        _collect_logic_uuids(cond.get('nestedItems', []))
+
+            _collect_logic_uuids(original_group.question_logic)
+
+            # Also collect repeatable_group_id UUIDs from questions
+            original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
+            for q in original_questions:
+                _ensure_uuid(q.repeatable_group_id)
+
+            # Create the new group (question_logic will be remapped below)
             new_group = QuestionGroup(
                 name=new_name,
                 description=original_group.description,
@@ -158,10 +186,7 @@ class QuestionGroupService:
             db.add(new_group)
             db.flush()  # Get the new group ID without committing
 
-            # Copy all questions from the original group
-            original_questions = QuestionService.list_questions_by_group(db, group_id, include_inactive=True)
-
-            # Build mappings for updating question_logic:
+            # ── Copy questions ──
             # identifier_mapping: old string identifier -> new string identifier
             # id_mapping: old numeric question ID -> new numeric question ID
             identifier_mapping = {}
@@ -178,14 +203,22 @@ class QuestionGroupService:
                 new_q_identifier = f"{new_group.identifier}.{base_identifier}"
                 identifier_mapping[original_question.identifier] = new_q_identifier
 
+                # Remap repeatable_group_id to new UUID
+                new_rep_group_id = None
+                if original_question.repeatable_group_id:
+                    new_rep_group_id = uuid_map.get(
+                        original_question.repeatable_group_id,
+                        original_question.repeatable_group_id
+                    )
+
                 # Create the new question - copy directly from original
                 new_question = Question(
                     question_group_id=new_group.id,
                     question_text=original_question.question_text,
-                    question_type=original_question.question_type,  # Copy directly
+                    question_type=original_question.question_type,
                     identifier=new_q_identifier,
                     repeatable=original_question.repeatable,
-                    repeatable_group_id=original_question.repeatable_group_id,
+                    repeatable_group_id=new_rep_group_id,
                     display_order=original_question.display_order,
                     is_required=original_question.is_required,
                     help_text=original_question.help_text,
@@ -200,42 +233,42 @@ class QuestionGroupService:
                 )
 
                 db.add(new_question)
-                db.flush()  # Flush each question immediately to avoid bulk insert issues
+                db.flush()
 
                 id_mapping[original_question.id] = new_question.id
 
-            # Update question_logic to use new question IDs and identifiers.
+            # ── Remap question_logic ──
             # Actual structure (matches frontend QuestionLogicItem):
-            #   question:    { type: 'question', questionId: <int>, ... }
-            #   conditional: { type: 'conditional', conditional: {
-            #                    ifIdentifier: <str>, nestedItems: [...] }, ... }
+            #   question:    { id, type:'question', questionId:<int>,
+            #                  localQuestionId:<uuid>, ... }
+            #   conditional: { id, type:'conditional', conditional: {
+            #                    ifIdentifier:<str>, nestedItems:[...] }, ... }
             if new_group.question_logic:
-                def remap_logic_items(items, id_map, ident_map):
+                def remap_logic_items(items):
                     if not items:
                         return items
                     updated = []
                     for item in items:
                         out = dict(item)
+                        # Remap item-level UUIDs
+                        if 'id' in out and out['id'] in uuid_map:
+                            out['id'] = uuid_map[out['id']]
+                        if 'localQuestionId' in out and out['localQuestionId'] in uuid_map:
+                            out['localQuestionId'] = uuid_map[out['localQuestionId']]
                         if item.get('type') == 'question':
-                            if 'questionId' in item and item['questionId'] in id_map:
-                                out['questionId'] = id_map[item['questionId']]
-                            if 'identifier' in item and item['identifier'] in ident_map:
-                                out['identifier'] = ident_map[item['identifier']]
+                            if 'questionId' in item and item['questionId'] in id_mapping:
+                                out['questionId'] = id_mapping[item['questionId']]
                         elif item.get('type') == 'conditional' and 'conditional' in item:
                             cond = dict(item['conditional'])
-                            if 'ifIdentifier' in cond and cond['ifIdentifier'] in ident_map:
-                                cond['ifIdentifier'] = ident_map[cond['ifIdentifier']]
+                            if 'ifIdentifier' in cond and cond['ifIdentifier'] in identifier_mapping:
+                                cond['ifIdentifier'] = identifier_mapping[cond['ifIdentifier']]
                             if 'nestedItems' in cond:
-                                cond['nestedItems'] = remap_logic_items(
-                                    cond['nestedItems'], id_map, ident_map
-                                )
+                                cond['nestedItems'] = remap_logic_items(cond['nestedItems'])
                             out['conditional'] = cond
                         updated.append(out)
                     return updated
 
-                new_group.question_logic = remap_logic_items(
-                    new_group.question_logic, id_mapping, identifier_mapping
-                )
+                new_group.question_logic = remap_logic_items(new_group.question_logic)
 
             db.commit()
             db.refresh(new_group)
