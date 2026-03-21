@@ -132,3 +132,18 @@ export interface NavigateRequest {
     answer_value: string
   }>
 }
+
+export interface PersistenceMismatch {
+  question_id: number
+  identifier: string
+  issue: 'missing' | 'value_changed'
+  expected: string
+  actual: string | null
+  saved_at: string
+}
+
+export interface PersistenceVerification {
+  ok: boolean
+  mismatches: PersistenceMismatch[]
+  snapshot_count: number
+}

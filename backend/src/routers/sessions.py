@@ -326,6 +326,27 @@ async def copy_session(
     return response
 
 
+@router.get("/{session_id}/verify-persistence")
+async def verify_persistence(
+    session_id: int,
+    current_user: dict = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """
+    Verify that all previously saved answers still persist in the database.
+    Compares answer_snapshots against session_answers.
+
+    - **session_id**: Session ID
+
+    Returns ok=True if all snapshots match, or ok=False with a list of mismatches.
+    """
+    return SessionService.verify_persistence(
+        db,
+        session_id,
+        get_user_id(current_user)
+    )
+
+
 @router.patch("/{session_id}/complete", response_model=InputFormResponse)
 async def mark_session_complete(
     session_id: int,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import styled, { keyframes } from 'styled-components'
 import { sessionService } from '../services/sessionService'
-import { InputForm, SessionQuestionsResponse, QuestionToDisplay, ConditionalFollowupQuestion } from '../types/session'
+import { InputForm, SessionQuestionsResponse, QuestionToDisplay, ConditionalFollowupQuestion, PersistenceMismatch } from '../types/session'
 import { Person } from '../types/person'
 import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
@@ -400,6 +400,7 @@ const InputForms: React.FC = () => {
   const [hasChanges, setHasChanges] = useState(false)
   const [conditionalLoading, setConditionalLoading] = useState(false)
   const [conditionalLoadingQuestionId, setConditionalLoadingQuestionId] = useState<number | null>(null)
+  const [persistenceMismatches, setPersistenceMismatches] = useState<PersistenceMismatch[]>([])
 
   // Modal state for person-type questions
   const [personModalForQuestion, setPersonModalForQuestion] = useState<number | null>(null)
@@ -636,6 +637,20 @@ const InputForms: React.FC = () => {
       setAnswers(initialAnswers)
       setPersonAnswers(initialPersonAnswers)
       setPersonConjunctions(initialPersonConjunctions)
+      // Reset hasChanges when loading new questions to prevent race conditions
+      setHasChanges(false)
+      setPersistenceMismatches([])
+
+      // Verify answer persistence in the background
+      try {
+        const verification = await sessionService.verifyPersistence(id)
+        if (!verification.ok) {
+          setPersistenceMismatches(verification.mismatches)
+          console.error('Persistence verification failed:', verification.mismatches)
+        }
+      } catch (verifyErr) {
+        console.error('Failed to verify persistence:', verifyErr)
+      }
     } catch (err: any) {
       if (err.response?.status === 400 && err.response?.data?.detail === 'Session is already completed') {
         setIsCompleted(true)
@@ -1617,9 +1632,8 @@ const InputForms: React.FC = () => {
         navigate(returnTo || '/document')
       } else {
         // Reload questions for new group
+        // Note: loadSessionQuestions will reset hasChanges internally
         await loadSessionQuestions(sessionData.session_id)
-        // Reset hasChanges for new group
-        setHasChanges(false)
       }
     } catch (err: any) {
       toast(err.response?.data?.detail || 'Failed to navigate')
@@ -3073,12 +3087,46 @@ const InputForms: React.FC = () => {
                 </ProgressInfo>
               </GroupHeader>
 
+              {persistenceMismatches.length > 0 && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '0.5rem',
+                  padding: '1rem 1.25rem',
+                  marginBottom: '1.5rem',
+                  color: '#991b1b'
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+                    ⚠ Persistence Error: {persistenceMismatches.length} answer{persistenceMismatches.length > 1 ? 's' : ''} failed to persist
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem' }}>
+                    {persistenceMismatches.map((m, i) => (
+                      <li key={i}>
+                        Question <strong>{m.identifier}</strong> (ID {m.question_id}):&nbsp;
+                        {m.issue === 'missing'
+                          ? 'answer is missing from the database'
+                          : 'answer value has changed unexpectedly'}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <QuestionList>
                 {(() => {
                   // Find the index of the question that triggered the conditional loading
                   const triggerIndex = conditionalLoading && conditionalLoadingQuestionId
                     ? sessionData.questions.findIndex(q => q.id === conditionalLoadingQuestionId)
                     : -1
+
+                  // Adjust last segment of a hierarchical number for
+                  // repeatable follow-up instances (e.g. 1-1-7-1-2 + idx 1 → 1-1-7-1-3)
+                  const bumpLastSegment = (label: string, idx: number): string => {
+                    if (idx === 0 || !label) return label
+                    const d = label.lastIndexOf('-')
+                    if (d < 0) return String(Number(label) + idx)
+                    return label.substring(0, d + 1) + String(Number(label.substring(d + 1)) + idx)
+                  }
 
                   // Track which repeatable sets we've already rendered
                   const renderedRepeatableSets = new Set<number>()
@@ -3284,11 +3332,12 @@ const InputForms: React.FC = () => {
                                                     {rSetQs.map((rQ: any, rQIdx: number) => {
                                                       const rSid = rSyntheticIds[rQIdx]
                                                       const rVirtualQ = { ...rQ, id: rSid } as unknown as QuestionToDisplay
+                                                      const rQLabel = (rQ.hierarchical_number ? adjustNumber(rQ.hierarchical_number, instanceIdx) : nfqLabel) || nfqLabel
                                                       return (
                                                         <React.Fragment key={`${nfqKey}-rq-${rQ.id}-${rIdx}`}>
                                                           <div  style={{ marginBottom: '0.75rem' }}>
                                                             <label >
-                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
+                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(rQLabel, rIdx)}.</span>
                                                               {replaceLoopToken(rQ.question_text, rIdx)}
                                                               {rQ.is_required && <span >*</span>}
                                                             </label>
@@ -3450,6 +3499,8 @@ const InputForms: React.FC = () => {
                                                 {fuSetQuestions.map((fuQ, fuQIdx) => {
                                                   const sid = fuSyntheticIds[fuQIdx]
                                                   const virtualQ = { ...fuQ, id: sid } as unknown as QuestionToDisplay
+                                                  // Each question in the set uses its OWN hierarchical number
+                                                  const fuQLabel = ((fuQ as any).hierarchical_number ? adjustNumber((fuQ as any).hierarchical_number, capturedInstanceIdx) : fuRepLabel) || fuRepLabel
 
                                                   // Get the current answer for this follow-up question instance
                                                   const fuAnswerArray = getRepeatableAnswerArray(sid)
@@ -3464,7 +3515,7 @@ const InputForms: React.FC = () => {
                                                     <React.Fragment key={`fuq-${fuQ.id}-${fuIdx}`}>
                                                       <div  style={{ marginBottom: fuQIdx < fuSetQuestions.length - 1 && nestedFollowups.length === 0 ? '0.75rem' : 0 }}>
                                                         <label >
-                                                          <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuRepLabel}.</span>
+                                                          <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(fuQLabel, fuIdx)}.</span>
                                                           {replaceLoopToken(fuQ.question_text, fuIdx)}
                                                           {fuQ.is_required && <span >*</span>}
                                                         </label>
@@ -3534,11 +3585,12 @@ const InputForms: React.FC = () => {
                                                                     {nfqSetQs.map((nfqQ: any, nfqQIdx: number) => {
                                                                       const nfqSid = nfqSynIds[nfqQIdx]
                                                                       const nfqVirtualQ = { ...nfqQ, id: nfqSid } as unknown as QuestionToDisplay
+                                                                      const nfqQLabel = (nfqQ.hierarchical_number ? adjustNumber(nfqQ.hierarchical_number, instanceIdx) : nfqNestedLabel) || nfqNestedLabel
                                                                       return (
                                                                         <React.Fragment key={`${nfqKey}-rq-${nfqQ.id}-${nfqRIdx}`}>
                                                                           <div  style={{ marginBottom: '0.75rem', marginLeft: '1rem', borderLeft: '2px solid #d1d5db', paddingLeft: '1rem' }}>
                                                                             <label >
-                                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
+                                                                              <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(nfqQLabel, nfqRIdx)}.</span>
                                                                               {replaceLoopToken(nfqQ.question_text, nfqRIdx)}
                                                                               {nfqQ.is_required && <span >*</span>}
                                                                             </label>

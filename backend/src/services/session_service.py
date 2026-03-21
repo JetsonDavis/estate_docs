@@ -10,7 +10,7 @@ import math
 
 _logger = logging.getLogger(__name__)
 
-from ..models.session import InputForm, SessionAnswer
+from ..models.session import InputForm, SessionAnswer, AnswerSnapshot
 from ..models.question import QuestionGroup, Question
 from ..models.flow import DocumentFlow, flow_question_groups
 from ..schemas.session import (
@@ -211,6 +211,11 @@ class SessionService:
                 db.add(answer)
 
         db.commit()
+
+        # Record snapshots for persistence verification
+        submitted_qids = [a.question_id for a in answers]
+        if submitted_qids:
+            SessionService._record_snapshots(db, session_id, submitted_qids)
 
         # Determine next group based on conditional flow
         next_group_id = SessionService._get_next_group(db, session, current_group, answers)
@@ -819,12 +824,33 @@ class SessionService:
         # triggering question continue numbering instead of restarting at 1
         prefix_counters = {}  # Maps prefix string -> last counter used
 
+        def _resolve_nested_prefix(cond_identifier: str, fallback: str) -> str:
+            """Look up the trigger question's hierarchical number to use as prefix."""
+            if cond_identifier:
+                for qid, q in question_by_id.items():
+                    ident = q.identifier
+                    stripped = ident.split('.', 1)[1] if '.' in ident else ident
+                    if ident == cond_identifier or stripped == cond_identifier:
+                        if qid in question_numbers:
+                            return question_numbers[qid]
+                        break
+            return fallback
+
         def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
-            """Traverse entire tree and assign numbers to all questions."""
+            """Traverse entire tree and assign numbers to all questions.
+
+            Mutually exclusive conditional branches (same trigger, different
+            values) share the same number base so visible questions never have
+            gaps.  Same-trigger-same-value branches continue counting (e.g. the
+            amendment pattern where two blocks both check amendment_type=Update).
+            """
             question_counter = prefix_counters.get(number_prefix, 0)
             last_question_number = number_prefix
 
-            for item in items:
+            i = 0
+            while i < len(items):
+                item = items[i]
+
                 if item.get('type') == 'question':
                     question_id = item.get('questionId')
                     if question_id:
@@ -833,24 +859,54 @@ class SessionService:
                         question_numbers[question_id] = hierarchical_number
                         last_question_number = hierarchical_number
                         _logger.debug(f"Assigned number {hierarchical_number} to question_id {question_id}")
+                    i += 1
 
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     cond = item['conditional']
-                    nested_items = cond.get('nestedItems', [])
-                    if nested_items:
-                        # Use the triggering question's number as prefix (not last_question_number)
-                        # so conditionals far from their trigger still number correctly
-                        cond_identifier = cond.get('ifIdentifier')
-                        nested_prefix = last_question_number  # default fallback
-                        if cond_identifier:
-                            for qid, q in question_by_id.items():
-                                ident = q.identifier
-                                stripped = ident.split('.', 1)[1] if '.' in ident else ident
-                                if ident == cond_identifier or stripped == cond_identifier:
-                                    if qid in question_numbers:
-                                        nested_prefix = question_numbers[qid]
-                                    break
-                        assign_hierarchical_numbers(nested_items, nested_prefix)
+                    cond_identifier = cond.get('ifIdentifier')
+                    nested_prefix = _resolve_nested_prefix(cond_identifier, last_question_number)
+
+                    # Collect consecutive conditionals with the same trigger
+                    run: List[Dict] = []
+                    j = i
+                    while j < len(items):
+                        ci = items[j]
+                        if ci.get('type') != 'conditional' or not ci.get('conditional'):
+                            break
+                        if ci['conditional'].get('ifIdentifier') != cond_identifier:
+                            break
+                        run.append(ci)
+                        j += 1
+
+                    # Process the run — reset counter for each NEW value
+                    base_counter = prefix_counters.get(nested_prefix, 0)
+                    max_counter = base_counter
+                    seen_values: set = set()
+
+                    for run_item in run:
+                        rc = run_item['conditional']
+                        rv = rc.get('value')
+                        rn = rc.get('nestedItems', [])
+
+                        if rv not in seen_values:
+                            # Mutually exclusive value: reset to base
+                            prefix_counters[nested_prefix] = base_counter
+                            seen_values.add(rv)
+                        # else: same value → continue counting (amendment pattern)
+
+                        if rn:
+                            assign_hierarchical_numbers(rn, nested_prefix)
+
+                        branch_counter = prefix_counters.get(nested_prefix, 0)
+                        if branch_counter > max_counter:
+                            max_counter = branch_counter
+
+                    # After all branches, use the highest counter
+                    prefix_counters[nested_prefix] = max_counter
+                    i = j
+
+                else:
+                    i += 1
 
             prefix_counters[number_prefix] = question_counter
 
@@ -1216,6 +1272,12 @@ class SessionService:
 
         db.commit()
 
+        # Record snapshots for persistence verification
+        # Re-read the just-committed answers for the affected question IDs
+        all_affected_qids = [a.question_id for a in real_answers] + list(synthetic_answers.keys())
+        if all_affected_qids:
+            SessionService._record_snapshots(db, session_id, all_affected_qids)
+
     @staticmethod
     def delete_answers(
         db: Session,
@@ -1248,6 +1310,12 @@ class SessionService:
         deleted = db.query(SessionAnswer).filter(
             SessionAnswer.session_id == session_id,
             SessionAnswer.question_id.in_(question_ids)
+        ).delete(synchronize_session='fetch')
+
+        # Also remove corresponding snapshots
+        db.query(AnswerSnapshot).filter(
+            AnswerSnapshot.session_id == session_id,
+            AnswerSnapshot.question_id.in_(question_ids)
         ).delete(synchronize_session='fetch')
 
         db.commit()
@@ -1416,6 +1484,135 @@ class SessionService:
         db.refresh(new_session)
 
         return new_session
+
+    @staticmethod
+    def _record_snapshots(
+        db: Session,
+        session_id: int,
+        question_ids: List[int]
+    ) -> None:
+        """
+        Record answer snapshots for persistence verification.
+        For each question_id, reads the current session_answer value and
+        upserts it into the answer_snapshots table.
+
+        Args:
+            db: Database session
+            session_id: Session ID
+            question_ids: List of question IDs whose answers were just saved
+        """
+        # Read the current committed answers for these questions
+        current_answers = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id,
+            SessionAnswer.question_id.in_(question_ids)
+        ).all()
+
+        answer_map = {a.question_id: a.answer_value for a in current_answers}
+
+        # Upsert snapshots
+        existing_snapshots = db.query(AnswerSnapshot).filter(
+            AnswerSnapshot.session_id == session_id,
+            AnswerSnapshot.question_id.in_(question_ids)
+        ).all()
+        existing_snap_map = {s.question_id: s for s in existing_snapshots}
+
+        for qid in question_ids:
+            value = answer_map.get(qid)
+            if value is None:
+                # Answer was deleted or doesn't exist — remove snapshot too
+                if qid in existing_snap_map:
+                    db.delete(existing_snap_map[qid])
+                continue
+
+            if qid in existing_snap_map:
+                existing_snap_map[qid].answer_value = value
+                existing_snap_map[qid].saved_at = datetime.utcnow()
+            else:
+                snapshot = AnswerSnapshot(
+                    session_id=session_id,
+                    question_id=qid,
+                    answer_value=value,
+                    saved_at=datetime.utcnow()
+                )
+                db.add(snapshot)
+
+        db.commit()
+
+    @staticmethod
+    def verify_persistence(
+        db: Session,
+        session_id: int,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """
+        Verify that all answer snapshots still match the actual session_answers.
+
+        Args:
+            db: Database session
+            session_id: Session ID
+            user_id: User ID
+
+        Returns:
+            Dict with 'ok' bool and 'mismatches' list of problem details
+        """
+        session = SessionService.get_session(db, session_id, user_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+
+        # Get all snapshots for this session
+        snapshots = db.query(AnswerSnapshot).filter(
+            AnswerSnapshot.session_id == session_id
+        ).all()
+
+        if not snapshots:
+            return {"ok": True, "mismatches": [], "snapshot_count": 0}
+
+        # Get all current answers for this session
+        current_answers = db.query(SessionAnswer).filter(
+            SessionAnswer.session_id == session_id
+        ).all()
+        answer_map = {a.question_id: a.answer_value for a in current_answers}
+
+        # Build question lookup for identifiers
+        snapshot_qids = [s.question_id for s in snapshots]
+        questions = db.query(Question).filter(
+            Question.id.in_(snapshot_qids)
+        ).all()
+        question_map = {q.id: q for q in questions}
+
+        mismatches = []
+        for snap in snapshots:
+            current_value = answer_map.get(snap.question_id)
+            q = question_map.get(snap.question_id)
+            q_identifier = q.identifier if q else f"question_{snap.question_id}"
+
+            if current_value is None:
+                mismatches.append({
+                    "question_id": snap.question_id,
+                    "identifier": q_identifier,
+                    "issue": "missing",
+                    "expected": snap.answer_value,
+                    "actual": None,
+                    "saved_at": snap.saved_at.isoformat()
+                })
+            elif current_value != snap.answer_value:
+                mismatches.append({
+                    "question_id": snap.question_id,
+                    "identifier": q_identifier,
+                    "issue": "value_changed",
+                    "expected": snap.answer_value,
+                    "actual": current_value,
+                    "saved_at": snap.saved_at.isoformat()
+                })
+
+        return {
+            "ok": len(mismatches) == 0,
+            "mismatches": mismatches,
+            "snapshot_count": len(snapshots)
+        }
 
     @staticmethod
     def mark_session_complete(

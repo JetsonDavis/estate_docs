@@ -7,7 +7,8 @@ import {
   SessionProgress,
   SessionQuestionsResponse,
   SaveAnswersRequest,
-  NavigateRequest
+  NavigateRequest,
+  PersistenceVerification
 } from '../types/session'
 
 export const sessionService = {
@@ -123,6 +124,17 @@ export const sessionService = {
    */
   markSessionComplete: async (sessionId: number): Promise<InputForm> => {
     const response = await apiClient.patch<InputForm>(`/sessions/${sessionId}/complete`)
+    return response.data
+  },
+
+  /**
+   * Verify that all previously saved answers still persist in the database.
+   * Compares answer_snapshots against session_answers.
+   */
+  verifyPersistence: async (sessionId: number): Promise<PersistenceVerification> => {
+    const response = await apiClient.get<PersistenceVerification>(
+      `/sessions/${sessionId}/verify-persistence`
+    )
     return response.data
   }
 }

@@ -68,3 +68,32 @@ class SessionAnswer(Base, TimestampMixin):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+
+class AnswerSnapshot(Base):
+    """Snapshot of answers saved during a session, used to verify persistence."""
+    
+    __tablename__ = "answer_snapshots"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("document_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    answer_value = Column(Text, nullable=False)
+    saved_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    session = relationship("InputForm")
+    question = relationship("Question")
+    
+    def __repr__(self) -> str:
+        return f"<AnswerSnapshot(id={self.id}, session_id={self.session_id}, question_id={self.question_id})>"
+    
+    def to_dict(self) -> dict:
+        """Convert snapshot to dictionary."""
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "question_id": self.question_id,
+            "answer_value": self.answer_value,
+            "saved_at": self.saved_at.isoformat(),
+        }
