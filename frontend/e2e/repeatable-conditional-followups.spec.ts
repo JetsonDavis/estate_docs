@@ -46,7 +46,7 @@ test.describe('Repeatable Conditional Followups', () => {
     await page.waitForTimeout(2000);
     
     // Add a second trustor
-    await page.click('button:has-text("Add Another (8–9)")');
+    await page.click('button:has-text("Add Another (8-9)")');
     await page.waitForTimeout(2000);
     
     // Find the second trustor's "are they able to act?" question and select "No"

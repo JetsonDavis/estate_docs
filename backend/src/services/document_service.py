@@ -483,6 +483,13 @@ class DocumentService:
                             obj = json.loads(item)
                             if isinstance(obj, dict):
                                 normalised.append(obj)
+                            elif isinstance(obj, list):
+                                # Array-wrapped person, e.g. '[{"name":"James"}]'
+                                for sub in obj:
+                                    if isinstance(sub, dict):
+                                        normalised.append(sub)
+                                    else:
+                                        normalised.append({'name': str(sub)})
                             else:
                                 normalised.append({'name': item})
                         except (json.JSONDecodeError, TypeError):
@@ -554,6 +561,9 @@ class DocumentService:
                                             decoded = json.loads(decoded)
                                         except (json.JSONDecodeError, TypeError):
                                             pass
+                                    # Unwrap array-wrapped person, e.g. [{"name":"James"}]
+                                    if isinstance(decoded, list) and len(decoded) == 1 and isinstance(decoded[0], dict):
+                                        decoded = decoded[0]
                                     if isinstance(decoded, dict):
                                         conjunctions.append(decoded.get('conjunction', 'and'))
                                     else:
@@ -679,6 +689,12 @@ class DocumentService:
                     obj = json.loads(decoded)
                     if isinstance(obj, dict):
                         return obj
+                    elif isinstance(obj, list):
+                        # Array-wrapped person data, e.g. '[{"name":"James"}]'
+                        # Unwrap single-element lists to the inner dict/value
+                        if len(obj) == 1 and isinstance(obj[0], dict):
+                            return obj[0]
+                        return obj
                     elif isinstance(obj, str):
                         decoded = obj
                     else:
@@ -702,6 +718,15 @@ class DocumentService:
                 return DocumentService._extract_plain_name(str(val)) if val else ''
             name = decoded.get('name', str(decoded))
             return DocumentService._extract_plain_name(name)
+        if isinstance(decoded, list):
+            # Safety net for list values (e.g. multi-element array-wrapped person data)
+            names = []
+            for elem in decoded:
+                if isinstance(elem, dict):
+                    names.append(DocumentService._extract_plain_name(elem.get('name', '')))
+                else:
+                    names.append(str(elem))
+            return ', '.join(n for n in names if n)
         if isinstance(decoded, str):
             if field:
                 return decoded if field == 'name' else ''
@@ -882,7 +907,15 @@ class DocumentService:
                         identifier_arrays[base_ident] = None
                     else:
                         raw = raw_map.get(base_ident, '') or answer_map.get(base_ident, '')
-                        identifier_arrays[base_ident] = DocumentService._parse_array(raw)
+                        arr = DocumentService._parse_array(raw)
+                        identifier_arrays[base_ident] = arr
+                        # Non-repeatable followups inside a repeatable parent store
+                        # multi-instance data as arrays (combined by the frontend)
+                        # but have no repeatable_group_id.  If the array length
+                        # matches the loop array, treat as same-group so values
+                        # are indexed per-iteration instead of shown as raw JSON.
+                        if arr is not None and len(arr) == instance_count:
+                            same_group.add(base_ident)
 
             # ── Expand body for each included index ────────────────────
             output_parts = []
@@ -1975,8 +2008,15 @@ class DocumentService:
         import html
 
         # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
-        # Remove span tags but keep their content
-        template_content = re.sub(r'<span[^>]*>([^<]*)</span>', r'\1', template_content)
+        # Remove span tags but keep their content.
+        # Use .*? instead of [^<]* because template syntax like <<id>> contains
+        # angle brackets that would prevent the old pattern from matching.
+        # Loop to handle nested spans.
+        for _ in range(5):
+            cleaned = re.sub(r'<span[^>]*>(.*?)</span>', r'\1', template_content, flags=re.DOTALL)
+            if cleaned == template_content:
+                break
+            template_content = cleaned
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
 

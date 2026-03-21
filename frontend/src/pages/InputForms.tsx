@@ -528,11 +528,16 @@ const InputForms: React.FC = () => {
               }
             } else if (!fq.repeatable && initialAnswers[fq.id] !== undefined) {
               // Non-repeatable followups: instance 0 uses real ID, instances 1+ use synthetic
-              // If the real ID contains an array, distribute values to each synthetic ID
+              // If the real ID contains an array of STRINGS, distribute values to each synthetic ID.
+              // For person questions, the value may be a person data array like [{name:"Kim"}]
+              // (objects, not strings) — that is single-instance data and must NOT be distributed.
               const isPerson = fq.question_type === 'person' || fq.question_type === 'person_backup'
               try {
                 const parsed = JSON.parse(initialAnswers[fq.id])
-                if (Array.isArray(parsed)) {
+                // Only distribute if it's an array of strings (multi-instance format).
+                // Person data arrays contain objects [{name:...}] and should be left alone.
+                const isMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+                if (isMultiInstance) {
                   // Distribute array values to synthetic IDs
                   for (let i = 1; i < instanceCount; i++) {
                     const synId = fq.id * 100000 + i
@@ -564,7 +569,13 @@ const InputForms: React.FC = () => {
                     } catch { /* not valid person JSON */ }
                   }
                 } else {
-                  // Not an array — value belongs to instance 0 only.
+                  // Not a multi-instance array — value belongs to instance 0 only.
+                  // For person questions, the value may be an array of objects like
+                  // [{"name":"Kim"}] saved by savePersonOnBlur. The renderer expects
+                  // a single object {"name":"Kim"}, so unwrap it.
+                  if (isPerson && Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+                    initialAnswers[fq.id] = JSON.stringify(parsed[0])
+                  }
                   // Initialize synthetic IDs for instances 1+ to empty strings.
                   for (let i = 1; i < instanceCount; i++) {
                     const synId = fq.id * 100000 + i
@@ -802,6 +813,48 @@ const InputForms: React.FC = () => {
       }
       updated[instanceIndex] = newValue
       valueToSave = JSON.stringify(updated)
+    } else if (!question.repeatable) {
+      // Non-repeatable followups inside repeatable parents share one backend row.
+      // Build a JSON array of ALL instance values so one instance's save doesn't
+      // overwrite another's — mirrors the same logic in handleAnswerBlur.
+      if (questionId >= 100000) {
+        // Synthetic ID — this is instance 1+ of a non-repeatable followup
+        const instanceIdx = questionId % 100000
+        const instance0Value = answers[realQuestionId] || ''
+        let maxIdx = instanceIdx
+        for (const key of Object.keys(answers)) {
+          const numKey = Number(key)
+          if (numKey >= 100000 && Math.floor(numKey / 100000) === realQuestionId) {
+            const idx = numKey % 100000
+            if (idx > maxIdx) maxIdx = idx
+          }
+        }
+        const arr: string[] = [instance0Value]
+        for (let i = 1; i <= maxIdx; i++) {
+          const synId = realQuestionId * 100000 + i
+          arr.push(answers[synId] || '')
+        }
+        arr[instanceIdx] = newValue
+        valueToSave = JSON.stringify(arr)
+      } else {
+        // Real ID (instance 0) — check if synthetic siblings exist
+        let maxSiblingIdx = 0
+        for (const key of Object.keys(answers)) {
+          const numKey = Number(key)
+          if (numKey >= 100000 && Math.floor(numKey / 100000) === questionId) {
+            const idx = numKey % 100000
+            if (idx > maxSiblingIdx) maxSiblingIdx = idx
+          }
+        }
+        if (maxSiblingIdx > 0) {
+          const arr: string[] = [newValue]
+          for (let i = 1; i <= maxSiblingIdx; i++) {
+            const synId = questionId * 100000 + i
+            arr.push(answers[synId] || '')
+          }
+          valueToSave = JSON.stringify(arr)
+        }
+      }
     }
 
     // Save the answer immediately (use real question ID for backend)
@@ -903,23 +956,25 @@ const InputForms: React.FC = () => {
       // Update session data with new questions
       setSessionData(data)
 
-      // Preserve the just-changed answer and merge with new data
-      // For repeatable questions, we need to preserve the full JSON array, not just the raw value
+      // Preserve the just-changed answer in local state.
+      // For local state, use the individual value (not the full JSON array used for
+      // backend saves) since each synthetic ID stores its own instance's value.
       let preservedValue = newValue
       if (question.repeatable) {
-        const arr = getRepeatableAnswerArray(questionId)
-        const updated = [...arr]
-        while (updated.length <= instanceIndex) {
-          updated.push('')
-        }
-        updated[instanceIndex] = newValue
-        preservedValue = JSON.stringify(updated)
+        // Repeatable questions store the full array under the real ID
+        preservedValue = valueToSave
       }
+      // For repeatable parents, deletions target synthetic IDs for the current instance,
+      // NOT the real IDs (which belong to instance 0 and must be preserved).
+      const effectiveIdsToDelete = question.repeatable && instanceIndex > 0
+        ? idsToDelete.map(id => id * 100000 + instanceIndex)
+        : idsToDelete
+
       setAnswers(currentAnswers => {
         const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: preservedValue }
 
         // Remove deleted IDs that may have been re-added from existing_answers
-        for (const id of idsToDelete) {
+        for (const id of effectiveIdsToDelete) {
           delete newAnswers[id]
         }
 
@@ -940,7 +995,10 @@ const InputForms: React.FC = () => {
               if (!fq.repeatable && newAnswers[fq.id] !== undefined) {
                 try {
                   const parsed = JSON.parse(newAnswers[fq.id])
-                  if (Array.isArray(parsed)) {
+                  // Only distribute if it's an array of strings (multi-instance format).
+                  // Person data arrays contain objects [{name:...}] and must NOT be distributed.
+                  const isMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+                  if (isMultiInstance) {
                     for (let i = 1; i < instanceCount; i++) {
                       const synId = fq.id * 100000 + i
                       if (newAnswers[synId] === undefined) {
@@ -982,8 +1040,8 @@ const InputForms: React.FC = () => {
       setPersonAnswers(currentPersonAnswers => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
-        // Remove deleted IDs
-        for (const id of idsToDelete) {
+        // Remove deleted IDs (use effective IDs for repeatable parents)
+        for (const id of effectiveIdsToDelete) {
           delete newPersonAnswers[id]
         }
 
@@ -1168,13 +1226,19 @@ const InputForms: React.FC = () => {
       // Update session data with new questions
       setSessionData(data)
 
+      // For repeatable parents, deletions target synthetic IDs for the current instance,
+      // NOT the real IDs (which belong to instance 0 and must be preserved).
+      const effectiveIdsToDelete = question.repeatable && blurInstanceIndex > 0
+        ? idsToDelete.map(id => id * 100000 + blurInstanceIndex)
+        : idsToDelete
+
       // Use functional updates to get current state and merge with new data
       setAnswers(currentAnswers => {
         const value = currentAnswers[questionId] || ''
         const newAnswers: Record<number, string> = { ...currentAnswers, [questionId]: value }
 
         // Remove deleted IDs that may have been re-added from existing_answers
-        for (const id of idsToDelete) {
+        for (const id of effectiveIdsToDelete) {
           delete newAnswers[id]
         }
 
@@ -1197,7 +1261,10 @@ const InputForms: React.FC = () => {
               if (!fq.repeatable && newAnswers[fq.id] !== undefined) {
                 try {
                   const parsed = JSON.parse(newAnswers[fq.id])
-                  if (Array.isArray(parsed)) {
+                  // Only distribute if it's an array of strings (multi-instance format).
+                  // Person data arrays contain objects [{name:...}] and must NOT be distributed.
+                  const isMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+                  if (isMultiInstance) {
                     // Distribute array values to synthetic IDs
                     for (let i = 1; i < instanceCount; i++) {
                       const synId = fq.id * 100000 + i
@@ -1247,8 +1314,8 @@ const InputForms: React.FC = () => {
       setPersonAnswers(currentPersonAnswers => {
         const newPersonAnswers: Record<number, string[]> = { ...currentPersonAnswers }
 
-        // Remove deleted IDs
-        for (const id of idsToDelete) {
+        // Remove deleted IDs (use effective IDs for repeatable parents)
+        for (const id of effectiveIdsToDelete) {
           delete newPersonAnswers[id]
         }
 
@@ -1971,7 +2038,12 @@ const InputForms: React.FC = () => {
             } catch { /* not JSON, treat as plain name */ }
             return { name: item }
           }).filter(Boolean)
-          const currentValue = JSON.stringify(personObjects)
+          // For non-repeatable questions, save as single object (not array).
+          // handleAnswerBlur will combine instances for non-repeatable followups
+          // inside repeatable parents, and the renderer expects single object format.
+          const currentValue = !question.repeatable && personObjects.length === 1
+            ? JSON.stringify(personObjects[0])
+            : JSON.stringify(personObjects)
           handleAnswerBlur(question.id, currentValue)
         }
 
@@ -2440,7 +2512,10 @@ const InputForms: React.FC = () => {
             } catch { /* not JSON, treat as plain name */ }
             return { name: item }
           }).filter(Boolean)
-          const currentValue = JSON.stringify(personObjects)
+          // For non-repeatable questions, save as single object (not array).
+          const currentValue = !question.repeatable && personObjects.length === 1
+            ? JSON.stringify(personObjects[0])
+            : JSON.stringify(personObjects)
           handleAnswerBlur(question.id, currentValue)
         }
 
