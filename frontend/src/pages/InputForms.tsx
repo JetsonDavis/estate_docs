@@ -3121,7 +3121,24 @@ const InputForms: React.FC = () => {
                             marginBottom: '1rem'
                           }}
                         >
-                          {Array.from({ length: instanceCount }).map((_, instanceIdx) => (
+                          {Array.from({ length: instanceCount }).map((_, instanceIdx) => {
+                            const firstRepQ = setQuestions.find(q => q.repeatable)
+                            const repeatableBase = firstRepQ?.hierarchical_number || '1'
+                            const lastDash = repeatableBase.lastIndexOf('-')
+                            const basePrefix = lastDash >= 0 ? repeatableBase.substring(0, lastDash + 1) : ''
+                            const baseSuffix = lastDash >= 0 ? repeatableBase.substring(lastDash + 1) : repeatableBase
+                            const adjustNumber = (hierNum: string, instIdx: number): string => {
+                              if (!hierNum) return hierNum
+                              const instanceSuffix = String(Number(baseSuffix) + instIdx)
+                              const instanceBase = basePrefix + instanceSuffix
+                              if (hierNum === repeatableBase) return instanceBase
+                              if (hierNum.startsWith(repeatableBase + '-')) {
+                                return instanceBase + hierNum.substring(repeatableBase.length)
+                              }
+                              return hierNum
+                            }
+
+                            return (
                             <div
                               key={`instance-${instanceIdx}`}
                               style={{
@@ -3155,9 +3172,9 @@ const InputForms: React.FC = () => {
                                 </button>
                               )}
                               {setQuestions.map((setQuestion, setQIdx) => {
-                                // Use hierarchical number from backend, fallback to simple counter
+                                // Use hierarchical number from backend, adjusted for instance index
                                 const baseNumber = setQuestion.hierarchical_number || '1'
-                                const setQLabel = baseNumber
+                                const setQLabel = adjustNumber(baseNumber, instanceIdx)
                                 // Get this instance's answer for determining follow-ups
                                 const instanceAnswer = setQuestion.repeatable
                                   ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
@@ -3209,7 +3226,7 @@ const InputForms: React.FC = () => {
                                         return allNestedQs.map((nfq: any, nfqIdx: number) => {
                                           const nfqKey = `${keyPrefix}-nfq-${nfq.id}-${parentInstanceIdx}-d${depth}-${nfqIdx}`
                                           nestedQCounter++
-                                          const nfqLabel = nfq.hierarchical_number || `${parentLabel}-${nestedQCounter}`
+                                          const nfqLabel = adjustNumber(nfq.hierarchical_number, instanceIdx) || `${parentLabel}-${nestedQCounter}`
 
                                           if (nfq.repeatable) {
                                             // Repeatable nested follow-up: render with Add Another pattern
@@ -3346,7 +3363,7 @@ const InputForms: React.FC = () => {
                                       return allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
                                           fuQCounter++
-                                          const fuLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
+                                          const fuLabel = (fq.hierarchical_number ? adjustNumber(fq.hierarchical_number, capturedInstanceIdx) : '') || `${setQLabel}-${fuQCounter}`
                                           // Non-repeatable follow-up: use synthetic ID for instances > 0
                                           // Instance 0 uses real ID (preserves backend persistence)
                                           const fqEffectiveId = capturedInstanceIdx > 0 ? fq.id * 100000 + capturedInstanceIdx : fq.id
@@ -3371,7 +3388,7 @@ const InputForms: React.FC = () => {
                                         }
 
                                         fuQCounter++
-                                        const fuRepLabel = fq.hierarchical_number || `${setQLabel}-${fuQCounter}`
+                                        const fuRepLabel = (fq.hierarchical_number ? adjustNumber(fq.hierarchical_number, capturedInstanceIdx) : '') || `${setQLabel}-${fuQCounter}`
                                         // Repeatable follow-up: group by repeatable_group_id
                                         const fuGroupId = fq.repeatable_group_id || String(fq.id)
                                         const fuGroupKey = `${fuGroupId}-${capturedInstanceIdx}`
@@ -3461,7 +3478,7 @@ const InputForms: React.FC = () => {
                                                         const renderedNfqGroups = new Set<string>()
                                                         return allNfqs.map((nfq: any, nfqIdx: number) => {
                                                           const nfqKey = `rfuq-${nfq.id}-${instanceIdx}-${fuIdx}`
-                                                          const nfqNestedLabel = nfq.hierarchical_number || `${fuRepLabel}.${nfqIdx + 1}`
+                                                          const nfqNestedLabel = (nfq.hierarchical_number ? adjustNumber(nfq.hierarchical_number, instanceIdx) : '') || `${fuRepLabel}.${nfqIdx + 1}`
 
                                                           if (nfq.repeatable) {
                                                             // Repeatable nested followup: render with its own Add Another pattern
@@ -3615,7 +3632,7 @@ const InputForms: React.FC = () => {
                                 )
                               })}
                             </div>
-                          ))}
+                          )})}
                           {isLastInSet && (
                             <button
                               type="button"
