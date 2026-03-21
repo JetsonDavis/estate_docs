@@ -472,6 +472,11 @@ class DocumentService:
         try:
             parsed = json.loads(answer_value)
 
+            # Single person object (not in array) — wrap it so the
+            # same normalisation / formatting logic handles it.
+            if isinstance(parsed, dict):
+                parsed = [parsed]
+
             if isinstance(parsed, list) and len(parsed) > 0:
                 # Normalise each element: if it's a JSON string, decode it
                 normalised = []
@@ -643,13 +648,20 @@ class DocumentService:
 
     @staticmethod
     def _parse_array(raw: str):
-        """Try to parse a string as a JSON array; return list or None."""
+        """Try to parse a string as a JSON array; return list or None.
+
+        Also wraps a single dict in a list so that person-type answers
+        stored as ``{"name":"..."}`` (instead of ``[{"name":"..."}]``)
+        are treated as one-element arrays.
+        """
         if not raw:
             return None
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
                 return parsed
+            if isinstance(parsed, dict):
+                return [parsed]
         except (json.JSONDecodeError, TypeError):
             pass
         return None
