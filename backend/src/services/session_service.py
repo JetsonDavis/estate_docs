@@ -1516,6 +1516,24 @@ class SessionService:
 
         answer_map = {a.question_id: a.answer_value for a in current_answers}
 
+        # Compute question numbers across all groups for this session
+        question_number_map = {}  # question_id -> hierarchical number
+        try:
+            session = db.query(InputForm).filter(InputForm.id == session_id).first()
+            if session:
+                ordered_groups, _ = SessionService._get_ordered_groups(db, session)
+                existing_answers_for_logic = {a.question_id: a.answer_value for a in current_answers}
+                for group in ordered_groups:
+                    try:
+                        _, _, q_numbers, _ = SessionService._get_questions_from_logic(
+                            db, group, existing_answers_for_logic
+                        )
+                        question_number_map.update(q_numbers)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         # Load ALL existing snapshots for this session
         existing_snapshots = db.query(AnswerSnapshot).filter(
             AnswerSnapshot.session_id == session_id
@@ -1524,14 +1542,18 @@ class SessionService:
 
         # Upsert snapshots for every answer that currently exists
         for qid, value in answer_map.items():
+            q_number = question_number_map.get(qid)
             if qid in existing_snap_map:
                 existing_snap_map[qid].answer_value = value
                 existing_snap_map[qid].saved_at = datetime.utcnow()
+                if q_number:
+                    existing_snap_map[qid].question_number = q_number
             else:
                 snapshot = AnswerSnapshot(
                     session_id=session_id,
                     question_id=qid,
                     answer_value=value,
+                    question_number=q_number,
                     saved_at=datetime.utcnow()
                 )
                 db.add(snapshot)
@@ -1595,6 +1617,7 @@ class SessionService:
             if current_value is None:
                 mismatches.append({
                     "question_id": snap.question_id,
+                    "question_number": snap.question_number,
                     "identifier": q_identifier,
                     "issue": "missing",
                     "expected": snap.answer_value,
@@ -1604,6 +1627,7 @@ class SessionService:
             elif current_value != snap.answer_value:
                 mismatches.append({
                     "question_id": snap.question_id,
+                    "question_number": snap.question_number,
                     "identifier": q_identifier,
                     "issue": "value_changed",
                     "expected": snap.answer_value,

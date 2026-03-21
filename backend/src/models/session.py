@@ -78,6 +78,7 @@ class AnswerSnapshot(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("document_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_number = Column(String, nullable=True)
     answer_value = Column(Text, nullable=False)
     saved_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
@@ -94,6 +95,7 @@ class AnswerSnapshot(Base):
             "id": self.id,
             "session_id": self.session_id,
             "question_id": self.question_id,
+            "question_number": self.question_number,
             "answer_value": self.answer_value,
             "saved_at": self.saved_at.isoformat(),
         }

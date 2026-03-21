@@ -3108,7 +3108,8 @@ const InputForms: React.FC = () => {
                   <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem' }}>
                     {persistenceMismatches.map((m, i) => (
                       <li key={i}>
-                        Question <strong>{m.identifier}</strong> (ID {m.question_id}):&nbsp;
+                        {m.question_number ? `Q${m.question_number} ` : ''}
+                        <strong>{m.identifier}</strong> (ID {m.question_id}):&nbsp;
                         {m.issue === 'missing'
                           ? 'answer is missing from the database'
                           : 'answer value has changed unexpectedly'}

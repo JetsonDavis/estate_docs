@@ -43,27 +43,59 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     timersRef.current.set(id, timer)
   }, [removeToast])
 
-  const typeStyles: Record<ToastType, string> = {
-    success: 'bg-green-600',
-    error: 'bg-red-600',
-    warning: 'bg-yellow-500 text-gray-900',
-    info: 'bg-blue-600',
+  const typeColors: Record<ToastType, { bg: string; color: string }> = {
+    success: { bg: '#16a34a', color: '#fff' },
+    error: { bg: '#dc2626', color: '#fff' },
+    warning: { bg: '#eab308', color: '#1f2937' },
+    info: { bg: '#2563eb', color: '#fff' },
   }
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
       {/* Toast container */}
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm" role="status" aria-live="polite">
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: 'fixed',
+          top: '1rem',
+          right: '1rem',
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          maxWidth: '24rem',
+        }}
+      >
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`${typeStyles[t.type]} text-white px-4 py-3 rounded-lg shadow-lg text-sm flex items-start gap-2 animate-[slideIn_0.2s_ease-out]`}
+            style={{
+              backgroundColor: typeColors[t.type].bg,
+              color: typeColors[t.type].color,
+              padding: '0.75rem 1rem',
+              borderRadius: '0.5rem',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              fontSize: '0.875rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem',
+            }}
           >
-            <span className="flex-1">{t.message}</span>
+            <span style={{ flex: 1 }}>{t.message}</span>
             <button
               onClick={() => removeToast(t.id)}
-              className="text-white/80 hover:text-white flex-shrink-0"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                opacity: 0.8,
+                cursor: 'pointer',
+                flexShrink: 0,
+                fontSize: '0.875rem',
+                padding: 0,
+              }}
               aria-label="Dismiss"
             >
               ✕

@@ -135,6 +135,7 @@ export interface NavigateRequest {
 
 export interface PersistenceMismatch {
   question_id: number
+  question_number: string | null
   identifier: string
   issue: 'missing' | 'value_changed'
   expected: string
