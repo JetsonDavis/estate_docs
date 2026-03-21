@@ -127,38 +127,50 @@ const EditTemplate: React.FC = () => {
   // Validate matching IF/END and FOR EACH/END FOR EACH blocks
   const validateBlocks = (text: string): string[] => {
     const errors: string[] = []
-    const blockRegex = /\{\{\s*(IF\s|FOR\s+EACH\s|FOREACH\s|ELSE|END\s+FOR\s+EACH|END\s+FOREACH|END)\s*/gi
-    const stack: { type: string; line: number }[] = []
-    const lines = text.split('\n')
+    // Strip HTML tags for readable context snippets
+    const plain = text.replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ')
 
-    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-      const line = lines[lineNum]
-      let match: RegExpExecArray | null
-      const lineRegex = /\{\{\s*(IF\s[^}]*|(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s[^}]*|ELSE|END\s+(?:FOR\s+EACH|FOREACH)|END)\s*\}\}/gi
+    // Helper: extract ~40 chars of surrounding plain text around a position
+    const getContext = (pos: number): string => {
+      // Map position from raw text to plain text approximately
+      // by stripping tags from the text up to that position
+      const before = text.substring(0, pos).replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ')
+      const plainPos = before.length
+      const start = Math.max(0, plainPos - 20)
+      const end = Math.min(plain.length, plainPos + 20)
+      let snippet = plain.substring(start, end).trim()
+      if (start > 0) snippet = '...' + snippet
+      if (end < plain.length) snippet = snippet + '...'
+      return snippet
+    }
 
-      while ((match = lineRegex.exec(line)) !== null) {
-        const keyword = match[1].trim().toUpperCase()
+    const tagRegex = /\{\{\s*(IF\s[^}]*|(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s[^}]*|ELSE|END\s+(?:FOR\s+EACH|FOREACH)|END)\s*\}\}/gi
+    const stack: { type: string; pos: number; context: string }[] = []
+    let match: RegExpExecArray | null
 
-        if (keyword.startsWith('IF ') || keyword === 'IF') {
-          stack.push({ type: 'IF', line: lineNum + 1 })
-        } else if (keyword.startsWith('FOR EACH') || keyword.startsWith('FOREACH')) {
-          stack.push({ type: 'FOR EACH', line: lineNum + 1 })
-        } else if (keyword === 'END FOR EACH' || keyword === 'END FOREACH') {
-          const last = stack.pop()
-          if (!last) {
-            errors.push(`Line ${lineNum + 1}: {{ END FOR EACH }} without a matching {{ FOR EACH }}`)
-          } else if (last.type !== 'FOR EACH') {
-            errors.push(`Line ${lineNum + 1}: {{ END FOR EACH }} but expected {{ END }} to close {{ IF }} from line ${last.line}`)
-            stack.push(last) // put it back
-          }
-        } else if (keyword === 'END') {
-          const last = stack.pop()
-          if (!last) {
-            errors.push(`Line ${lineNum + 1}: {{ END }} without a matching {{ IF }}`)
-          } else if (last.type !== 'IF') {
-            errors.push(`Line ${lineNum + 1}: {{ END }} but expected {{ END FOR EACH }} to close {{ FOR EACH }} from line ${last.line}`)
-            stack.push(last) // put it back
-          }
+    while ((match = tagRegex.exec(text)) !== null) {
+      const keyword = match[1].trim().toUpperCase()
+      const pos = match.index
+
+      if (keyword.startsWith('IF ') || keyword === 'IF') {
+        stack.push({ type: 'IF', pos, context: getContext(pos) })
+      } else if (keyword.startsWith('FOR EACH') || keyword.startsWith('FOREACH')) {
+        stack.push({ type: 'FOR EACH', pos, context: getContext(pos) })
+      } else if (keyword === 'END FOR EACH' || keyword === 'END FOREACH') {
+        const last = stack.pop()
+        if (!last) {
+          errors.push(`{{ END FOR EACH }} without a matching {{ FOR EACH }} — near "${getContext(pos)}"`)
+        } else if (last.type !== 'FOR EACH') {
+          errors.push(`{{ END FOR EACH }} but expected {{ END }} to close {{ IF }} — near "${getContext(pos)}" (opening {{ IF }} near "${last.context}")`)
+          stack.push(last)
+        }
+      } else if (keyword === 'END') {
+        const last = stack.pop()
+        if (!last) {
+          errors.push(`{{ END }} without a matching {{ IF }} — near "${getContext(pos)}"`)
+        } else if (last.type !== 'IF') {
+          errors.push(`{{ END }} but expected {{ END FOR EACH }} to close {{ FOR EACH }} — near "${getContext(pos)}" (opening {{ FOR EACH }} near "${last.context}")`)
+          stack.push(last)
         }
       }
     }
@@ -166,9 +178,9 @@ const EditTemplate: React.FC = () => {
     // Report unclosed blocks
     for (const unclosed of stack) {
       if (unclosed.type === 'IF') {
-        errors.push(`Line ${unclosed.line}: {{ IF }} is never closed with {{ END }}`)
+        errors.push(`{{ IF }} is never closed with {{ END }} — near "${unclosed.context}"`)
       } else {
-        errors.push(`Line ${unclosed.line}: {{ FOR EACH }} is never closed with {{ END FOR EACH }}`)
+        errors.push(`{{ FOR EACH }} is never closed with {{ END FOR EACH }} — near "${unclosed.context}"`)
       }
     }
 
