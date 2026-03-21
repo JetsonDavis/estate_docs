@@ -44,6 +44,35 @@ const EditTemplate: React.FC = () => {
   useEffect(() => { markdownContentRef.current = markdownContent }, [markdownContent])
   useEffect(() => { templateRef.current = template }, [template])
 
+  const autoSave = useCallback(async () => {
+    const t = templateRef.current
+    if (!t) return
+    const currentName = nameRef.current
+    const currentDesc = descriptionRef.current
+    const currentContent = markdownContentRef.current
+    const last = lastSavedRef.current
+
+    // Only save if something changed
+    if (currentName === last.name && currentDesc === last.description && currentContent === last.markdownContent) {
+      return
+    }
+
+    try {
+      setAutoSaveStatus('saving')
+      await templateService.updateTemplate(t.id, {
+        name: currentName,
+        description: currentDesc || undefined,
+        markdown_content: currentContent
+      })
+      lastSavedRef.current = { name: currentName, description: currentDesc, markdownContent: currentContent }
+      setAutoSaveStatus('saved')
+      setTimeout(() => setAutoSaveStatus('idle'), 2000)
+    } catch {
+      setAutoSaveStatus('error')
+      setTimeout(() => setAutoSaveStatus('idle'), 3000)
+    }
+  }, [])
+
   // Restore scroll position on the display overlay when leaving edit mode
   useEffect(() => {
     if (!isEditing && formattedDivRef.current) {
@@ -77,6 +106,7 @@ const EditTemplate: React.FC = () => {
         pageScrollRef.current = window.scrollY
         setIsEditing(false)
         setBlockErrors(validateBlocks(markdownContent))
+        autoSave()
       }
     }
 
@@ -84,9 +114,10 @@ const EditTemplate: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [isEditing, markdownContent])
+  }, [isEditing, markdownContent, autoSave])
 
-  // Color-code IF/FOR EACH blocks and escape identifiers for the formatted display view
+  // Color-code IF/FOR EACH blocks and escape identifiers for the formatted display view.
+  // Erroneous block tags (mismatched or unclosed) get a bright yellow highlight.
   const colorCodeForDisplay = (html: string): string => {
     const colors = [
       '#2563eb', // Blue for level 0
@@ -98,24 +129,66 @@ const EditTemplate: React.FC = () => {
     // First escape <<...>> patterns (< is HTML-special)
     let result = html.replace(/<<([^>]+)>>/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
 
-    // Process {{...}} with depth-based color coding for control flow
+    // --- Pass 1: identify bad tag indices via stack validation ---
+    const badTagIndices = new Set<number>()
+    const tagRegex1 = /\{\{([^}]+)\}\}/g
+    const stack1: { type: string; idx: number }[] = []
+    let m1: RegExpExecArray | null
+    let tagIdx = 0
+    while ((m1 = tagRegex1.exec(result)) !== null) {
+      const upper = m1[1].trim().toUpperCase()
+      if (upper.startsWith('IF ') || upper === 'IF') {
+        stack1.push({ type: 'IF', idx: tagIdx })
+      } else if (upper.startsWith('FOR EACH') || upper.startsWith('FOREACH')) {
+        stack1.push({ type: 'FOR EACH', idx: tagIdx })
+      } else if (upper === 'END FOR EACH' || upper === 'END FOREACH') {
+        const last = stack1.pop()
+        if (!last) {
+          badTagIndices.add(tagIdx)
+        } else if (last.type !== 'FOR EACH') {
+          badTagIndices.add(tagIdx)
+          badTagIndices.add(last.idx)
+          stack1.push(last)
+        }
+      } else if (upper === 'END') {
+        const last = stack1.pop()
+        if (!last) {
+          badTagIndices.add(tagIdx)
+        } else if (last.type !== 'IF') {
+          badTagIndices.add(tagIdx)
+          badTagIndices.add(last.idx)
+          stack1.push(last)
+        }
+      }
+      tagIdx++
+    }
+    // Unclosed openers
+    for (const unclosed of stack1) {
+      badTagIndices.add(unclosed.idx)
+    }
+
+    // --- Pass 2: color-code with highlights for bad tags ---
     let depth = 0
+    let tagIdx2 = 0
     result = result.replace(/\{\{([^}]+)\}\}/g, (_match, inner) => {
       const upper = inner.trim().toUpperCase()
+      const isBad = badTagIndices.has(tagIdx2)
+      tagIdx2++
+      const highlight = isBad ? 'background-color: #fde047; padding: 1px 3px; border-radius: 2px;' : ''
 
       if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOR EACH') || upper.startsWith('FOREACH')) {
         const color = colors[Math.min(depth, colors.length - 1)]
         depth++
-        return `<strong style="color: ${color};">{{${inner}}}</strong>`
+        return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
       } else if (upper === 'END FOR EACH' || upper === 'END FOREACH' || upper === 'END') {
         depth = Math.max(0, depth - 1)
         const color = colors[Math.min(depth, colors.length - 1)]
-        return `<strong style="color: ${color};">{{${inner}}}</strong>`
+        return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
       } else if (upper === 'ELSE') {
         const color = colors[Math.min(Math.max(0, depth - 1), colors.length - 1)]
-        return `<strong style="color: ${color};">{{${inner}}}</strong>`
+        return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
       } else {
-        return `<strong>{{${inner}}}</strong>`
+        return `<strong style="${highlight}">{{${inner}}}</strong>`
       }
     })
 
@@ -188,35 +261,6 @@ const EditTemplate: React.FC = () => {
   }
 
   // Note: block errors are shown as warnings only — navigation is not blocked
-
-  const autoSave = useCallback(async () => {
-    const t = templateRef.current
-    if (!t) return
-    const currentName = nameRef.current
-    const currentDesc = descriptionRef.current
-    const currentContent = markdownContentRef.current
-    const last = lastSavedRef.current
-
-    // Only save if something changed
-    if (currentName === last.name && currentDesc === last.description && currentContent === last.markdownContent) {
-      return
-    }
-
-    try {
-      setAutoSaveStatus('saving')
-      await templateService.updateTemplate(t.id, {
-        name: currentName,
-        description: currentDesc || undefined,
-        markdown_content: currentContent
-      })
-      lastSavedRef.current = { name: currentName, description: currentDesc, markdownContent: currentContent }
-      setAutoSaveStatus('saved')
-      setTimeout(() => setAutoSaveStatus('idle'), 2000)
-    } catch {
-      setAutoSaveStatus('error')
-      setTimeout(() => setAutoSaveStatus('idle'), 3000)
-    }
-  }, [])
 
   // Auto-save every 10 seconds
   useEffect(() => {
@@ -341,6 +385,7 @@ const EditTemplate: React.FC = () => {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={autoSave}
                 className="form-input"
                 required
               />
@@ -352,6 +397,7 @@ const EditTemplate: React.FC = () => {
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                onBlur={autoSave}
                 className="form-input"
               />
             </div>
@@ -504,10 +550,10 @@ const EditTemplate: React.FC = () => {
                 } : {}}
               >
                 {blockErrors.length > 0
-                  ? '⚠ Save (has warnings)'
+                  ? '⚠ Exit (has warnings)'
                   : submitting
                     ? 'Saving...'
-                    : 'Save Changes'}
+                    : 'Exit'}
               </button>
             </div>
           </form>
