@@ -1162,6 +1162,7 @@ class SessionService:
         # Separate synthetic IDs from real IDs
         real_answers = []
         synthetic_answers = {}  # {real_id: {instance_idx: answer_value}}
+        real_answers_pending = []  # hold real answers until we know about synthetics
         
         for answer_data in answers:
             if answer_data.question_id >= 100000:
@@ -1172,6 +1173,15 @@ class SessionService:
                 if real_id not in synthetic_answers:
                     synthetic_answers[real_id] = {}
                 synthetic_answers[real_id][instance_idx] = answer_data.answer_value
+            else:
+                real_answers_pending.append(answer_data)
+
+        # If a real question ID also has synthetic siblings, treat it as
+        # instance 0 in the synthetic merge — do NOT save it separately,
+        # or it will overwrite the merged 2D array.
+        for answer_data in real_answers_pending:
+            if answer_data.question_id in synthetic_answers:
+                synthetic_answers[answer_data.question_id][0] = answer_data.answer_value
             else:
                 real_answers.append(answer_data)
 
@@ -1312,11 +1322,8 @@ class SessionService:
             SessionAnswer.question_id.in_(question_ids)
         ).delete(synchronize_session='fetch')
 
-        # Also remove corresponding snapshots
-        db.query(AnswerSnapshot).filter(
-            AnswerSnapshot.session_id == session_id,
-            AnswerSnapshot.question_id.in_(question_ids)
-        ).delete(synchronize_session='fetch')
+        # Do NOT delete snapshots here — they must persist so we can
+        # detect if an answer disappears unexpectedly on the next load.
 
         db.commit()
         return deleted
@@ -1489,41 +1496,34 @@ class SessionService:
     def _record_snapshots(
         db: Session,
         session_id: int,
-        question_ids: List[int]
+        question_ids: List[int]  # kept for API compat but we snapshot ALL answers
     ) -> None:
         """
         Record answer snapshots for persistence verification.
-        For each question_id, reads the current session_answer value and
-        upserts it into the answer_snapshots table.
+        Snapshots ALL answers for the entire session so we have a
+        complete record. Snapshots are never deleted — if an answer
+        disappears later, the snapshot stays so we can detect the loss.
 
         Args:
             db: Database session
             session_id: Session ID
-            question_ids: List of question IDs whose answers were just saved
+            question_ids: (unused) kept for call-site compatibility
         """
-        # Read the current committed answers for these questions
+        # Read ALL current answers for this session
         current_answers = db.query(SessionAnswer).filter(
-            SessionAnswer.session_id == session_id,
-            SessionAnswer.question_id.in_(question_ids)
+            SessionAnswer.session_id == session_id
         ).all()
 
         answer_map = {a.question_id: a.answer_value for a in current_answers}
 
-        # Upsert snapshots
+        # Load ALL existing snapshots for this session
         existing_snapshots = db.query(AnswerSnapshot).filter(
-            AnswerSnapshot.session_id == session_id,
-            AnswerSnapshot.question_id.in_(question_ids)
+            AnswerSnapshot.session_id == session_id
         ).all()
         existing_snap_map = {s.question_id: s for s in existing_snapshots}
 
-        for qid in question_ids:
-            value = answer_map.get(qid)
-            if value is None:
-                # Answer was deleted or doesn't exist — remove snapshot too
-                if qid in existing_snap_map:
-                    db.delete(existing_snap_map[qid])
-                continue
-
+        # Upsert snapshots for every answer that currently exists
+        for qid, value in answer_map.items():
             if qid in existing_snap_map:
                 existing_snap_map[qid].answer_value = value
                 existing_snap_map[qid].saved_at = datetime.utcnow()
@@ -1535,6 +1535,9 @@ class SessionService:
                     saved_at=datetime.utcnow()
                 )
                 db.add(snapshot)
+
+        # Do NOT delete snapshots for answers that no longer exist —
+        # that's exactly the scenario we want to detect.
 
         db.commit()
 

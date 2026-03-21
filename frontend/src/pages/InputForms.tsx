@@ -877,8 +877,10 @@ const InputForms: React.FC = () => {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: realQuestionId, answer_value: valueToSave }]
       })
+      toast('Answer saved', 'success')
     } catch (err) {
       console.error('Failed to save answer:', err)
+      toast('Failed to save answer', 'error')
     }
 
     // Check if this question's identifier is used by any conditional
@@ -1148,8 +1150,10 @@ const InputForms: React.FC = () => {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: realQuestionId, answer_value: saveValue }]
       })
+      toast('Answer saved', 'success')
     } catch (err) {
       console.error('Failed to save answer:', err)
+      toast('Failed to save answer', 'error')
     }
 
     // Check if this question's identifier is used by any conditional
@@ -1466,8 +1470,10 @@ const InputForms: React.FC = () => {
         await sessionService.saveAnswers(sessionData.session_id, {
           answers: [{ question_id: realQuestionId, answer_value: answerValue }]
         })
+        toast('Answer saved', 'success')
       } catch (err) {
         console.error('Failed to save person answer:', err)
+        toast('Failed to save answer', 'error')
       }
     }, 500)
   }
