@@ -1,10 +1,13 @@
 """Unit tests for session service."""
 
+import logging
 import pytest
 from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from datetime import datetime
+
+_logger = logging.getLogger(__name__)
 
 from src.services.session_service import SessionService
 from src.models.session import InputForm, SessionAnswer
@@ -543,6 +546,237 @@ class TestHierarchicalNumbering:
         all_numbers = list(question_numbers.values())
         assert len(all_numbers) == len(set(all_numbers)), \
             f"Duplicate hierarchical numbers found: {all_numbers}"
+
+
+class TestUniqueHierarchicalNumbers:
+    """Ensure every question in a group receives a unique hierarchical number.
+
+    Duplicate numbers cause the frontend to display the wrong label and make it
+    impossible to tell which input is which when debugging persistence issues.
+    """
+
+    def _make_question(self, db_session, group, identifier, text, qtype="free_text",
+                       repeatable=False, repeatable_group_id=None, options=None):
+        q = Question(
+            question_group_id=group.id,
+            identifier=identifier,
+            question_text=text,
+            question_type=qtype,
+            display_order=1,
+            is_required=False,
+            repeatable=repeatable,
+            repeatable_group_id=repeatable_group_id,
+            options=options,
+        )
+        db_session.add(q)
+        db_session.flush()
+        return q
+
+    def test_multi_question_repeatable_set_in_nested_conditional(self, db_session):
+        """Two questions sharing a repeatable_group_id inside a deeply nested
+        conditional must each get a distinct number.
+
+        Mirrors the bene_testing layout:
+          Q1 (special_gifts)
+          IF special_gifts=yes:
+            Q2 (special_gift_type, repeatable)
+            IF special_gift_type=Cash Gift:
+              Q3 (cash_amount)
+              Q4 (cash_bene)
+              Q5 (lump_vs_system, multiple_choice)
+              IF lump_vs_system=Lump:
+                Q6 (single_vs_multiple, multiple_choice)
+                IF single_vs_multiple=single:
+                  Q7 (common_lump)
+                IF single_vs_multiple=multiple:
+                  Q8 (when_lump_multiple, repeatable, group=rep-A)   <-- must differ
+                  Q9 (amount_lump_multiple, repeatable, group=rep-A) <-- from this
+        """
+        group = QuestionGroup(
+            name="Test Unique Nums Deep",
+            identifier="test_unique_nums_deep",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        q1 = self._make_question(db_session, group, "special_gifts", "Special gifts?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "yes", "label": "Yes"}])
+        q2 = self._make_question(db_session, group, "gift_type", "Gift type?",
+                                 qtype="multiple_choice", repeatable=True,
+                                 repeatable_group_id="gift-grp",
+                                 options=[{"value": "Cash Gift", "label": "Cash Gift"}])
+        q3 = self._make_question(db_session, group, "cash_amount", "Amount?")
+        q4 = self._make_question(db_session, group, "cash_bene", "Who?", qtype="person")
+        q5 = self._make_question(db_session, group, "lump_vs_system", "Lump or system?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "Lump", "label": "Lump"}])
+        q6 = self._make_question(db_session, group, "single_vs_multi", "Single or multiple?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "single", "label": "Single"},
+                                          {"value": "multiple", "label": "Multiple"}])
+        q7 = self._make_question(db_session, group, "common_lump", "When?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "now", "label": "Now"}])
+        rep_grp = "multi-lump-grp"
+        q8 = self._make_question(db_session, group, "when_lump_multi", "Situation?",
+                                 qtype="multiple_choice", repeatable=True,
+                                 repeatable_group_id=rep_grp,
+                                 options=[{"value": "grad", "label": "Graduation"}])
+        q9 = self._make_question(db_session, group, "amount_lump_multi", "Distribution amount?",
+                                 repeatable=True, repeatable_group_id=rep_grp)
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q1.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "special_gifts", "value": "yes",
+                "nestedItems": [
+                    {"type": "question", "questionId": q2.id},
+                    {"type": "conditional", "conditional": {
+                        "ifIdentifier": "gift_type", "value": "Cash Gift",
+                        "nestedItems": [
+                            {"type": "question", "questionId": q3.id},
+                            {"type": "question", "questionId": q4.id},
+                            {"type": "question", "questionId": q5.id},
+                            {"type": "conditional", "conditional": {
+                                "ifIdentifier": "lump_vs_system", "value": "Lump",
+                                "nestedItems": [
+                                    {"type": "question", "questionId": q6.id},
+                                    {"type": "conditional", "conditional": {
+                                        "ifIdentifier": "single_vs_multi", "value": "single",
+                                        "nestedItems": [
+                                            {"type": "question", "questionId": q7.id},
+                                        ],
+                                    }},
+                                    {"type": "conditional", "conditional": {
+                                        "ifIdentifier": "single_vs_multi", "value": "multiple",
+                                        "nestedItems": [
+                                            {"type": "question", "questionId": q8.id},
+                                            {"type": "question", "questionId": q9.id},
+                                        ],
+                                    }},
+                                ],
+                            }},
+                        ],
+                    }},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        # Verify exact expected numbers
+        assert question_numbers[q1.id] == "1"
+        assert question_numbers[q2.id] == "1-1"
+        assert question_numbers[q3.id] == "1-1-1"
+        assert question_numbers[q4.id] == "1-1-2"
+        assert question_numbers[q5.id] == "1-1-3"
+        assert question_numbers[q6.id] == "1-1-3-1"
+        # q7 (single) and q8 (multiple) are mutually exclusive branches,
+        # so both correctly start at 1 under prefix "1-1-3-1"
+        assert question_numbers[q7.id] == "1-1-3-1-1"
+        assert question_numbers[q8.id] == "1-1-3-1-1"
+        # q8 and q9 are in the SAME branch — must differ
+        assert question_numbers[q8.id] != question_numbers[q9.id]
+        assert question_numbers[q9.id] == "1-1-3-1-2"
+
+    def test_sibling_conditionals_share_numbers_across_exclusive_branches(self, db_session):
+        """Mutually exclusive conditional branches (same trigger, different
+        values) share the same number space.  Within each branch, questions
+        must still have distinct numbers.
+
+        Q1 (trigger, multiple_choice: A/B)
+        IF trigger=A: Q2a(1-1), Q3a(1-2)
+        IF trigger=B: Q2b(1-1), Q3b(1-2)   <-- same numbers, different branch
+        """
+        group = QuestionGroup(
+            name="Test Sibling Cond",
+            identifier="test_sibling_cond_unique",
+            display_order=1,
+        )
+        db_session.add(group)
+        db_session.flush()
+
+        q1 = self._make_question(db_session, group, "trigger", "Choose?",
+                                 qtype="multiple_choice",
+                                 options=[{"value": "A", "label": "A"},
+                                          {"value": "B", "label": "B"}])
+        q2a = self._make_question(db_session, group, "a_q1", "A first?",
+                                  repeatable=True, repeatable_group_id="grp-a")
+        q3a = self._make_question(db_session, group, "a_q2", "A second?",
+                                  repeatable=True, repeatable_group_id="grp-a")
+        q2b = self._make_question(db_session, group, "b_q1", "B first?",
+                                  repeatable=True, repeatable_group_id="grp-b")
+        q3b = self._make_question(db_session, group, "b_q2", "B second?",
+                                  repeatable=True, repeatable_group_id="grp-b")
+        db_session.flush()
+
+        group.question_logic = [
+            {"type": "question", "questionId": q1.id},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "trigger", "value": "A",
+                "nestedItems": [
+                    {"type": "question", "questionId": q2a.id},
+                    {"type": "question", "questionId": q3a.id},
+                ],
+            }},
+            {"type": "conditional", "conditional": {
+                "ifIdentifier": "trigger", "value": "B",
+                "nestedItems": [
+                    {"type": "question", "questionId": q2b.id},
+                    {"type": "question", "questionId": q3b.id},
+                ],
+            }},
+        ]
+        db_session.commit()
+
+        _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+            db_session, group, {}
+        )
+
+        # Within each branch, questions must differ
+        assert question_numbers[q2a.id] != question_numbers[q3a.id]
+        assert question_numbers[q2b.id] != question_numbers[q3b.id]
+
+        # Mutually exclusive branches share the same number space
+        assert question_numbers[q2a.id] == question_numbers[q2b.id]  # both "1-1"
+        assert question_numbers[q3a.id] == question_numbers[q3b.id]  # both "1-2"
+
+    def test_all_existing_question_groups_number_without_errors(self, db_session):
+        """Scan every question group in the database and verify that
+        assign_hierarchical_numbers runs without errors.
+
+        Note: mutually exclusive branches intentionally share numbers, so
+        global uniqueness is not checked.  Per-branch uniqueness is validated
+        by the synthetic tests above.
+        """
+        groups = db_session.query(QuestionGroup).filter(
+            QuestionGroup.question_logic.isnot(None)
+        ).all()
+
+        failures = []
+        for group in groups:
+            if not group.question_logic:
+                continue
+            try:
+                _, _, question_numbers, _ = SessionService._get_questions_from_logic(
+                    db_session, group, {}
+                )
+            except Exception as e:
+                failures.append(f"  {group.identifier} (id={group.id}): ERROR {e}")
+                continue
+
+            # Log the numbers for diagnostic visibility
+            _logger.info(f"Group {group.identifier}: {len(question_numbers)} questions numbered")
+
+        if failures:
+            msg = "Groups that failed hierarchical numbering:\n" + "\n".join(failures)
+            pytest.fail(msg)
 
 
 class TestAnyNoneOperators:

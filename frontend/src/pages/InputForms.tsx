@@ -402,6 +402,18 @@ const InputForms: React.FC = () => {
   const [conditionalLoadingQuestionId, setConditionalLoadingQuestionId] = useState<number | null>(null)
   const [persistenceMismatches, setPersistenceMismatches] = useState<PersistenceMismatch[]>([])
 
+  // Track recently-saved questions for green checkmark indicator
+  const [savedQuestions, setSavedQuestions] = useState<Set<number>>(new Set())
+  const savedTimersRef = useRef<Record<number, NodeJS.Timeout>>({})
+  const markSaved = (questionId: number) => {
+    setSavedQuestions(prev => new Set(prev).add(questionId))
+    if (savedTimersRef.current[questionId]) clearTimeout(savedTimersRef.current[questionId])
+    savedTimersRef.current[questionId] = setTimeout(() => {
+      setSavedQuestions(prev => { const next = new Set(prev); next.delete(questionId); return next })
+      delete savedTimersRef.current[questionId]
+    }, 2000)
+  }
+
   // Modal state for person-type questions
   const [personModalForQuestion, setPersonModalForQuestion] = useState<number | null>(null)
 
@@ -535,15 +547,25 @@ const InputForms: React.FC = () => {
               const isPerson = fq.question_type === 'person' || fq.question_type === 'person_backup'
               try {
                 const parsed = JSON.parse(initialAnswers[fq.id])
-                // Only distribute if it's an array of strings (multi-instance format).
-                // Person data arrays contain objects [{name:...}] and should be left alone.
-                const isMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
-                if (isMultiInstance) {
+                // Detect multi-instance format: flat array of strings OR 2D array of arrays.
+                // Person data arrays contain objects [{name:...}] and must NOT be distributed.
+                const isFlatMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+                const is2DMultiInstance = Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0])
+                if (isFlatMultiInstance || is2DMultiInstance) {
                   // Distribute array values to synthetic IDs
                   for (let i = 1; i < instanceCount; i++) {
                     const synId = fq.id * 100000 + i
                     if (initialAnswers[synId] === undefined) {
-                      const valueToSeed = parsed[i] !== undefined ? parsed[i] : ''
+                      let valueToSeed = ''
+                      if (parsed[i] !== undefined) {
+                        // For 2D arrays: single-element inner arrays were wrapped simple values (unwrap),
+                        // multi-element inner arrays were actual arrays (stringify back)
+                        if (Array.isArray(parsed[i])) {
+                          valueToSeed = parsed[i].length === 1 ? parsed[i][0] : JSON.stringify(parsed[i])
+                        } else {
+                          valueToSeed = parsed[i]
+                        }
+                      }
                       initialAnswers[synId] = valueToSeed
                     }
                     // For person questions, parse the distributed value into personAnswers
@@ -558,7 +580,14 @@ const InputForms: React.FC = () => {
                     }
                   }
                   // Instance 0 gets the first value
-                  initialAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                  const first = parsed[0]
+                  if (first === undefined) {
+                    initialAnswers[fq.id] = ''
+                  } else if (Array.isArray(first)) {
+                    initialAnswers[fq.id] = first.length === 1 ? first[0] : JSON.stringify(first)
+                  } else {
+                    initialAnswers[fq.id] = first
+                  }
                   // For person questions, also re-parse instance 0's value
                   if (isPerson && initialAnswers[fq.id]) {
                     try {
@@ -633,6 +662,51 @@ const InputForms: React.FC = () => {
         }
       }
       seedAllRepeatableFollowups(data.questions)
+
+      // Fallback: distribute any flat-array answers that the tree walk didn't
+      // reach. This happens when a non-repeatable followup is deeply nested and
+      // its repeatable ancestor isn't in the current page's conditional_followups
+      // tree (e.g. the repeatable parent was processed on a different level).
+      // We detect un-distributed arrays by checking if synthetic IDs were created.
+      const allQuestionIds = new Set<number>()
+      const repeatableQuestionIds = new Set<number>()
+      const collectQIds = (qs: any[]) => {
+        for (const q of qs) {
+          allQuestionIds.add(q.id)
+          if (q.repeatable) repeatableQuestionIds.add(q.id)
+          if (q.conditional_followups) {
+            for (const cfu of q.conditional_followups) {
+              if (cfu.questions) collectQIds(cfu.questions)
+            }
+          }
+        }
+      }
+      collectQIds(data.questions)
+
+      for (const qId of allQuestionIds) {
+        // NEVER distribute repeatable questions — their JSON arrays represent
+        // multiple instances, NOT values to split across synthetic IDs.
+        // Distributing them collapses N instances to 1, hiding all instance 1+ data.
+        if (repeatableQuestionIds.has(qId)) continue
+        const val = initialAnswers[qId]
+        if (val === undefined) continue
+        // Skip if synthetic IDs were already created (seeding already ran)
+        if (initialAnswers[qId * 100000 + 1] !== undefined) continue
+        try {
+          const parsed = JSON.parse(val)
+          // Only distribute flat arrays of strings (not person objects)
+          if (Array.isArray(parsed) && parsed.length > 1 && typeof parsed[0] === 'string') {
+            // Distribute: instance 0 gets parsed[0], instances 1+ get synthetic IDs
+            for (let i = 1; i < parsed.length; i++) {
+              const synId = qId * 100000 + i
+              if (initialAnswers[synId] === undefined) {
+                initialAnswers[synId] = parsed[i] || ''
+              }
+            }
+            initialAnswers[qId] = parsed[0] || ''
+          }
+        } catch { /* not JSON */ }
+      }
 
       setAnswers(initialAnswers)
       setPersonAnswers(initialPersonAnswers)
@@ -877,7 +951,7 @@ const InputForms: React.FC = () => {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: realQuestionId, answer_value: valueToSave }]
       })
-      toast('Answer saved', 'success')
+      markSaved(questionId)
     } catch (err) {
       console.error('Failed to save answer:', err)
       toast('Failed to save answer', 'error')
@@ -1012,17 +1086,31 @@ const InputForms: React.FC = () => {
               if (!fq.repeatable && newAnswers[fq.id] !== undefined) {
                 try {
                   const parsed = JSON.parse(newAnswers[fq.id])
-                  // Only distribute if it's an array of strings (multi-instance format).
-                  // Person data arrays contain objects [{name:...}] and must NOT be distributed.
-                  const isMultiInstance = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
-                  if (isMultiInstance) {
+                  const isFlatMulti = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+                  const is2DMulti = Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0])
+                  if (isFlatMulti || is2DMulti) {
                     for (let i = 1; i < instanceCount; i++) {
                       const synId = fq.id * 100000 + i
                       if (newAnswers[synId] === undefined) {
-                        newAnswers[synId] = parsed[i] !== undefined ? parsed[i] : ''
+                        let val = ''
+                        if (parsed[i] !== undefined) {
+                          if (Array.isArray(parsed[i])) {
+                            val = parsed[i].length === 1 ? parsed[i][0] : JSON.stringify(parsed[i])
+                          } else {
+                            val = parsed[i]
+                          }
+                        }
+                        newAnswers[synId] = val
                       }
                     }
-                    newAnswers[fq.id] = parsed[0] !== undefined ? parsed[0] : ''
+                    const first = parsed[0]
+                    if (first === undefined) {
+                      newAnswers[fq.id] = ''
+                    } else if (Array.isArray(first)) {
+                      newAnswers[fq.id] = first.length === 1 ? first[0] : JSON.stringify(first)
+                    } else {
+                      newAnswers[fq.id] = first
+                    }
                   }
                 } catch { /* Not JSON */ }
               }
@@ -1150,7 +1238,7 @@ const InputForms: React.FC = () => {
       await sessionService.saveAnswers(sessionData.session_id, {
         answers: [{ question_id: realQuestionId, answer_value: saveValue }]
       })
-      toast('Answer saved', 'success')
+      markSaved(questionId)
     } catch (err) {
       console.error('Failed to save answer:', err)
       toast('Failed to save answer', 'error')
@@ -1470,7 +1558,7 @@ const InputForms: React.FC = () => {
         await sessionService.saveAnswers(sessionData.session_id, {
           answers: [{ question_id: realQuestionId, answer_value: answerValue }]
         })
-        toast('Answer saved', 'success')
+        markSaved(questionId)
       } catch (err) {
         console.error('Failed to save person answer:', err)
         toast('Failed to save answer', 'error')
@@ -1547,13 +1635,32 @@ const InputForms: React.FC = () => {
   const saveCurrentAnswers = async () => {
     if (!sessionData) return
 
-    const answerArray = Object.entries(answers).map(([questionId, answerValue]) => ({
-      question_id: parseInt(questionId),
-      answer_value: answerValue
-    }))
+    // Exclude synthetic IDs and reconstruct flat arrays for distributed questions
+    const answerArray = Object.entries(answers)
+      .filter(([questionId]) => parseInt(questionId) < 100000)
+      .map(([questionId, answerValue]) => {
+        const qId = parseInt(questionId)
+        let maxSynIdx = 0
+        for (const key of Object.keys(answers)) {
+          const numKey = parseInt(key)
+          if (numKey >= 100000 && Math.floor(numKey / 100000) === qId) {
+            const idx = numKey % 100000
+            if (idx > maxSynIdx) maxSynIdx = idx
+          }
+        }
+        if (maxSynIdx > 0) {
+          const arr: string[] = [answerValue]
+          for (let i = 1; i <= maxSynIdx; i++) {
+            arr.push(answers[qId * 100000 + i] || '')
+          }
+          return { question_id: qId, answer_value: JSON.stringify(arr) }
+        }
+        return { question_id: qId, answer_value: answerValue }
+      })
 
-    // Add person answers with conjunctions
+    // Add person answers with conjunctions (exclude synthetic IDs)
     Object.entries(personAnswers).forEach(([questionId, values]) => {
+      if (parseInt(questionId) >= 100000) return
       const filteredValues = values.filter(v => v.trim() !== '')
       if (filteredValues.length > 0) {
         const conjunctions = personConjunctions[parseInt(questionId)] || []
@@ -1596,14 +1703,38 @@ const InputForms: React.FC = () => {
     try {
       setSubmitting(true)
 
-      // Build answer array
-      const answerArray = Object.entries(answers).map(([questionId, answerValue]) => ({
-        question_id: parseInt(questionId),
-        answer_value: answerValue
-      }))
+      // Build answer array — exclude synthetic IDs (>= 100000) which are
+      // frontend-only keys for rendering per-instance followups.
+      // For non-repeatable questions that were distributed across synthetic IDs,
+      // reconstruct the flat JSON array so we don't overwrite the DB with just
+      // the instance-0 value.
+      const answerArray = Object.entries(answers)
+        .filter(([questionId]) => parseInt(questionId) < 100000)
+        .map(([questionId, answerValue]) => {
+          const qId = parseInt(questionId)
+          // Check if this real ID has synthetic siblings (meaning it was distributed)
+          let maxSynIdx = 0
+          for (const key of Object.keys(answers)) {
+            const numKey = parseInt(key)
+            if (numKey >= 100000 && Math.floor(numKey / 100000) === qId) {
+              const idx = numKey % 100000
+              if (idx > maxSynIdx) maxSynIdx = idx
+            }
+          }
+          if (maxSynIdx > 0) {
+            // Reconstruct flat array from instance 0 (real ID) + instances 1+ (synthetic IDs)
+            const arr: string[] = [answerValue]
+            for (let i = 1; i <= maxSynIdx; i++) {
+              arr.push(answers[qId * 100000 + i] || '')
+            }
+            return { question_id: qId, answer_value: JSON.stringify(arr) }
+          }
+          return { question_id: qId, answer_value: answerValue }
+        })
 
-      // Add person answers with conjunctions
+      // Add person answers with conjunctions (also exclude synthetic IDs)
       Object.entries(personAnswers).forEach(([questionId, values]) => {
+        if (parseInt(questionId) >= 100000) return
         const filteredValues = values.filter(v => v.trim() !== '')
         if (filteredValues.length > 0) {
           const conjunctions = personConjunctions[parseInt(questionId)] || []
@@ -1982,40 +2113,54 @@ const InputForms: React.FC = () => {
         }
 
         // Collect ALL person/person_backup names from the entire document
-        // excluding the current instance
+        // excluding the current instance.  Searches top-level questions AND
+        // questions nested inside conditional followups (recursively), plus
+        // synthetic-ID answers for distributed per-instance person data.
         const earlierPeople: Array<{ name: string; data: Record<string, any> }> = []
-        if (sessionData) {
-          for (const q of sessionData.questions) {
-            if (q.question_type === 'person' || q.question_type === 'person_backup') {
-              const answerValue = answers[q.id]
-              if (answerValue) {
-                try {
-                  const parsed = JSON.parse(answerValue)
-                  if (Array.isArray(parsed)) {
-                    for (let pIdx = 0; pIdx < parsed.length; pIdx++) {
-                      const personObj = typeof parsed[pIdx] === 'string' ? (parsed[pIdx] ? JSON.parse(parsed[pIdx]) : null) : parsed[pIdx]
-                      // Skip the current instance of this question
-                      if (q.id === question.id && pIdx === instanceIndex) continue
-                      if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
-                        // Avoid duplicates
-                        if (!earlierPeople.some(p => p.name.toLowerCase() === personObj.name.toLowerCase())) {
-                          earlierPeople.push({ name: personObj.name, data: personObj })
-                        }
-                      }
-                    }
-                  } else if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
-                    // Skip if this is the current question instance 0
-                    if (q.id === question.id && instanceIndex === 0) continue
-                    if (!earlierPeople.some(p => p.name.toLowerCase() === parsed.name.toLowerCase())) {
-                      earlierPeople.push({ name: parsed.name, data: parsed })
-                    }
+        const addPersonFromAnswer = (qId: number, answerValue: string) => {
+          try {
+            const parsed = JSON.parse(answerValue)
+            if (Array.isArray(parsed)) {
+              for (let pIdx = 0; pIdx < parsed.length; pIdx++) {
+                const personObj = typeof parsed[pIdx] === 'string' ? (parsed[pIdx] ? JSON.parse(parsed[pIdx]) : null) : parsed[pIdx]
+                if (qId === question.id && pIdx === instanceIndex) continue
+                if (personObj && typeof personObj === 'object' && personObj.name?.trim()) {
+                  if (!earlierPeople.some(p => p.name.toLowerCase() === personObj.name.toLowerCase())) {
+                    earlierPeople.push({ name: personObj.name, data: personObj })
                   }
-                } catch {
-                  // Skip invalid JSON
+                }
+              }
+            } else if (parsed && typeof parsed === 'object' && parsed.name?.trim()) {
+              if (qId === question.id && instanceIndex === 0) return
+              if (!earlierPeople.some(p => p.name.toLowerCase() === parsed.name.toLowerCase())) {
+                earlierPeople.push({ name: parsed.name, data: parsed })
+              }
+            }
+          } catch { /* skip invalid JSON */ }
+        }
+        const collectPersonAnswers = (qs: any[]) => {
+          for (const q of qs) {
+            if (q.question_type === 'person' || q.question_type === 'person_backup') {
+              // Check real ID answer
+              if (answers[q.id]) addPersonFromAnswer(q.id, answers[q.id])
+              // Check synthetic ID answers (for distributed per-instance data)
+              for (const key of Object.keys(answers)) {
+                const numKey = parseInt(key)
+                if (numKey >= 100000 && Math.floor(numKey / 100000) === q.id && answers[numKey]) {
+                  addPersonFromAnswer(numKey, answers[numKey])
                 }
               }
             }
+            // Recurse into conditional followups
+            if ((q as any).conditional_followups) {
+              for (const cfu of (q as any).conditional_followups) {
+                if (cfu.questions) collectPersonAnswers(cfu.questions)
+              }
+            }
           }
+        }
+        if (sessionData) {
+          collectPersonAnswers(sessionData.questions)
         }
 
         // Check if current name matches an earlier person
@@ -2835,6 +2980,18 @@ const InputForms: React.FC = () => {
     }
   }
 
+  const SavedIndicator = ({ questionId }: { questionId: number }) => {
+    const realQId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
+    const show = savedQuestions.has(questionId) || savedQuestions.has(realQId)
+    if (!show) return null
+    return (
+      <span style={{
+        color: '#059669', fontSize: '0.75rem', fontWeight: 600,
+        marginLeft: '0.35rem',
+      }}>✓ saved</span>
+    )
+  }
+
   if (loading) {
     return (
       <SessionsContainer>
@@ -3105,14 +3262,14 @@ const InputForms: React.FC = () => {
                   <div style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.95rem' }}>
                     ⚠ Persistence Error: {persistenceMismatches.length} answer{persistenceMismatches.length > 1 ? 's' : ''} failed to persist
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem' }}>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem', lineHeight: '1.6' }}>
                     {persistenceMismatches.map((m, i) => (
                       <li key={i}>
                         {m.question_number ? `Q${m.question_number} ` : ''}
                         <strong>{m.identifier}</strong> (ID {m.question_id}):&nbsp;
                         {m.issue === 'missing'
-                          ? 'answer is missing from the database'
-                          : 'answer value has changed unexpectedly'}
+                          ? <>answer is <strong>missing</strong> from the database. Expected: <code style={{ background: '#fecaca', padding: '0 4px', borderRadius: 3 }}>{m.expected}</code></>
+                          : <>value <strong>changed</strong>. Expected: <code style={{ background: '#fecaca', padding: '0 4px', borderRadius: 3 }}>{m.expected}</code> → Actual: <code style={{ background: '#fecaca', padding: '0 4px', borderRadius: 3 }}>{m.actual ?? '(empty)'}</code></>}
                       </li>
                     ))}
                   </ul>
@@ -3253,6 +3410,7 @@ const InputForms: React.FC = () => {
                                             ({setQuestion.identifier.split('.').pop()}[{instanceIdx + 1}])
                                           </span>
                                         )}
+                                        <SavedIndicator questionId={setQuestion.id} />
                                       </label>
                                       {setQuestion.help_text && (
                                         <p >{replaceLoopToken(setQuestion.help_text, instanceIdx)}</p>
@@ -3347,6 +3505,7 @@ const InputForms: React.FC = () => {
                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(rQLabel, rIdx)}.</span>
                                                               {replaceLoopToken(rQ.question_text, rIdx)}
                                                               {rQ.is_required && <span >*</span>}
+                                                              <SavedIndicator questionId={rVirtualQ.id} />
                                                             </label>
                                                             {rQ.help_text && (
                                                               <p >{replaceLoopToken(rQ.help_text, rIdx)}</p>
@@ -3398,6 +3557,7 @@ const InputForms: React.FC = () => {
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                   {replaceLoopToken(nfq.question_text, parentInstanceIdx)}
                                                   {nfq.is_required && <span >*</span>}
+                                                  <SavedIndicator questionId={nfqVirtual.id} />
                                                 </label>
                                                 {nfq.help_text && (
                                                   <p >{replaceLoopToken(nfq.help_text, parentInstanceIdx)}</p>
@@ -3432,6 +3592,7 @@ const InputForms: React.FC = () => {
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuLabel}.</span>
                                                   {replaceLoopToken(fq.question_text, capturedInstanceIdx)}
                                                   {fq.is_required && <span >*</span>}
+                                                  <SavedIndicator questionId={fqVirtual.id} />
                                                 </label>
                                                 {fq.help_text && (
                                                   <p >{replaceLoopToken(fq.help_text, capturedInstanceIdx)}</p>
@@ -3525,6 +3686,7 @@ const InputForms: React.FC = () => {
                                                           <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(fuQLabel, fuIdx)}.</span>
                                                           {replaceLoopToken(fuQ.question_text, fuIdx)}
                                                           {fuQ.is_required && <span >*</span>}
+                                                          <SavedIndicator questionId={virtualQ.id} />
                                                         </label>
                                                         {fuQ.help_text && (
                                                           <p >{replaceLoopToken(fuQ.help_text, fuIdx)}</p>
@@ -3600,6 +3762,7 @@ const InputForms: React.FC = () => {
                                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(nfqQLabel, nfqRIdx)}.</span>
                                                                               {replaceLoopToken(nfqQ.question_text, nfqRIdx)}
                                                                               {nfqQ.is_required && <span >*</span>}
+                                                                              <SavedIndicator questionId={nfqVirtualQ.id} />
                                                                             </label>
                                                                             {nfqQ.help_text && (
                                                                               <p >{replaceLoopToken(nfqQ.help_text, nfqRIdx)}</p>
@@ -3647,6 +3810,7 @@ const InputForms: React.FC = () => {
                                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
                                                                   {replaceLoopToken(nfq.question_text, fuIdx)}
                                                                   {nfq.is_required && <span >*</span>}
+                                                                  <SavedIndicator questionId={capturedInstanceIdx > 0 ? nfq.id * 100000 + capturedInstanceIdx : nfq.id} />
                                                                 </label>
                                                                 {nfq.help_text && (
                                                                   <p >{replaceLoopToken(nfq.help_text, fuIdx)}</p>
@@ -3728,6 +3892,7 @@ const InputForms: React.FC = () => {
                             <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nonRepQLabel}.</span>
                             {question.question_text}
                             {question.is_required && <span >*</span>}
+                            <SavedIndicator questionId={question.id} />
                           </label>
                           {question.help_text && (
                             <p >{question.help_text}</p>

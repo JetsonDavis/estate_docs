@@ -186,6 +186,12 @@ class SessionService:
                     detail=f"Question {answer_data.question_id} does not belong to current group"
                 )
 
+        # Record snapshots BEFORE the DB write — these capture what the
+        # user intended to save.  verify_persistence will compare these
+        # against what the DB actually has after reload.
+        intended_values = {a.question_id: a.answer_value for a in answers}
+        SessionService._record_snapshots(db, session_id, intended_values)
+
         # Batch-load existing answers for submitted question_ids in one query
         submitted_question_ids = [a.question_id for a in answers]
         existing_answers_list = db.query(SessionAnswer).filter(
@@ -211,11 +217,6 @@ class SessionService:
                 db.add(answer)
 
         db.commit()
-
-        # Record snapshots for persistence verification
-        submitted_qids = [a.question_id for a in answers]
-        if submitted_qids:
-            SessionService._record_snapshots(db, session_id, submitted_qids)
 
         # Determine next group based on conditional flow
         next_group_id = SessionService._get_next_group(db, session, current_group, answers)
@@ -467,25 +468,11 @@ class SessionService:
         ).all()
         existing_answers = {}
         
-        # Process answers and split 2D arrays into synthetic IDs
+        # Store answers under real question IDs only.
+        # The frontend's seeding logic handles distributing multi-instance
+        # values (flat arrays and legacy 2D arrays) to synthetic IDs.
         for answer in existing_answers_list:
-            # Check if this is a 2D array (for repeatable conditional followups)
-            try:
-                parsed = json.loads(answer.answer_value)
-                if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], list):
-                    # This is a 2D array - split into synthetic IDs
-                    # Each element is an array for a parent instance
-                    for instance_idx, instance_array in enumerate(parsed):
-                        synthetic_id = answer.question_id * 100000 + instance_idx
-                        existing_answers[synthetic_id] = json.dumps(instance_array)
-                    # Also keep the original for backward compatibility
-                    existing_answers[answer.question_id] = answer.answer_value
-                else:
-                    # Regular answer
-                    existing_answers[answer.question_id] = answer.answer_value
-            except (json.JSONDecodeError, TypeError):
-                # Not JSON or not a list - treat as regular answer
-                existing_answers[answer.question_id] = answer.answer_value
+            existing_answers[answer.question_id] = answer.answer_value
 
         # Get questions to display based on question_logic
         # Returns tuple of (questions_with_data, repeatable_followups, question_numbers, all_followups)
@@ -1209,7 +1196,13 @@ class SessionService:
                             detail=f"Question {real_id} does not belong to current group"
                         )
 
-        # Merge synthetic answers into 2D arrays
+        # --- Compute intended values BEFORE writing to DB ---
+        # These represent what the user submitted; we snapshot them so
+        # verify_persistence can detect if the DB save loses data.
+        intended_values: Dict[int, str] = {}
+
+        # For synthetic answers: compute the flat array we intend to store
+        synthetic_merged: Dict[int, str] = {}  # real_id -> json flat array
         for real_id, instance_data in synthetic_answers.items():
             # Load existing answer for this real question
             existing = db.query(SessionAnswer).filter(
@@ -1217,36 +1210,46 @@ class SessionService:
                 SessionAnswer.question_id == real_id
             ).first()
             
-            # Parse existing 2D array or create new one
+            # Parse existing flat array or create new one
             if existing and existing.answer_value:
                 try:
-                    existing_2d = json.loads(existing.answer_value)
-                    if not isinstance(existing_2d, list):
-                        existing_2d = []
+                    existing_arr = json.loads(existing.answer_value)
+                    if not isinstance(existing_arr, list):
+                        existing_arr = []
                 except (json.JSONDecodeError, TypeError):
-                    existing_2d = []
+                    existing_arr = []
             else:
-                existing_2d = []
+                existing_arr = []
             
-            # Update the 2D array with new instance data
+            # Build flat array: one string value per instance
             for instance_idx, answer_value in instance_data.items():
-                # Parse the answer value (it's a JSON array for repeatable questions)
-                try:
-                    answer_array = json.loads(answer_value)
-                    if not isinstance(answer_array, list):
-                        answer_array = [answer_value]
-                except (json.JSONDecodeError, TypeError):
-                    answer_array = [answer_value] if answer_value else ['']
+                # Ensure array is large enough
+                while len(existing_arr) <= instance_idx:
+                    existing_arr.append('')
                 
-                # Ensure 2D array is large enough
-                while len(existing_2d) <= instance_idx:
-                    existing_2d.append([])
-                
-                # Update this instance's array
-                existing_2d[instance_idx] = answer_array
+                # Store the raw value as a string in the flat array
+                existing_arr[instance_idx] = answer_value if answer_value else ''
             
-            # Save the merged 2D array
-            merged_value = json.dumps(existing_2d)
+            merged_value = json.dumps(existing_arr)
+            synthetic_merged[real_id] = merged_value
+            intended_values[real_id] = merged_value
+
+        # For real answers: the intended value is the raw submitted value
+        for answer_data in real_answers:
+            intended_values[answer_data.question_id] = answer_data.answer_value
+
+        # Record snapshots with INTENDED values BEFORE the DB write
+        if intended_values:
+            SessionService._record_snapshots(db, session_id, intended_values)
+
+        # --- Now perform the actual DB writes ---
+
+        # Write synthetic merged flat arrays
+        for real_id, merged_value in synthetic_merged.items():
+            existing = db.query(SessionAnswer).filter(
+                SessionAnswer.session_id == session_id,
+                SessionAnswer.question_id == real_id
+            ).first()
             
             if existing:
                 existing.answer_value = merged_value
@@ -1282,12 +1285,6 @@ class SessionService:
 
         db.commit()
 
-        # Record snapshots for persistence verification
-        # Re-read the just-committed answers for the affected question IDs
-        all_affected_qids = [a.question_id for a in real_answers] + list(synthetic_answers.keys())
-        if all_affected_qids:
-            SessionService._record_snapshots(db, session_id, all_affected_qids)
-
     @staticmethod
     def delete_answers(
         db: Session,
@@ -1322,8 +1319,12 @@ class SessionService:
             SessionAnswer.question_id.in_(question_ids)
         ).delete(synchronize_session='fetch')
 
-        # Do NOT delete snapshots here — they must persist so we can
-        # detect if an answer disappears unexpectedly on the next load.
+        # Also delete snapshots for intentionally removed answers so
+        # verify_persistence doesn't flag them as false positives.
+        db.query(AnswerSnapshot).filter(
+            AnswerSnapshot.session_id == session_id,
+            AnswerSnapshot.question_id.in_(question_ids)
+        ).delete(synchronize_session='fetch')
 
         db.commit()
         return deleted
@@ -1496,37 +1497,41 @@ class SessionService:
     def _record_snapshots(
         db: Session,
         session_id: int,
-        question_ids: List[int]  # kept for API compat but we snapshot ALL answers
+        intended_values: Dict[int, str],
     ) -> None:
         """
         Record answer snapshots for persistence verification.
-        Snapshots ALL answers for the entire session so we have a
-        complete record. Snapshots are never deleted — if an answer
-        disappears later, the snapshot stays so we can detect the loss.
+
+        Snapshots store the values the user INTENDED to save — i.e. what
+        the frontend submitted — rather than what ended up in the DB
+        after processing.  On the next page load, verify_persistence
+        compares these snapshots against the actual DB contents.  Any
+        mismatch means the save pipeline lost or corrupted data.
+
+        Snapshots are never deleted — if an answer disappears later, the
+        snapshot stays so we can detect the loss.
 
         Args:
             db: Database session
             session_id: Session ID
-            question_ids: (unused) kept for call-site compatibility
+            intended_values: {question_id: answer_value} — the values
+                the user submitted, BEFORE any DB write.
         """
-        # Read ALL current answers for this session
-        current_answers = db.query(SessionAnswer).filter(
-            SessionAnswer.session_id == session_id
-        ).all()
-
-        answer_map = {a.question_id: a.answer_value for a in current_answers}
+        if not intended_values:
+            return
 
         # Compute question numbers across all groups for this session
-        question_number_map = {}  # question_id -> hierarchical number
+        question_number_map: Dict[int, str] = {}
         try:
             session = db.query(InputForm).filter(InputForm.id == session_id).first()
             if session:
+                # Use the intended values for conditional logic evaluation
+                # so nested questions get numbered correctly
                 ordered_groups, _ = SessionService._get_ordered_groups(db, session)
-                existing_answers_for_logic = {a.question_id: a.answer_value for a in current_answers}
                 for group in ordered_groups:
                     try:
                         _, _, q_numbers, _ = SessionService._get_questions_from_logic(
-                            db, group, existing_answers_for_logic
+                            db, group, intended_values
                         )
                         question_number_map.update(q_numbers)
                     except Exception:
@@ -1540,8 +1545,8 @@ class SessionService:
         ).all()
         existing_snap_map = {s.question_id: s for s in existing_snapshots}
 
-        # Upsert snapshots for every answer that currently exists
-        for qid, value in answer_map.items():
+        # Upsert snapshots for the intended values
+        for qid, value in intended_values.items():
             q_number = question_number_map.get(qid)
             if qid in existing_snap_map:
                 existing_snap_map[qid].answer_value = value
