@@ -2072,9 +2072,6 @@ class DocumentService:
             merged, answer_map, raw_answer_map, conjunction_map, identifier_group_map
         )
 
-        # Clean up double spaces
-        merged = re.sub(r'  +', ' ', merged)
-
         # Replace <cr>/<CR> tokens with paragraph breaks
         merged = re.sub(r'<[Cc][Rr]>', '</p>\n<p>', merged)
 
@@ -2085,6 +2082,10 @@ class DocumentService:
         # Matches <p ...> containing only whitespace, &nbsp;, and/or <br> tags
         _empty_p = r'<p[^>]*>\s*(?:&nbsp;|\s|<br\s*/?>)*\s*</p>'
         merged = re.sub(_empty_p, '', merged, flags=re.IGNORECASE)
+
+        # Preserve multiple spaces for HTML rendering by converting runs of 2+
+        # regular/non-breaking spaces into &nbsp; entities
+        merged = re.sub(r'[\x20\xa0]{2,}', lambda m: '&nbsp;' * len(m.group(0)), merged)
 
         # Collapse 3+ consecutive newlines (with optional whitespace) down to 2
         merged = re.sub(r'(\s*\n){3,}', '\n\n', merged)
