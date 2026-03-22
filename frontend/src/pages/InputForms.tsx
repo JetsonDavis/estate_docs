@@ -1703,13 +1703,34 @@ const InputForms: React.FC = () => {
     try {
       setSubmitting(true)
 
+      // Collect all valid question IDs from the current group (including conditional followups)
+      const collectAllQuestionIds = (questions: any[]): Set<number> => {
+        const ids = new Set<number>()
+        for (const q of questions) {
+          ids.add(q.id)
+          if (q.conditional_followups) {
+            for (const cfu of q.conditional_followups) {
+              if (cfu.questions) {
+                for (const id of collectAllQuestionIds(cfu.questions)) ids.add(id)
+              }
+            }
+          }
+        }
+        return ids
+      }
+      const validQuestionIds = collectAllQuestionIds(sessionData.questions)
+
       // Build answer array — exclude synthetic IDs (>= 100000) which are
       // frontend-only keys for rendering per-instance followups.
+      // Also exclude any stale IDs no longer in the current group after conditional changes.
       // For non-repeatable questions that were distributed across synthetic IDs,
       // reconstruct the flat JSON array so we don't overwrite the DB with just
       // the instance-0 value.
       const answerArray = Object.entries(answers)
-        .filter(([questionId]) => parseInt(questionId) < 100000)
+        .filter(([questionId]) => {
+          const qId = parseInt(questionId)
+          return qId < 100000 && validQuestionIds.has(qId)
+        })
         .map(([questionId, answerValue]) => {
           const qId = parseInt(questionId)
           // Check if this real ID has synthetic siblings (meaning it was distributed)
@@ -1732,9 +1753,10 @@ const InputForms: React.FC = () => {
           return { question_id: qId, answer_value: answerValue }
         })
 
-      // Add person answers with conjunctions (also exclude synthetic IDs)
+      // Add person answers with conjunctions (also exclude synthetic IDs and stale IDs)
       Object.entries(personAnswers).forEach(([questionId, values]) => {
-        if (parseInt(questionId) >= 100000) return
+        const pqId = parseInt(questionId)
+        if (pqId >= 100000 || !validQuestionIds.has(pqId)) return
         const filteredValues = values.filter(v => v.trim() !== '')
         if (filteredValues.length > 0) {
           const conjunctions = personConjunctions[parseInt(questionId)] || []
@@ -1773,6 +1795,7 @@ const InputForms: React.FC = () => {
         await loadSessionQuestions(sessionData.session_id)
       }
     } catch (err: any) {
+      console.error('Navigate error:', err.response?.status, err.response?.data, err)
       toast(err.response?.data?.detail || 'Failed to navigate')
     } finally {
       setSubmitting(false)
