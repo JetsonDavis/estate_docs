@@ -3428,11 +3428,9 @@ const InputForms: React.FC = () => {
                                         <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{setQLabel}.</span>
                                         {replaceLoopToken(setQuestion.question_text, instanceIdx)}
                                         {setQuestion.is_required && <span >*</span>}
-                                        {setQuestion.repeatable && (
-                                          <span style={{ color: '#9ca3af', fontSize: '0.875rem', marginLeft: '0.5rem' }}>
-                                            ({setQuestion.identifier.split('.').pop()}[{instanceIdx + 1}])
-                                          </span>
-                                        )}
+                                        <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                          ({setQuestion.identifier.split('.').pop()}{setQuestion.repeatable ? `[${instanceIdx + 1}]` : ''})
+                                        </span>
                                         <SavedIndicator questionId={setQuestion.id} />
                                       </label>
                                       {setQuestion.help_text && (
@@ -3528,6 +3526,9 @@ const InputForms: React.FC = () => {
                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(rQLabel, rIdx)}.</span>
                                                               {replaceLoopToken(rQ.question_text, rIdx)}
                                                               {rQ.is_required && <span >*</span>}
+                                                              <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                                ({rQ.identifier.split('.').pop()})
+                                                              </span>
                                                               <SavedIndicator questionId={rVirtualQ.id} />
                                                             </label>
                                                             {rQ.help_text && (
@@ -3580,6 +3581,9 @@ const InputForms: React.FC = () => {
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqLabel}.</span>
                                                   {replaceLoopToken(nfq.question_text, parentInstanceIdx)}
                                                   {nfq.is_required && <span >*</span>}
+                                                  <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                    ({nfq.identifier.split('.').pop()})
+                                                  </span>
                                                   <SavedIndicator questionId={nfqVirtual.id} />
                                                 </label>
                                                 {nfq.help_text && (
@@ -3615,6 +3619,9 @@ const InputForms: React.FC = () => {
                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{fuLabel}.</span>
                                                   {replaceLoopToken(fq.question_text, capturedInstanceIdx)}
                                                   {fq.is_required && <span >*</span>}
+                                                  <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                    ({fq.identifier.split('.').pop()})
+                                                  </span>
                                                   <SavedIndicator questionId={fqVirtual.id} />
                                                 </label>
                                                 {fq.help_text && (
@@ -3709,6 +3716,9 @@ const InputForms: React.FC = () => {
                                                           <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(fuQLabel, fuIdx)}.</span>
                                                           {replaceLoopToken(fuQ.question_text, fuIdx)}
                                                           {fuQ.is_required && <span >*</span>}
+                                                          <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                            ({fuQ.identifier.split('.').pop()})
+                                                          </span>
                                                           <SavedIndicator questionId={virtualQ.id} />
                                                         </label>
                                                         {fuQ.help_text && (
@@ -3785,6 +3795,9 @@ const InputForms: React.FC = () => {
                                                                               <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{bumpLastSegment(nfqQLabel, nfqRIdx)}.</span>
                                                                               {replaceLoopToken(nfqQ.question_text, nfqRIdx)}
                                                                               {nfqQ.is_required && <span >*</span>}
+                                                                              <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                                                ({nfqQ.identifier.split('.').pop()})
+                                                                              </span>
                                                                               <SavedIndicator questionId={nfqVirtualQ.id} />
                                                                             </label>
                                                                             {nfqQ.help_text && (
@@ -3833,6 +3846,9 @@ const InputForms: React.FC = () => {
                                                                   <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nfqNestedLabel}.</span>
                                                                   {replaceLoopToken(nfq.question_text, fuIdx)}
                                                                   {nfq.is_required && <span >*</span>}
+                                                                  <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                                                                    ({nfq.identifier.split('.').pop()})
+                                                                  </span>
                                                                   <SavedIndicator questionId={capturedInstanceIdx > 0 ? nfq.id * 100000 + capturedInstanceIdx : nfq.id} />
                                                                 </label>
                                                                 {nfq.help_text && (
@@ -3915,6 +3931,9 @@ const InputForms: React.FC = () => {
                             <span style={{ color: '#6b7280', fontWeight: 600, marginRight: '0.35rem' }}>{nonRepQLabel}.</span>
                             {question.question_text}
                             {question.is_required && <span >*</span>}
+                            <span style={{ color: '#9ca3af', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                              ({question.identifier.split('.').pop()})
+                            </span>
                             <SavedIndicator questionId={question.id} />
                           </label>
                           {question.help_text && (

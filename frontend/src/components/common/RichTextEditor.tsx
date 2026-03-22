@@ -24,7 +24,14 @@ const escapeIdentifiers = (html: string): string => {
 
 // Unescape template identifiers when saving
 const unescapeIdentifiers = (html: string): string => {
-  return html
+  // Strip color spans added by syntax highlighting (loop for nested spans)
+  let result = html
+  for (let i = 0; i < 10; i++) {
+    const next = result.replace(/<span style="color: [^"]+;">(.*?)<\/span>/g, '$1')
+    if (next === result) break
+    result = next
+  }
+  return result
     .replace(/&lt;&lt;([^&]+)&gt;&gt;/g, '<<$1>>')
     .replace(/&#123;&#123;([^&]+)&#125;&#125;/g, '{{$1}}')
 }
@@ -80,7 +87,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     'list', 'bullet',
     'indent',
     'align',
-    'link'
+    'link',
+    'color'
   ]
 
   return (

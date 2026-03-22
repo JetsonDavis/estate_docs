@@ -123,11 +123,18 @@ const EditTemplate: React.FC = () => {
       '#2563eb', // Blue for level 0
       '#059669', // Green for level 1
       '#7c3aed', // Purple for level 2
-      '#dc2626', // Red for level 3+
+      '#dc2626', // Red for level 3
+      '#b45309', // Amber for level 4
+      '#0891b2', // Cyan for level 5
+      '#be185d', // Pink for level 6
+      '#4338ca', // Indigo for level 7+
     ]
 
     // First escape <<...>> patterns (< is HTML-special)
     let result = html.replace(/<<([^>]+)>>/g, '<strong>&lt;&lt;$1&gt;&gt;</strong>')
+
+    // Highlight <cr>/<CR> line-break tokens
+    result = result.replace(/&lt;([Cc][Rr])&gt;/g, '<strong style="color: #9333ea;">&lt;$1&gt;</strong>')
 
     // --- Pass 1: identify bad tag indices via stack validation ---
     const badTagIndices = new Set<number>()
@@ -196,6 +203,104 @@ const EditTemplate: React.FC = () => {
   }
 
 
+
+  // ── Quill syntax highlighting ─────────────────────────────────────
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isHighlightingRef = useRef(false)
+  const SYNTAX_COLORS = [
+    '#2563eb', '#059669', '#7c3aed', '#dc2626',
+    '#b45309', '#0891b2', '#be185d', '#4338ca',
+  ]
+  const IDENT_COLOR = '#1e40af'
+
+  const applySyntaxHighlighting = useCallback(() => {
+    const editor = quillEditorRef.current?.getEditor()
+    if (!editor || isHighlightingRef.current) return
+
+    isHighlightingRef.current = true
+
+    try {
+      const text = editor.getText()
+      const len = text.length
+
+      // Clear all existing color formatting
+      editor.formatText(0, len, 'color', false, 'api')
+
+      // Track ranges covered by {{ }} tags so identifiers inside them aren't re-colored
+      const tagRanges: [number, number][] = []
+
+      // Color {{ }} tags based on nesting depth
+      const tagRegex = /\{\{[^}]+\}\}/g
+      let match: RegExpExecArray | null
+      let depth = 0
+
+      while ((match = tagRegex.exec(text)) !== null) {
+        const inner = match[0].slice(2, -2).trim().toUpperCase()
+        const start = match.index
+        const mlen = match[0].length
+        tagRanges.push([start, start + mlen])
+
+        if (
+          inner.startsWith('IF ') || inner === 'IF' ||
+          inner.startsWith('FOR EACH') || inner.startsWith('FOREACH') ||
+          inner.startsWith('PEOPLELOOP')
+        ) {
+          editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(depth, SYNTAX_COLORS.length - 1)], 'api')
+          depth++
+        } else if (inner.startsWith('END')) {
+          depth = Math.max(0, depth - 1)
+          editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(depth, SYNTAX_COLORS.length - 1)], 'api')
+        } else if (inner === 'ELSE') {
+          editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(Math.max(0, depth - 1), SYNTAX_COLORS.length - 1)], 'api')
+        }
+      }
+
+      // Color standalone << >> identifiers (skip those inside {{ }} tags)
+      const identRegex = /<<[^>]+>>/g
+      while ((match = identRegex.exec(text)) !== null) {
+        const start = match.index
+        const mlen = match[0].length
+        const insideTag = tagRanges.some(([s, e]) => start >= s && start + mlen <= e)
+        if (!insideTag) {
+          editor.formatText(start, mlen, 'color', IDENT_COLOR, 'api')
+        }
+      }
+
+      // Color <cr>/<CR> line-break tokens
+      const crRegex = /<[Cc][Rr]>/g
+      while ((match = crRegex.exec(text)) !== null) {
+        editor.formatText(match.index, match[0].length, 'color', '#9333ea', 'api')
+      }
+    } finally {
+      requestAnimationFrame(() => {
+        isHighlightingRef.current = false
+      })
+    }
+  }, [])
+
+  // Re-apply highlighting whenever the user types (debounced)
+  useEffect(() => {
+    if (!isEditing) return
+
+    const editor = quillEditorRef.current?.getEditor()
+    if (!editor) return
+
+    // Apply after a frame to ensure Quill is fully visible
+    requestAnimationFrame(() => applySyntaxHighlighting())
+
+    const handler = (_delta: any, _oldDelta: any, source: string) => {
+      // Only re-highlight on user edits, not on our own API formatting calls
+      if (source !== 'user') return
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = setTimeout(applySyntaxHighlighting, 150)
+    }
+
+    editor.on('text-change', handler)
+    return () => {
+      editor.off('text-change', handler)
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    }
+  }, [isEditing, applySyntaxHighlighting])
 
   // Validate matching IF/END and FOR EACH/END FOR EACH blocks
   const validateBlocks = (text: string): string[] => {

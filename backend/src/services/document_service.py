@@ -2032,6 +2032,15 @@ class DocumentService:
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
 
+        # Flatten: strip HTML paragraph/break tags and literal newlines.
+        # The editor uses line breaks for readability only; explicit <cr> or <CR>
+        # tokens are the only way to produce real line breaks in the output.
+        template_content = re.sub(r'</p>\s*<p(?:\s[^>]*)?\s*>', ' ', template_content)
+        template_content = re.sub(r'</?p(?:\s[^>]*)?\s*>', '', template_content)
+        template_content = re.sub(r'<br(?:\s[^>]*)?\s*/?>', '', template_content)
+        template_content = template_content.replace('\n', ' ').replace('\r', '')
+        template_content = re.sub(r'  +', ' ', template_content).strip()
+
         raw_map = raw_answer_map if raw_answer_map else answer_map
         _id_grp_map = identifier_group_map or {}
         global_counter = [0]
@@ -2065,6 +2074,12 @@ class DocumentService:
 
         # Clean up double spaces
         merged = re.sub(r'  +', ' ', merged)
+
+        # Replace <cr>/<CR> tokens with paragraph breaks
+        merged = re.sub(r'<[Cc][Rr]>', '</p>\n<p>', merged)
+
+        # Wrap output in <p> tags for HTML rendering
+        merged = f'<p>{merged}</p>'
 
         # HTML-aware cleanup: remove empty <p> tags left behind by removed blocks
         # Matches <p ...> containing only whitespace, &nbsp;, and/or <br> tags

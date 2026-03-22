@@ -309,3 +309,4 @@ These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 | `[[ ... ]]` | Remove section if any identifier inside is empty |
 | `##` (outside FOR EACH) | Auto-incrementing counter |
 | `#^.` | Current counter (no increment) |
+| `<cr>` or `<CR>` | Explicit line break (paragraph break) |
