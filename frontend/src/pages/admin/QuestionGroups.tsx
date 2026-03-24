@@ -5331,9 +5331,85 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)
                         )}
                       </div>
-                    </div>
 
-                    
+                      {/* Insert buttons at the end of this conditional's nested items */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        marginTop: '0.25rem',
+                        marginBottom: '0.25rem'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => insertNestedQuestionBeforeIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], 1)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.65rem',
+                            background: 'white',
+                            color: '#2563eb',
+                            border: '1px dashed #2563eb',
+                            borderRadius: '0.25rem',
+                            cursor: 'pointer',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                          title="Insert a question inside this conditional"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Insert Question
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nestedLen = logicItem.conditional?.nestedItems?.length || 0
+                            let lastQ: QuestionFormData | undefined
+                            if (logicItem.conditional?.nestedItems) {
+                              for (let i = nestedLen - 1; i >= 0; i--) {
+                                const ni = logicItem.conditional.nestedItems[i]
+                                if (ni.type === 'question') {
+                                  lastQ = questions.find(q =>
+                                    q.id === ni.localQuestionId || q.dbId === ni.questionId
+                                  )
+                                  break
+                                }
+                              }
+                            }
+                            if (!lastQ) lastQ = question
+                            addConditionalToLogicAtIndex(nestedLen > 0 ? nestedLen - 1 : 0, [logicIndex], lastQ)
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.65rem',
+                            background: 'white',
+                            color: '#7c3aed',
+                            border: '1px dashed #7c3aed',
+                            borderRadius: '0.25rem',
+                            cursor: 'pointer',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                          title="Insert a conditional inside this conditional"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Insert Conditional
+                        </button>
+                      </div>
+                    </div>
 
                     </React.Fragment>
                   )
