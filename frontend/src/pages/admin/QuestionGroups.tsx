@@ -4166,8 +4166,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 ) : null}
               </div>
 
-          </div>
-          {/* Insert buttons INSIDE the conditional (at the end of its nested items) */}
+          {/* Insert buttons at the end of this conditional's nested items */}
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -4244,6 +4243,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </svg>
               Insert Conditional
             </button>
+          </div>
           </div>
           </div>
         )
