@@ -11,6 +11,11 @@ test.describe('FOR EACH loop template merge', () => {
   let sessionId: number;
   const uid = Date.now().toString();
 
+  // Track all created resources across all tests for reliable cleanup
+  const allGroupIds: number[] = [];
+  const allTemplateIds: number[] = [];
+  const allSessionIds: number[] = [];
+
   test.beforeAll(async ({ playwright }) => {
     req = await playwright.request.newContext({ baseURL: BASE });
     const loginRes = await req.post(`${API}/auth/login`, {
@@ -20,9 +25,16 @@ test.describe('FOR EACH loop template merge', () => {
   });
 
   test.afterAll(async () => {
-    try { if (templateId) await req.delete(`${API}/templates/${templateId}`); } catch {}
-    try { if (sessionId) await req.delete(`${API}/sessions/${sessionId}`); } catch {}
-    try { if (groupId) await req.delete(`${API}/question-groups/${groupId}`); } catch {}
+    // Clean up ALL resources created across all tests (not just test 1)
+    for (const tId of allTemplateIds) {
+      try { await req.delete(`${API}/templates/${tId}`); } catch {}
+    }
+    for (const sId of allSessionIds) {
+      try { await req.delete(`${API}/sessions/${sId}`); } catch {}
+    }
+    for (const gId of allGroupIds) {
+      try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
+    }
     await req.dispose();
   });
 
@@ -34,6 +46,7 @@ test.describe('FOR EACH loop template merge', () => {
     expect(groupRes.ok()).toBe(true);
     const group = await groupRes.json();
     groupId = group.id;
+    allGroupIds.push(groupId);
     console.log('Created group:', groupId, 'identifier:', group.identifier);
 
     // 2. Create two repeatable questions in the group
@@ -98,6 +111,7 @@ test.describe('FOR EACH loop template merge', () => {
     expect(tmplRes.ok()).toBe(true);
     const tmpl = await tmplRes.json();
     templateId = tmpl.id;
+    allTemplateIds.push(templateId);
     console.log('Created template:', templateId);
 
     // 4. Create a session
@@ -110,6 +124,7 @@ test.describe('FOR EACH loop template merge', () => {
     expect(sessRes.ok()).toBe(true);
     const sess = await sessRes.json();
     sessionId = sess.id;
+    allSessionIds.push(sessionId);
     console.log('Created session:', sessionId);
 
     // 5. Save repeatable answers as JSON arrays
@@ -171,6 +186,7 @@ test.describe('FOR EACH loop template merge', () => {
     expect(gRes.ok()).toBe(true);
     const g = await gRes.json();
     gId = g.id;
+    allGroupIds.push(gId);
 
     // 2. Create person-type repeatable question + free_text repeatable question
     const pRes = await req.post(`${API}/question-groups/${gId}/questions`, {
@@ -219,6 +235,7 @@ test.describe('FOR EACH loop template merge', () => {
     });
     expect(tRes.ok()).toBe(true);
     tId = (await tRes.json()).id;
+    allTemplateIds.push(tId);
 
     // 4. Session
     const sessRes = await req.post(`${API}/sessions`, {
@@ -226,6 +243,7 @@ test.describe('FOR EACH loop template merge', () => {
     });
     expect(sessRes.ok()).toBe(true);
     sId = (await sessRes.json()).id;
+    allSessionIds.push(sId);
 
     // 5. Save person-type answers (JSON array of person JSON strings)
     const personArray = JSON.stringify([
@@ -269,11 +287,6 @@ test.describe('FOR EACH loop template merge', () => {
     expect(gen.markdown_content).toContain('Bob Jones');
 
     console.log('Person-type FOR EACH test PASSED!');
-
-    // Cleanup
-    try { await req.delete(`${API}/templates/${tId}`); } catch {}
-    try { await req.delete(`${API}/sessions/${sId}`); } catch {}
-    try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
   });
 
   test('FOR EACH WHERE should filter repeatable entries by condition', async () => {
@@ -287,6 +300,7 @@ test.describe('FOR EACH loop template merge', () => {
     expect(gRes.ok()).toBe(true);
     const g = await gRes.json();
     gId = g.id;
+    allGroupIds.push(gId);
 
     // 2. Create repeatable questions: trustor (free_text) and trustor_deceased (free_text used as flag)
     const q1Res = await req.post(`${API}/question-groups/${gId}/questions`, {
@@ -341,6 +355,7 @@ test.describe('FOR EACH loop template merge', () => {
     });
     expect(tRes.ok()).toBe(true);
     tId = (await tRes.json()).id;
+    allTemplateIds.push(tId);
 
     // 4. Session
     const sessRes = await req.post(`${API}/sessions`, {
@@ -348,6 +363,7 @@ test.describe('FOR EACH loop template merge', () => {
     });
     expect(sessRes.ok()).toBe(true);
     sId = (await sessRes.json()).id;
+    allSessionIds.push(sId);
 
     // 5. Save answers: Bill(Yes), Jib(Yes), Andrew(No)
     const namesArray = JSON.stringify(['Bill', 'Jib', 'Andrew']);
@@ -396,10 +412,5 @@ test.describe('FOR EACH loop template merge', () => {
     expect(c).not.toContain('FOR EACH');
 
     console.log('FOR EACH WHERE test PASSED!');
-
-    // Cleanup
-    try { await req.delete(`${API}/templates/${tId}`); } catch {}
-    try { await req.delete(`${API}/sessions/${sId}`); } catch {}
-    try { await req.delete(`${API}/question-groups/${gId}`); } catch {}
   });
 });

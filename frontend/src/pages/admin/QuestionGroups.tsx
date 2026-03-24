@@ -2904,6 +2904,64 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return findQuestionForLogicItem(item)
   }
 
+  // Move a nested question (and the conditional directly above it, if any) one level up
+  const moveItemUpOneLevel = (itemIndex: number, parentPath: number[]) => {
+    if (parentPath.length === 0) return // Already at root level
+
+    const currentGroupId = savedGroupId
+
+    setQuestionLogic(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)) as QuestionLogicItem[]
+
+      // Navigate to the parent level (where the parent conditional lives)
+      const lastPathIdx = parentPath[parentPath.length - 1]
+      let parentLevel = updated
+      for (let i = 0; i < parentPath.length - 1; i++) {
+        parentLevel = parentLevel[parentPath[i]].conditional!.nestedItems
+      }
+
+      const parentConditional = parentLevel[lastPathIdx]
+      if (!parentConditional?.conditional?.nestedItems) return prev
+
+      const nestedItems = parentConditional.conditional.nestedItems
+      if (itemIndex >= nestedItems.length) return prev
+
+      // Collect items to move: the question + conditional directly above it (if any)
+      const itemsToMove: QuestionLogicItem[] = []
+      const indicesToRemove: number[] = []
+
+      if (itemIndex > 0 && nestedItems[itemIndex - 1]?.type === 'conditional') {
+        itemsToMove.push(nestedItems[itemIndex - 1])
+        indicesToRemove.push(itemIndex - 1)
+      }
+
+      itemsToMove.push(nestedItems[itemIndex])
+      indicesToRemove.push(itemIndex)
+
+      // Remove from nestedItems (highest index first to preserve indices)
+      for (const idx of indicesToRemove.sort((a, b) => b - a)) {
+        nestedItems.splice(idx, 1)
+      }
+
+      // Insert into parent level right after the parent conditional
+      parentLevel.splice(lastPathIdx + 1, 0, ...itemsToMove)
+
+      // If moved to root level, remove the question from nestedQuestionIdsRef
+      if (parentPath.length === 1) {
+        for (const movedItem of itemsToMove) {
+          if (movedItem.type === 'question') {
+            if (movedItem.localQuestionId) nestedQuestionIdsRef.current.delete(movedItem.localQuestionId)
+          }
+        }
+      }
+
+      if (currentGroupId) {
+        saveQuestionLogic(updated, currentGroupId)
+      }
+      return updated
+    })
+  }
+
   // Helper to collect all nested question IDs from conditionals
   const getNestedQuestionIds = (items: QuestionLogicItem[]): Set<string> => {
     const nestedIds = new Set<string>()
@@ -3296,6 +3354,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <div style={{ marginLeft: '0.25rem' }}>{renderQuestionSummary(nestedQuestion, prevNestedQuestionData)}</div>
                   )}
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <button
+                  type="button"
+                  onClick={() => moveItemUpOneLevel(itemIndex, parentPath)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0.25rem',
+                    cursor: 'pointer',
+                    color: '#2563eb'
+                  }}
+                  title="Move question up one level"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3363,6 +3438,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
+                </div>
               </div>
 
               {!collapsedItems.has(`nq-${nestedQuestion.id}`) && <>

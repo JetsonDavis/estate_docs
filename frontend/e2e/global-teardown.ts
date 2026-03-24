@@ -95,6 +95,12 @@ async function globalTeardown(config: FullConfig) {
       /^Rapid Test /,
       /^Regression Test /,
       /^repeat_persist$/,
+      /^ForeachTest_/,
+      /^ForeachPerson/,
+      /^ForeachWhere/,
+      /^ForeachPersonTmpl_/,
+      /^ForeachWhereTmpl_/,
+      /^DebugGrp/,
     ];
 
     const testGroups = allGroups.filter(g =>
@@ -126,6 +132,9 @@ async function globalTeardown(config: FullConfig) {
       /^NestedCondTest_/,
       /^E2E_/,
       /^TestSession_/,
+      /^ForeachClient_/,
+      /^ForeachPersonClient_/,
+      /^ForeachWhereClient_/,
     ];
 
     try {
@@ -153,7 +162,7 @@ async function globalTeardown(config: FullConfig) {
     }
 
     // Clean up test-created templates
-    const testTemplatePatterns = [/^E2E_/];
+    const testTemplatePatterns = [/^E2E_/, /^ForeachTemplate_/, /^ForeachPersonTmpl_/, /^ForeachWhereTmpl_/];
     try {
       const templatesResponse = await context.request.get(`${backendURL}/api/v1/templates/?page=1&page_size=100`);
       if (templatesResponse.ok()) {
