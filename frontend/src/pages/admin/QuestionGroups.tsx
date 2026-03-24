@@ -2904,8 +2904,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return findQuestionForLogicItem(item)
   }
 
-  // Move a nested question (and the conditional directly above it, if any) one level up
-  const moveItemUpOneLevel = (itemIndex: number, parentPath: number[]) => {
+  // Move a conditional (with all its nested items) one level up in the hierarchy
+  const moveConditionalUpOneLevel = (conditionalIndex: number, parentPath: number[]) => {
     if (parentPath.length === 0) return // Already at root level
 
     const currentGroupId = savedGroupId
@@ -2913,7 +2913,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     setQuestionLogic(prev => {
       const updated = JSON.parse(JSON.stringify(prev)) as QuestionLogicItem[]
 
-      // Navigate to the parent level (where the parent conditional lives)
+      // Navigate to the parent level (where the grandparent conditional lives)
       const lastPathIdx = parentPath[parentPath.length - 1]
       let parentLevel = updated
       for (let i = 0; i < parentPath.length - 1; i++) {
@@ -2924,34 +2924,31 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       if (!parentConditional?.conditional?.nestedItems) return prev
 
       const nestedItems = parentConditional.conditional.nestedItems
-      if (itemIndex >= nestedItems.length) return prev
+      if (conditionalIndex >= nestedItems.length) return prev
 
-      // Collect items to move: the question + conditional directly above it (if any)
-      const itemsToMove: QuestionLogicItem[] = []
-      const indicesToRemove: number[] = []
+      const itemToMove = nestedItems[conditionalIndex]
+      if (itemToMove.type !== 'conditional') return prev
 
-      if (itemIndex > 0 && nestedItems[itemIndex - 1]?.type === 'conditional') {
-        itemsToMove.push(nestedItems[itemIndex - 1])
-        indicesToRemove.push(itemIndex - 1)
-      }
-
-      itemsToMove.push(nestedItems[itemIndex])
-      indicesToRemove.push(itemIndex)
-
-      // Remove from nestedItems (highest index first to preserve indices)
-      for (const idx of indicesToRemove.sort((a, b) => b - a)) {
-        nestedItems.splice(idx, 1)
-      }
+      // Remove from current nestedItems
+      nestedItems.splice(conditionalIndex, 1)
 
       // Insert into parent level right after the parent conditional
-      parentLevel.splice(lastPathIdx + 1, 0, ...itemsToMove)
+      parentLevel.splice(lastPathIdx + 1, 0, itemToMove)
 
-      // If moved to root level, remove the question from nestedQuestionIdsRef
+      // If moved to root level, update nestedQuestionIdsRef for any questions inside
       if (parentPath.length === 1) {
-        for (const movedItem of itemsToMove) {
-          if (movedItem.type === 'question') {
-            if (movedItem.localQuestionId) nestedQuestionIdsRef.current.delete(movedItem.localQuestionId)
+        const removeNestedIds = (items: QuestionLogicItem[]) => {
+          for (const item of items) {
+            if (item.type === 'question' && item.localQuestionId) {
+              nestedQuestionIdsRef.current.delete(item.localQuestionId)
+            }
+            if (item.conditional?.nestedItems) {
+              removeNestedIds(item.conditional.nestedItems)
+            }
           }
+        }
+        if (itemToMove.conditional?.nestedItems) {
+          removeNestedIds(itemToMove.conditional.nestedItems)
         }
       }
 
@@ -3353,22 +3350,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <button
-                  type="button"
-                  onClick={() => moveItemUpOneLevel(itemIndex, parentPath)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '0.25rem',
-                    cursor: 'pointer',
-                    color: '#2563eb'
-                  }}
-                  title="Move question up one level"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -3996,22 +3977,47 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   <div style={{ marginLeft: '0.25rem' }}>{renderConditionalSummary(item)}</div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => removeLogicItem(item.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '0.25rem',
-                  cursor: 'pointer',
-                  color: '#dc2626'
-                }}
-                title="Remove conditional"
-              >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                {parentPath.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => moveConditionalUpOneLevel(itemIndex, parentPath)}
+                    style={{
+                      background: '#3b82f6',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      padding: '0.2rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '1.4rem',
+                      height: '1.4rem'
+                    }}
+                    title="Move conditional up one level"
+                  >
+                    <svg fill="none" stroke="white" viewBox="0 0 24 24" style={{ width: '0.9rem', height: '0.9rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeLogicItem(item.id)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0.25rem',
+                    cursor: 'pointer',
+                    color: '#dc2626'
+                  }}
+                  title="Remove conditional"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {!collapsedItems.has(`nc-${item.id}`) && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
