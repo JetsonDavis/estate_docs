@@ -4167,7 +4167,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>
 
           </div>
-          {/* Sibling-level insert buttons AFTER the conditional block */}
+          {/* Insert buttons INSIDE the conditional (at the end of its nested items) */}
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -4177,7 +4177,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
           }}>
             <button
               type="button"
-              onClick={() => insertNestedQuestionBeforeIndex(itemIndex + 1, parentPath, depth)}
+              onClick={() => insertNestedQuestionBeforeIndex(item.conditional?.nestedItems?.length || 0, currentPath, depth + 1)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -4194,7 +4194,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
               onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-              title="Insert a question after this conditional"
+              title="Insert a question inside this conditional"
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -4204,19 +4204,22 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             <button
               type="button"
               onClick={() => {
-                // Find previous question to use as ifIdentifier
-                let prevQ: QuestionFormData | undefined
-                for (let i = itemIndex; i >= 0; i--) {
-                  const ni = nestedItems[i]
-                  if (ni.type === 'question') {
-                    prevQ = questions.find(q =>
-                      q.id === ni.localQuestionId || q.dbId === ni.questionId
-                    )
-                    break
+                // Find last question inside this conditional to use as ifIdentifier
+                const nestedLen = item.conditional?.nestedItems?.length || 0
+                let lastQ: QuestionFormData | undefined
+                if (item.conditional?.nestedItems) {
+                  for (let i = nestedLen - 1; i >= 0; i--) {
+                    const ni = item.conditional.nestedItems[i]
+                    if (ni.type === 'question') {
+                      lastQ = questions.find(q =>
+                        q.id === ni.localQuestionId || q.dbId === ni.questionId
+                      )
+                      break
+                    }
                   }
                 }
-                if (!prevQ) prevQ = parentQuestion
-                addConditionalToLogicAtIndex(itemIndex, parentPath, prevQ)
+                if (!lastQ) lastQ = parentQuestion
+                addConditionalToLogicAtIndex(nestedLen > 0 ? nestedLen - 1 : 0, currentPath, lastQ)
               }}
               style={{
                 display: 'flex',
@@ -5083,6 +5086,67 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   
                   return (
                     <React.Fragment key={logicItem.id}>
+                    {/* Insert buttons before each root-level conditional */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      marginTop: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => insertNestedQuestionBeforeIndex(logicIndex, [], 0)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.65rem',
+                          background: 'white',
+                          color: '#2563eb',
+                          border: '1px dashed #2563eb',
+                          borderRadius: '0.25rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Insert a question before this conditional"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Insert Question
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addConditionalToLogicAtIndex(logicIndex - 1, undefined, question)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.65rem',
+                          background: 'white',
+                          color: '#7c3aed',
+                          border: '1px dashed #7c3aed',
+                          borderRadius: '0.25rem',
+                          cursor: 'pointer',
+                          opacity: 0.7,
+                          transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                        title="Insert a conditional before this conditional"
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Insert Conditional
+                      </button>
+                    </div>
                     <div className="conditional-block" style={{
                       marginTop: '0.5rem',
                       padding: '1rem 1.5rem',
