@@ -826,17 +826,15 @@ class SessionService:
         def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
             """Traverse entire tree and assign numbers to all questions.
 
-            Each conditional gets its own index (matching the admin UI numbering)
-            so nested questions include the conditional level:
-              Q2 → Conditional (2-1) → Nested Q (2-1-1)
-            instead of the old 2-level scheme:
-              Q2 → Nested Q (2-1)
+            Root-level conditionals add a sequential index per preceding
+            question (matching admin UI: Q2 → Cond(2-1), Cond(2-2), …).
+            Nested conditionals reuse the trigger question's number as the
+            prefix without adding an extra level (matches admin behaviour).
             """
             question_counter = prefix_counters.get(number_prefix, 0)
-            # Track conditional index per trigger identifier (matches admin UI
-            # which numbers conditionals per-question, e.g. 2-1, 2-2 for Q2)
-            cond_counters: dict = {}
+            conditional_counter = 0  # sequential per preceding question (root)
             last_question_number = number_prefix
+            is_root = (number_prefix == "")
 
             i = 0
             while i < len(items):
@@ -846,6 +844,7 @@ class SessionService:
                     question_id = item.get('questionId')
                     if question_id:
                         question_counter += 1
+                        conditional_counter = 0  # reset for new question
                         hierarchical_number = f"{number_prefix}-{question_counter}" if number_prefix else str(question_counter)
                         question_numbers[question_id] = hierarchical_number
                         last_question_number = hierarchical_number
@@ -857,11 +856,15 @@ class SessionService:
                     cond_identifier = cond.get('ifIdentifier')
                     trigger_number = _resolve_nested_prefix(cond_identifier, last_question_number)
 
-                    # Per-trigger counter so each question's conditionals
-                    # start from 1 (e.g. Q2→2-1,2-2  Q3→3-1,3-2)
-                    cond_counters[trigger_number] = cond_counters.get(trigger_number, 0) + 1
-                    cond_idx = cond_counters[trigger_number]
-                    cond_prefix = f"{trigger_number}-{cond_idx}"
+                    if is_root:
+                        # Root conditionals numbered sequentially after the
+                        # preceding question: Q3 → (3-1),(3-2),…,(3-6)
+                        conditional_counter += 1
+                        cond_prefix = f"{trigger_number}-{conditional_counter}"
+                    else:
+                        # Nested conditionals reuse the trigger question's
+                        # number directly (no extra level, matches admin UI)
+                        cond_prefix = trigger_number
 
                     nested = cond.get('nestedItems', [])
                     if nested:
