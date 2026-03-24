@@ -5086,8 +5086,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   
                   return (
                     <React.Fragment key={logicItem.id}>
-                    {/* Insert buttons before each root-level conditional */}
-                    <div style={{
+                    {/* Insert buttons before the FIRST root-level conditional only (subsequent ones have bottom buttons from the previous conditional) */}
+                    {condIndex === 0 && <div style={{
                       display: 'flex',
                       justifyContent: 'center',
                       gap: '0.5rem',
@@ -5146,7 +5146,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </svg>
                         Insert Conditional
                       </button>
-                    </div>
+                    </div>}
                     <div className="conditional-block" style={{
                       marginTop: '0.5rem',
                       padding: '1rem 1.5rem',
