@@ -3357,20 +3357,12 @@ const InputForms: React.FC = () => {
                           }}
                         >
                           {Array.from({ length: instanceCount }).map((_, instanceIdx) => {
-                            const firstRepQ = setQuestions.find(q => q.repeatable)
-                            const repeatableBase = firstRepQ?.hierarchical_number || '1'
-                            const lastDash = repeatableBase.lastIndexOf('-')
-                            const basePrefix = lastDash >= 0 ? repeatableBase.substring(0, lastDash + 1) : ''
-                            const baseSuffix = lastDash >= 0 ? repeatableBase.substring(lastDash + 1) : repeatableBase
-                            const adjustNumber = (hierNum: string, instIdx: number): string => {
-                              if (!hierNum) return hierNum
-                              const instanceSuffix = String(Number(baseSuffix) + instIdx)
-                              const instanceBase = basePrefix + instanceSuffix
-                              if (hierNum === repeatableBase) return instanceBase
-                              if (hierNum.startsWith(repeatableBase + '-')) {
-                                return instanceBase + hierNum.substring(repeatableBase.length)
-                              }
-                              return hierNum
+                            const adjustNumber = (hierNum: string, _instIdx: number): string => {
+                              // Return hierarchical number unchanged — each repeat instance is
+                              // visually separated in its own box and the identifier shows [1],[2],[3]
+                              // suffixes. Incrementing the display number caused drift and collisions
+                              // with later questions (e.g. beneficiaries "4" became "5","6" in repeats).
+                              return hierNum || ''
                             }
 
                             return (
