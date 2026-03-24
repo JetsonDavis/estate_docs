@@ -826,12 +826,16 @@ class SessionService:
         def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
             """Traverse entire tree and assign numbers to all questions.
 
-            Mutually exclusive conditional branches (same trigger, different
-            values) share the same number base so visible questions never have
-            gaps.  Same-trigger-same-value branches continue counting (e.g. the
-            amendment pattern where two blocks both check amendment_type=Update).
+            Each conditional gets its own index (matching the admin UI numbering)
+            so nested questions include the conditional level:
+              Q2 → Conditional (2-1) → Nested Q (2-1-1)
+            instead of the old 2-level scheme:
+              Q2 → Nested Q (2-1)
             """
             question_counter = prefix_counters.get(number_prefix, 0)
+            # Track conditional index per trigger identifier (matches admin UI
+            # which numbers conditionals per-question, e.g. 2-1, 2-2 for Q2)
+            cond_counters: dict = {}
             last_question_number = number_prefix
 
             i = 0
@@ -851,46 +855,19 @@ class SessionService:
                 elif item.get('type') == 'conditional' and item.get('conditional'):
                     cond = item['conditional']
                     cond_identifier = cond.get('ifIdentifier')
-                    nested_prefix = _resolve_nested_prefix(cond_identifier, last_question_number)
+                    trigger_number = _resolve_nested_prefix(cond_identifier, last_question_number)
 
-                    # Collect consecutive conditionals with the same trigger
-                    run: List[Dict] = []
-                    j = i
-                    while j < len(items):
-                        ci = items[j]
-                        if ci.get('type') != 'conditional' or not ci.get('conditional'):
-                            break
-                        if ci['conditional'].get('ifIdentifier') != cond_identifier:
-                            break
-                        run.append(ci)
-                        j += 1
+                    # Per-trigger counter so each question's conditionals
+                    # start from 1 (e.g. Q2→2-1,2-2  Q3→3-1,3-2)
+                    cond_counters[trigger_number] = cond_counters.get(trigger_number, 0) + 1
+                    cond_idx = cond_counters[trigger_number]
+                    cond_prefix = f"{trigger_number}-{cond_idx}"
 
-                    # Process the run — reset counter for each NEW value
-                    base_counter = prefix_counters.get(nested_prefix, 0)
-                    max_counter = base_counter
-                    seen_values: set = set()
+                    nested = cond.get('nestedItems', [])
+                    if nested:
+                        assign_hierarchical_numbers(nested, cond_prefix)
 
-                    for run_item in run:
-                        rc = run_item['conditional']
-                        rv = rc.get('value')
-                        rn = rc.get('nestedItems', [])
-
-                        if rv not in seen_values:
-                            # Mutually exclusive value: reset to base
-                            prefix_counters[nested_prefix] = base_counter
-                            seen_values.add(rv)
-                        # else: same value → continue counting (amendment pattern)
-
-                        if rn:
-                            assign_hierarchical_numbers(rn, nested_prefix)
-
-                        branch_counter = prefix_counters.get(nested_prefix, 0)
-                        if branch_counter > max_counter:
-                            max_counter = branch_counter
-
-                    # After all branches, use the highest counter
-                    prefix_counters[nested_prefix] = max_counter
-                    i = j
+                    i += 1
 
                 else:
                     i += 1
