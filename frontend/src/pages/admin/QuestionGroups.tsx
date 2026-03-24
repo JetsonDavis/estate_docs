@@ -3111,9 +3111,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
         // Check if previous item is a conditional with nested items
         const prevItem = itemIndex > 0 ? nestedItems[itemIndex - 1] : null
-        const prevIsConditionalWithItems = prevItem?.type === 'conditional' && 
-          prevItem.conditional?.nestedItems && 
-          prevItem.conditional.nestedItems.length > 0
+        const prevIsConditional = prevItem?.type === 'conditional'
         
         // Repeatable group bracket info for nested questions
         // Check across conditional boundaries (not just direct question siblings)
@@ -3165,8 +3163,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               }} />
             )}
             {/* Insert Question and Insert Conditional buttons before each nested question */}
-            {/* Hide if previous item is a conditional with nested items (it has its own Insert button) */}
-            {!prevIsConditionalWithItems && (
+            {/* Hide if previous item is a conditional (it has its own sibling-level Insert buttons) */}
+            {!prevIsConditional && (
               <div style={{
                 display: 'flex',
                 justifyContent: 'center',
@@ -4158,85 +4156,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               {/* Nested items - always visible even when collapsed */}
               <div style={{ marginTop: '0.5rem' }}>
                 {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
-                  <>
-                    {renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)}
-                    {/* Insert Question and Insert Conditional buttons at the end of nested items */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      marginTop: '0.5rem'
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => insertNestedQuestionBeforeIndex(item.conditional?.nestedItems?.length || 0, currentPath, depth + 1)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.2rem 0.5rem',
-                          fontSize: '0.65rem',
-                          background: 'white',
-                          color: '#2563eb',
-                          border: '1px dashed #2563eb',
-                          borderRadius: '0.25rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a nested question at the end"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Insert Question
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nestedLen = item.conditional?.nestedItems?.length || 0
-                          // Find the last question in nested items to use as ifIdentifier
-                          let lastNestedQuestion: QuestionFormData | undefined
-                          if (item.conditional?.nestedItems) {
-                            for (let i = nestedLen - 1; i >= 0; i--) {
-                              const ni = item.conditional.nestedItems[i]
-                              if (ni.type === 'question') {
-                                lastNestedQuestion = questions.find(q =>
-                                  q.id === ni.localQuestionId || q.dbId === ni.questionId
-                                )
-                                break
-                              }
-                            }
-                          }
-                          addConditionalToLogicAtIndex(nestedLen - 1, currentPath, lastNestedQuestion)
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.2rem 0.5rem',
-                          fontSize: '0.65rem',
-                          background: 'white',
-                          color: '#7c3aed',
-                          border: '1px dashed #7c3aed',
-                          borderRadius: '0.25rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a nested conditional at the end"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Insert Conditional
-                      </button>
-                    </div>
-                  </>
+                    renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)
                 ) : null}
               </div>
 
