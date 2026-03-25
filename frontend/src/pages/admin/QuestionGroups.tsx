@@ -2959,6 +2959,121 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     })
   }
 
+  // Move a question one level LEFT (out of its current conditional, placed after the conditional in the parent level)
+  const moveQuestionLeft = (itemIndex: number, parentPath: number[]) => {
+    if (parentPath.length === 0) return // Already at root level
+
+    const currentGroupId = savedGroupId
+
+    setQuestionLogic(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)) as QuestionLogicItem[]
+
+      // Navigate to the parent conditional
+      const lastPathIdx = parentPath[parentPath.length - 1]
+      let parentLevel = updated
+      for (let i = 0; i < parentPath.length - 1; i++) {
+        parentLevel = parentLevel[parentPath[i]].conditional!.nestedItems
+      }
+
+      const parentConditional = parentLevel[lastPathIdx]
+      if (!parentConditional?.conditional?.nestedItems) return prev
+
+      const nestedItems = parentConditional.conditional.nestedItems
+      if (itemIndex >= nestedItems.length) return prev
+
+      const itemToMove = nestedItems[itemIndex]
+
+      // Remove from current nestedItems
+      nestedItems.splice(itemIndex, 1)
+
+      // Insert into parent level right after the parent conditional
+      parentLevel.splice(lastPathIdx + 1, 0, itemToMove)
+
+      // If moved to root level, update nestedQuestionIdsRef
+      if (parentPath.length === 1 && itemToMove.type === 'question' && itemToMove.localQuestionId) {
+        nestedQuestionIdsRef.current.delete(itemToMove.localQuestionId)
+      }
+
+      if (currentGroupId) {
+        saveQuestionLogic(updated, currentGroupId)
+      }
+      return updated
+    })
+  }
+
+  // Move a question one level RIGHT (into the nearest conditional above it on the same level)
+  // For root-level: logicIndex is the index in questionLogic, parentPath is undefined
+  // For nested: logicIndex is the index in the nestedItems array, parentPath is the path to navigate
+  const moveQuestionRight = (itemIndex: number, parentPath?: number[]) => {
+    const currentGroupId = savedGroupId
+
+    setQuestionLogic(prev => {
+      const updated = JSON.parse(JSON.stringify(prev)) as QuestionLogicItem[]
+
+      // Navigate to the current level
+      let currentLevel = updated
+      if (parentPath && parentPath.length > 0) {
+        for (let i = 0; i < parentPath.length; i++) {
+          const cond = currentLevel[parentPath[i]]
+          if (!cond?.conditional?.nestedItems) return prev
+          currentLevel = cond.conditional.nestedItems
+        }
+      }
+
+      if (itemIndex >= currentLevel.length) return prev
+
+      // Find the nearest conditional ABOVE this item on the same level
+      let targetConditionalIndex = -1
+      for (let i = itemIndex - 1; i >= 0; i--) {
+        if (currentLevel[i].type === 'conditional') {
+          targetConditionalIndex = i
+          break
+        }
+      }
+
+      if (targetConditionalIndex === -1) return prev // No conditional above
+
+      const itemToMove = currentLevel[itemIndex]
+      const targetConditional = currentLevel[targetConditionalIndex]
+
+      // Remove from current level
+      currentLevel.splice(itemIndex, 1)
+
+      // Append to target conditional's nestedItems
+      if (!targetConditional.conditional!.nestedItems) {
+        targetConditional.conditional!.nestedItems = []
+      }
+      targetConditional.conditional!.nestedItems.push(itemToMove)
+
+      // If moving from root level into a conditional, update nestedQuestionIdsRef
+      if ((!parentPath || parentPath.length === 0) && itemToMove.type === 'question' && itemToMove.localQuestionId) {
+        nestedQuestionIdsRef.current.add(itemToMove.localQuestionId)
+      }
+
+      if (currentGroupId) {
+        saveQuestionLogic(updated, currentGroupId)
+      }
+      return updated
+    })
+  }
+
+  // Check if a question can move RIGHT (is there a conditional above it on the same level?)
+  const canMoveQuestionRight = (itemIndex: number, parentPath?: number[]): boolean => {
+    let currentLevel = questionLogic
+    if (parentPath && parentPath.length > 0) {
+      for (let i = 0; i < parentPath.length; i++) {
+        const cond = currentLevel[parentPath[i]]
+        if (!cond?.conditional?.nestedItems) return false
+        currentLevel = cond.conditional.nestedItems
+      }
+    }
+    // Look for a conditional before this item
+    for (let i = itemIndex - 1; i >= 0; i--) {
+      if (currentLevel[i].type === 'conditional') return true
+    }
+    return false
+  }
+
   // Helper to collect all nested question IDs from conditionals
   const getNestedQuestionIds = (items: QuestionLogicItem[]): Set<string> => {
     const nestedIds = new Set<string>()
@@ -3159,174 +3274,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 zIndex: 1
               }} />
             )}
-            {/* Insert Question and Insert Conditional buttons before each nested question */}
-            {/* Hide if previous item is a conditional (it has its own sibling-level Insert buttons) */}
-            {!prevIsConditional && (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                marginBottom: '0.5rem',
-                marginTop: itemIndex === 0 ? '0' : '0.25rem'
-              }}>
-                <button
-                  type="button"
-                  onClick={() => insertNestedQuestionBeforeIndex(itemIndex, parentPath, depth)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.65rem',
-                  background: 'white',
-                  color: '#2563eb',
-                  border: '1px dashed #2563eb',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                  opacity: 0.7,
-                  transition: 'opacity 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                title="Insert a nested question here"
-              >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Insert Question
-              </button>
-              {/* Insert question one level up - pastel light blue arrow */}
-              {parentPath.length > 0 && itemIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parentPathUp = parentPath.slice(0, -1)
-                    const insertBeforeIndex = parentPath[parentPath.length - 1]
-                    if (parentPathUp.length > 0) {
-                      insertNestedQuestionBeforeIndex(insertBeforeIndex, parentPathUp, depth - 1)
-                    } else {
-                      // Insert at root level before the parent conditional
-                      insertQuestionBeforeIndex(insertBeforeIndex, insertBeforeIndex)
-                    }
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.65rem',
-                    background: '#bae6fd',
-                    color: '#1e3a5f',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'opacity 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert question one level up"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-              )}
-              {
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Find the previous nested question to use as ifIdentifier
-                    let prevQuestionForCondition: QuestionFormData | undefined
-                    
-                    for (let i = itemIndex - 1; i >= 0; i--) {
-                      const item = nestedItems[i]
-                      if (item.type === 'question') {
-                        prevQuestionForCondition = questions.find(q => 
-                          q.id === item.localQuestionId || q.dbId === item.questionId
-                        )
-                        break
-                      }
-                    }
-                    
-                    // Insert conditional at the SAME LEVEL as this nested question
-                    // Insert it before this item
-                    addConditionalToLogicAtIndex(Math.max(0, itemIndex - 1), parentPath, prevQuestionForCondition)
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.65rem',
-                    background: 'white',
-                    color: '#7c3aed',
-                    border: '1px dashed #7c3aed',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'opacity 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert a nested conditional here"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Insert Conditional
-                </button>
-              }
-              {/* Insert conditional one level up - light purple arrow */}
-              {parentPath.length > 0 && itemIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parentPathUp = parentPath.slice(0, -1)
-                    const insertAfterIndex = parentPath[parentPath.length - 1]
-                    // Find the previous question to use as ifIdentifier
-                    let prevQuestionForCondition: QuestionFormData | undefined
-                    for (let i = itemIndex - 1; i >= 0; i--) {
-                      const prevItem = nestedItems[i]
-                      if (prevItem.type === 'question') {
-                        prevQuestionForCondition = questions.find(q =>
-                          q.id === prevItem.localQuestionId || q.dbId === prevItem.questionId
-                        )
-                        break
-                      }
-                    }
-                    addConditionalToLogicAtIndex(
-                      insertAfterIndex,
-                      parentPathUp.length > 0 ? parentPathUp : undefined,
-                      prevQuestionForCondition
-                    )
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.65rem',
-                    background: '#c4b5fd',
-                    color: '#4c1d95',
-                    border: 'none',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'opacity 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert conditional one level up"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-              )}
-            </div>
-            )}
-
             {/* Nested Question Block */}
             <div style={{
               padding: '1rem',
@@ -3350,6 +3297,52 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                {/* Left arrow - move question out of conditional (up one level) */}
+                {parentPath.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); moveQuestionLeft(itemIndex, parentPath) }}
+                    style={{
+                      background: 'none',
+                      border: '1px solid #9ca3af',
+                      borderRadius: '0.25rem',
+                      padding: '0.15rem 0.25rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#6b7280'
+                    }}
+                    title="Move question one level left (out of conditional)"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                )}
+                {/* Right arrow - move question into nearest conditional above */}
+                {canMoveQuestionRight(itemIndex, parentPath) && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); moveQuestionRight(itemIndex, parentPath) }}
+                    style={{
+                      background: 'none',
+                      border: '1px solid #9ca3af',
+                      borderRadius: '0.25rem',
+                      padding: '0.15rem 0.25rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#6b7280'
+                    }}
+                    title="Move question one level right (into conditional above)"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -3705,10 +3698,76 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </div>
               </div>
               </>}
+
+              {/* Insert buttons at bottom of expanded nested question */}
+              {!collapsedItems.has(`nq-${nestedQuestion.id}`) && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginTop: '0.75rem',
+                marginBottom: '0.25rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => insertNestedQuestionBeforeIndex(itemIndex + 1, parentPath, depth)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.65rem',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px dashed #2563eb',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a nested question here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Insert Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addConditionalToLogicAtIndex(itemIndex, parentPath, nestedQuestion)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.65rem',
+                    background: 'white',
+                    color: '#7c3aed',
+                    border: '1px dashed #7c3aed',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a nested conditional here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Insert Conditional
+                </button>
+              </div>
+              )}
             </div>
 
             {/* Action buttons after nested question */}
-            {depth <= 10 && (
+            {depth <= 10 && !collapsedItems.has(`nq-${nestedQuestion.id}`) && (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginLeft: '1rem' }}>
                 {isLastQuestionInGroup && (
                   <button
@@ -3731,132 +3790,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                     Add Follow-on Question
-                  </button>
-                )}
-                {/* Move item one level up - light blue arrow */}
-                {parentPath.length > 0 && isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      
-                      // Move this question one level up by:
-                      // 1. Creating a copy of the question data
-                      const questionData = { ...nestedQuestion }
-                      
-                      // 2. Add to parent level
-                      const parentPathUp = parentPath.slice(0, -1)
-                      const insertAfterIndex = parentPath[parentPath.length - 1]
-                      
-                      // 3. Find the logic item for this nested question and remove it
-                      const updateNestedItems = (items: QuestionLogicItem[], path: number[], depth: number): QuestionLogicItem[] => {
-                        if (depth >= path.length) {
-                          // Remove the item at itemIndex
-                          return items.filter((_, idx) => idx !== itemIndex)
-                        }
-                        return items.map((item, idx) => {
-                          if (idx === path[depth] && item.conditional) {
-                            return {
-                              ...item,
-                              conditional: {
-                                ...item.conditional,
-                                nestedItems: updateNestedItems(item.conditional.nestedItems || [], path, depth + 1)
-                              }
-                            }
-                          }
-                          return item
-                        })
-                      }
-                      
-                      // First add the question at parent level
-                      addQuestionToLogicAtIndex(insertAfterIndex, parentPathUp.length > 0 ? parentPathUp : undefined)
-                      
-                      // Then remove from current location
-                      setTimeout(() => {
-                        setQuestionLogic(prevLogic => {
-                          const newLogic = updateNestedItems(prevLogic, parentPath, 0)
-                          if (savedGroupId) saveQuestionLogic(newLogic, savedGroupId)
-                          return newLogic
-                        })
-                      }, 100)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#bae6fd',
-                      color: '#1e3a5f',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                    title="Move question one level up"
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                )}
-                {depth > 0 && depth < 10 && isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Insert conditional at SAME level after this question
-                      addConditionalToLogicAtIndex(itemIndex, parentPath, nestedQuestion)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#7c3aed',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Add Follow-on Conditional
-                  </button>
-                )}
-                {/* Add conditional one level up - light purple */}
-                {parentPath.length > 0 && isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Insert conditional one level higher than the current level
-                      const parentPathUp = parentPath.slice(0, -1)
-                      const insertAfterIndex = parentPath[parentPath.length - 1]
-                      addConditionalToLogicAtIndex(
-                        insertAfterIndex,
-                        parentPathUp.length > 0 ? parentPathUp : undefined,
-                        nestedQuestion
-                      )
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#c4b5fd',
-                      color: '#4c1d95',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                    title="Add conditional one level up"
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
                   </button>
                 )}
               </div>
@@ -3978,29 +3911,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                {parentPath.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => moveConditionalUpOneLevel(itemIndex, parentPath)}
-                    style={{
-                      background: '#3b82f6',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      padding: '0.2rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '1.4rem',
-                      height: '1.4rem'
-                    }}
-                    title="Move conditional up one level"
-                  >
-                    <svg fill="none" stroke="white" viewBox="0 0 24 24" style={{ width: '0.9rem', height: '0.9rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => removeLogicItem(item.id)}
@@ -4159,15 +4069,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
             </div>}
 
-              {/* Nested items - always visible even when collapsed */}
-              <div style={{ marginTop: '0.5rem' }}>
-                {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 ? (
-                    renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)
-                ) : null}
-              </div>
-
-          {/* Insert buttons at the end of this conditional's nested items */}
-          <div style={{
+          {/* Insert buttons after Value dropdown, before nested items */}
+          {!collapsedItems.has(`nc-${item.id}`) && <div style={{
             display: 'flex',
             justifyContent: 'center',
             gap: '0.5rem',
@@ -4243,7 +4146,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </svg>
               Insert Conditional
             </button>
-          </div>
+          </div>}
+
+              {/* Nested items - always visible even when conditional is collapsed */}
+              {item.conditional.nestedItems && item.conditional.nestedItems.length > 0 && (
+                <div style={{ marginTop: collapsedItems.has(`nc-${item.id}`) ? '0.25rem' : '0.5rem' }}>
+                  {renderNestedItems(item.conditional.nestedItems, currentPath, depth + 1, prevNestedQuestion, conditionalNumber)}
+                </div>
+              )}
+
           </div>
           </div>
         )
@@ -4591,75 +4502,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 }} />
               )}
             <QuestionBuilder className="question-builder" $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
-              {/* Insert Question and Insert Conditional buttons before each question */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                marginBottom: isCollapsed ? '0.25rem' : '0.5rem',
-                marginTop: prevIsCollapsed || isCollapsed ? '3px' : '12px'
-              }}>
-                <button
-                  type="button"
-                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex, qIndex)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.25rem 0.75rem',
-                    fontSize: '0.7rem',
-                    background: 'white',
-                    color: '#2563eb',
-                    border: '1px dashed #2563eb',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'opacity 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert a new question here"
-                >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Insert Question
-                </button>
-                {qIndex > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Find the previous question to use as the conditional's ifIdentifier
-                      const prevQuestion = mainLevelQuestions[qIndex - 1]
-                      // Insert directly before the current question in the logic array
-                      addConditionalToLogic(-1, undefined, prevQuestion, question)
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.75rem',
-                      fontSize: '0.7rem',
-                      background: 'white',
-                      color: '#7c3aed',
-                      border: '1px dashed #7c3aed',
-                      borderRadius: '0.375rem',
-                      cursor: 'pointer',
-                      opacity: 0.7,
-                      transition: 'opacity 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                    title="Insert a new conditional here"
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Insert Conditional
-                  </button>
-                )}
-              </div>
-
               <QuestionBuilderHeader style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
                   <span style={{ fontSize: '0.65rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`q-${question.id}`) ? '\u25B6' : '\u25BC'}</span>
@@ -4674,17 +4516,42 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     <div style={{ marginLeft: '0.5rem' }}>{renderQuestionSummary(question, qIndex > 0 ? mainLevelQuestions[qIndex - 1] : null)}</div>
                   )}
                 </div>
-                <RemoveButton
-                  className="remove-button"
-                  type="button"
-                  onClick={() => removeQuestion(question.id)}
-                  title="Remove question"
-                  data-testid={`remove-question-${question.id}`}
-                >
-                  <TrashIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </TrashIcon>
-                </RemoveButton>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  {/* Right arrow - move question into nearest conditional above in questionLogic */}
+                  {logicIndex >= 0 && canMoveQuestionRight(logicIndex) && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); moveQuestionRight(logicIndex) }}
+                      style={{
+                        background: 'none',
+                        border: '1px solid #9ca3af',
+                        borderRadius: '0.25rem',
+                        padding: '0.15rem 0.25rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#6b7280'
+                      }}
+                      title="Move question one level right (into conditional above)"
+                    >
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  )}
+                  <RemoveButton
+                    className="remove-button"
+                    type="button"
+                    onClick={() => removeQuestion(question.id)}
+                    title="Remove question"
+                    data-testid={`remove-question-${question.id}`}
+                  >
+                    <TrashIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </TrashIcon>
+                  </RemoveButton>
+                </div>
               </QuestionBuilderHeader>
 
               {!collapsedItems.has(`q-${question.id}`) && <QuestionBuilderContent>
@@ -5058,6 +4925,73 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 </div>
               </QuestionBuilderContent>}
 
+              {/* Insert Question and Insert Conditional buttons at bottom of expanded question */}
+              {!isCollapsed && <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginTop: '0.75rem',
+                marginBottom: '0.25rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex, qIndex)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px dashed #2563eb',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new question here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Insert Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Find the previous question to use as the conditional's ifIdentifier
+                    const prevQuestion = qIndex > 0 ? mainLevelQuestions[qIndex - 1] : question
+                    // Insert directly before the current question in the logic array
+                    addConditionalToLogic(-1, undefined, prevQuestion, question)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#7c3aed',
+                    border: '1px dashed #7c3aed',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new conditional here"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Insert Conditional
+                </button>
+              </div>}
+
             </QuestionBuilder>
 
               {/* Render conditionals that follow this question in questionLogic */}
@@ -5086,67 +5020,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   
                   return (
                     <React.Fragment key={logicItem.id}>
-                    {/* Insert buttons before the FIRST root-level conditional only (subsequent ones have bottom buttons from the previous conditional) */}
-                    {condIndex === 0 && <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      marginTop: '0.5rem',
-                      marginBottom: '0.5rem'
-                    }}>
-                      <button
-                        type="button"
-                        onClick={() => insertNestedQuestionBeforeIndex(logicIndex, [], 0)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.2rem 0.5rem',
-                          fontSize: '0.65rem',
-                          background: 'white',
-                          color: '#2563eb',
-                          border: '1px dashed #2563eb',
-                          borderRadius: '0.25rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a question before this conditional"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Insert Question
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => addConditionalToLogicAtIndex(logicIndex - 1, undefined, question)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.2rem 0.5rem',
-                          fontSize: '0.65rem',
-                          background: 'white',
-                          color: '#7c3aed',
-                          border: '1px dashed #7c3aed',
-                          borderRadius: '0.25rem',
-                          cursor: 'pointer',
-                          opacity: 0.7,
-                          transition: 'opacity 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                        title="Insert a conditional before this conditional"
-                      >
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Insert Conditional
-                      </button>
-                    </div>}
                     <div className="conditional-block" style={{
                       marginTop: '0.5rem',
                       padding: '1rem 1.5rem',
@@ -5325,19 +5198,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
                       </div>}
 
-                      {/* Nested items - always visible even when collapsed */}
-                      <div style={{ marginTop: '0.5rem' }}>
-                        {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
-                          renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)
-                        )}
-                      </div>
-
-                      {/* Insert buttons at the end of this conditional's nested items */}
-                      <div style={{
+                      {/* Insert buttons after Value dropdown, before nested items */}
+                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{
                         display: 'flex',
                         justifyContent: 'center',
                         gap: '0.5rem',
-                        marginTop: '0.25rem',
+                        marginTop: '0.5rem',
                         marginBottom: '0.25rem'
                       }}>
                         <button
@@ -5369,21 +5235,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         <button
                           type="button"
                           onClick={() => {
-                            const nestedLen = logicItem.conditional?.nestedItems?.length || 0
-                            let lastQ: QuestionFormData | undefined
-                            if (logicItem.conditional?.nestedItems) {
-                              for (let i = nestedLen - 1; i >= 0; i--) {
-                                const ni = logicItem.conditional.nestedItems[i]
-                                if (ni.type === 'question') {
-                                  lastQ = questions.find(q =>
-                                    q.id === ni.localQuestionId || q.dbId === ni.questionId
-                                  )
-                                  break
-                                }
-                              }
-                            }
-                            if (!lastQ) lastQ = question
-                            addConditionalToLogicAtIndex(nestedLen > 0 ? nestedLen - 1 : 0, [logicIndex], lastQ)
+                            addConditionalToLogicAtIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], question)
                           }}
                           style={{
                             display: 'flex',
@@ -5408,7 +5260,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                           </svg>
                           Insert Conditional
                         </button>
-                      </div>
+                      </div>}
+
+                      {/* Nested items - always visible even when conditional is collapsed */}
+                      {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
+                        <div style={{ marginTop: collapsedItems.has(`c-${logicItem.id}`) ? '0.25rem' : '0.5rem' }}>
+                          {renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)}
+                        </div>
+                      )}
+
                     </div>
 
                     </React.Fragment>

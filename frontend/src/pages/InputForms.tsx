@@ -3074,7 +3074,25 @@ const InputForms: React.FC = () => {
                         <SessionName>{session.client_identifier}</SessionName>
                         {session.current_group_name && (
                           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                            <span style={{ fontWeight: 500 }}>Question Group:</span> {session.current_group_name}
+                            <span style={{ fontWeight: 500 }}>Question Group:</span>{' '}
+                            <span
+                              style={{
+                                color: session.current_group_id ? '#3b82f6' : '#6b7280',
+                                cursor: session.current_group_id ? 'pointer' : 'default',
+                                textDecoration: 'none'
+                              }}
+                              onMouseEnter={(e) => { if (session.current_group_id) (e.target as HTMLElement).style.textDecoration = 'underline' }}
+                              onMouseLeave={(e) => { (e.target as HTMLElement).style.textDecoration = 'none' }}
+                              onClick={(e) => {
+                                if (session.current_group_id) {
+                                  e.stopPropagation()
+                                  window.open(`/admin/question-groups/${session.current_group_id}/edit`, '_blank')
+                                }
+                              }}
+                              title={session.current_group_id ? 'Open question group in new tab' : undefined}
+                            >
+                              {session.current_group_name}
+                            </span>
                           </div>
                         )}
                       </div>
