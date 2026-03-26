@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
@@ -35,7 +35,16 @@ class HTMLToWordConverter(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
 
-        if tag == 'p':
+        if tag == 'pagebreak':
+            # Insert a Word page break
+            if self.current_paragraph is None:
+                self.current_paragraph = self.doc.add_paragraph()
+            run = self.current_paragraph.add_run()
+            run.add_break(WD_BREAK.PAGE)
+            self.current_paragraph = None
+            self.current_run = None
+
+        elif tag == 'p':
             # Create new paragraph
             self.current_paragraph = self.doc.add_paragraph()
             self.current_run = None
@@ -2029,6 +2038,9 @@ class DocumentService:
             if cleaned == template_content:
                 break
             template_content = cleaned
+        # Protect page break tokens before unescaping (user-typed <p> is stored as &lt;p&gt;)
+        template_content = re.sub(r'&lt;[pP]&gt;', '__PAGE_BREAK__', template_content)
+
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
 
@@ -2074,6 +2086,9 @@ class DocumentService:
 
         # Replace <cr>/<CR> tokens with paragraph breaks
         merged = re.sub(r'<[Cc][Rr]>', '</p>\n<p>', merged)
+
+        # Replace page break placeholders with page break marker
+        merged = merged.replace('__PAGE_BREAK__', '</p><pagebreak/><p>')
 
         # Wrap output in <p> tags for HTML rendering
         merged = f'<p>{merged}</p>'

@@ -1374,21 +1374,52 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       }
     }
 
-    // Recursively check conditionals in question logic
-    const checkLogicItems = (items: QuestionLogicItem[]) => {
+    // Recursively check nested conditionals
+    const checkNestedItems = (items: QuestionLogicItem[], numberPrefix: string) => {
+      let questionCounter = 0
+      let conditionalCounter = 0
       for (const item of items) {
+        if (item.type === 'question') {
+          questionCounter++
+          conditionalCounter = 0
+        }
         if (item.type === 'conditional' && item.conditional) {
+          conditionalCounter++
+          const condNumber = `${numberPrefix}-${conditionalCounter}`
           if (!item.conditional.value || !item.conditional.value.trim()) {
             errors.add(`c-value-${item.id}`)
-            messages.push(`Conditional is missing a value`)
+            messages.push(`Conditional (${condNumber}) is missing a value`)
           }
           if (item.conditional.nestedItems) {
-            checkLogicItems(item.conditional.nestedItems)
+            checkNestedItems(item.conditional.nestedItems, condNumber)
           }
         }
       }
     }
-    checkLogicItems(questionLogic)
+
+    // Check root-level conditionals using the same numbering as the rendering
+    mainLevelQuestions.forEach((question, qIndex) => {
+      const thisLogicIndex = questionLogic.findIndex(item =>
+        item.type === 'question' && isLogicItemForQuestion(item, question)
+      )
+      if (thisLogicIndex < 0) return
+      let condIndex = 0
+      for (let i = thisLogicIndex + 1; i < questionLogic.length; i++) {
+        const item = questionLogic[i]
+        if (item.type === 'question') break
+        if (item.type === 'conditional' && item.conditional) {
+          condIndex++
+          const condNumber = `${qIndex + 1}-${condIndex}`
+          if (!item.conditional.value || !item.conditional.value.trim()) {
+            errors.add(`c-value-${item.id}`)
+            messages.push(`Conditional (${condNumber}) is missing a value`)
+          }
+          if (item.conditional.nestedItems) {
+            checkNestedItems(item.conditional.nestedItems, condNumber)
+          }
+        }
+      }
+    })
 
     setValidationErrors(errors)
 

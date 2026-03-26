@@ -310,3 +310,4 @@ These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 | `##` (outside FOR EACH) | Auto-incrementing counter |
 | `#^.` | Current counter (no increment) |
 | `<cr>` or `<CR>` | Explicit line break (paragraph break) |
+| `<p>` or `<P>` | Page break (starts a new page in Word output) |
