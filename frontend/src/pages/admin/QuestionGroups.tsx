@@ -4532,6 +4532,70 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   zIndex: 1
                 }} />
               )}
+            {/* Insert buttons above Question 1 */}
+            {qIndex === 0 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.5rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => insertQuestionBeforeIndex(0, 0)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px dashed #2563eb',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new question before Question 1"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Insert Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addConditionalToLogic(-1, undefined, question, question)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#7c3aed',
+                    border: '1px dashed #7c3aed',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new conditional before Question 1"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Insert Conditional
+                </button>
+              </div>
+            )}
             <QuestionBuilder className="question-builder" $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               <QuestionBuilderHeader style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
@@ -4993,10 +5057,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Find the previous question to use as the conditional's ifIdentifier
-                    const prevQuestion = qIndex > 0 ? mainLevelQuestions[qIndex - 1] : question
-                    // Insert directly before the current question in the logic array
-                    addConditionalToLogic(-1, undefined, prevQuestion, question)
+                    // Insert a conditional AFTER the current question in the logic array
+                    addConditionalToLogic(logicIndex >= 0 ? logicIndex : qIndex, undefined, question)
                   }}
                   style={{
                     display: 'flex',
