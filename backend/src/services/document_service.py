@@ -911,6 +911,12 @@ class DocumentService:
 
             body_identifiers_raw = re.findall(r'<<([^>]+)>>', body_template)
 
+            # Filter out identifiers with explicit [N] array indexing (e.g. <<ident[1]>>).
+            # These request a specific array element and must be left for Pass 5
+            # (_replace_identifiers) which correctly parses the [N] index.
+            _array_idx_re = re.compile(r'\[\d+\]')
+            body_identifiers_raw = [i for i in body_identifiers_raw if not _array_idx_re.search(i)]
+
             # Determine the repeatable group of the loop identifier
             loop_group = id_grp.get(loop_identifier)
 
@@ -1660,12 +1666,14 @@ class DocumentService:
         return ''.join(result)
 
     @staticmethod
-    def _process_conditional_sections(text: str, answer_map: dict) -> str:
+    def _process_conditional_sections(text: str, answer_map: dict, raw_answer_map: dict = None) -> str:
         """Process [[ ... ]] conditional sections.
 
         If any identifier inside is empty, remove the entire section.
         Otherwise, replace identifiers and remove the brackets.
         """
+        _raw_map = raw_answer_map or answer_map
+
         def _process_section(match):
             section_content = match.group(1)
 
@@ -1675,14 +1683,18 @@ class DocumentService:
                 return section_content
 
             for identifier in identifiers_in_section:
-                value = answer_map.get(identifier.lower(), '')
+                value = DocumentService._resolve_identifier_value(
+                    identifier.lower(), answer_map, _raw_map
+                )
                 if DocumentService._is_value_empty(value):
                     _logger.debug(f"Identifier '{identifier}' is empty, removing conditional section")
                     return ''
 
             result = section_content
             for identifier in identifiers_in_section:
-                value = answer_map.get(identifier.lower(), '')
+                value = DocumentService._resolve_identifier_value(
+                    identifier.lower(), answer_map, _raw_map
+                )
                 result = result.replace(f'<<{identifier}>>', value)
             return result
 
@@ -2074,7 +2086,7 @@ class DocumentService:
         merged = DocumentService._process_if_blocks(merged, answer_map, raw_answer_map)
 
         # Pass 3: [[ ... ]] conditional sections
-        merged = DocumentService._process_conditional_sections(merged, answer_map)
+        merged = DocumentService._process_conditional_sections(merged, answer_map, raw_answer_map)
 
         # Pass 4: Counter tokens
         merged = DocumentService._replace_counter_tokens(merged, global_counter)

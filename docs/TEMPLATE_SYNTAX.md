@@ -37,6 +37,78 @@ Available person fields:
 
 ---
 
+## Macros
+
+Macros allow you to define reusable content that can contain template variables.
+
+### Syntax
+
+**Definition:**
+```
+@@ macro_name @@ Content with <<identifiers>> and text @@
+```
+
+**Usage:**
+```
+@ macro_name @
+```
+
+### How Macros Work
+
+1. Macro definitions are extracted in **Pass 0** (first pass of merge)
+2. All `@ macro_name @` usages are replaced with the macro's content
+3. Identifiers inside macros (like `<<trustor.name>>`) are replaced in **Pass 5**
+
+### Examples
+
+#### Simple Macro
+```
+@@ company @@ Estate Planning Associates, LLC @@
+
+This document prepared by @ company @.
+```
+
+**Output:**
+```
+This document prepared by Estate Planning Associates, LLC.
+```
+
+#### Macro with Variables
+```
+@@ jeff @@ <<trustor.name>> @@
+
+The trustor, @ jeff @, hereby declares...
+```
+
+If `trustor.name` = "John Smith", **Output:**
+```
+The trustor, John Smith, hereby declares...
+```
+
+#### Macro with Complex Content
+```
+@@ signature_block @@
+
+Signed: _________________________________
+        <<client.name>>
+
+Date: _________________________________
+
+@@
+
+@ signature_block @
+```
+
+### Important Notes
+
+- Macro definitions are **removed** from final output
+- Only macro **usages** appear in the final document
+- Macros can contain **any** template syntax: `<<identifiers>>`, `{{ IF }}`, counters, etc.
+- Macros are processed **before** loops and conditionals
+- Macro names must be single words (no spaces)
+
+---
+
 ## FOR EACH Loops (Repeatable Groups)
 
 Use `FOR EACH` to repeat a section once per entry in a repeatable group.
@@ -294,6 +366,8 @@ These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 
 | Syntax | Purpose |
 |--------|---------|
+| `@@ name @@ content @@` | Define macro (processed in Pass 0) |
+| `@ name @` | Use macro |
 | `<<identifier>>` | Replace with answer value (arrays joined with group conjunction) |
 | `<<person.field>>` | Replace with person field value |
 | `{{ FOR EACH ident }} ... {{ END FOR EACH }}` | Loop over repeatable group |
