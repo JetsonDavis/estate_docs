@@ -85,6 +85,66 @@ class TestMacroWithArrayIndex:
         assert 'John Doe' in result
 
 
+class TestMacroSpacing:
+    """Regression: space after macro usage must be preserved."""
+
+    def test_macro_space_raw_same_line(self):
+        """Raw text: @macro_1@ is my name → 'jeff is my name'."""
+        template = '@@macro_1@@jeff@@ @macro_1@ is my name'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_raw_separate_lines(self):
+        """Definition on separate line from usage."""
+        template = '@@macro_1@@jeff@@\n@macro_1@ is my name'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_separate_paragraphs(self):
+        """HTML paragraphs: definition in one <p>, usage in another."""
+        template = '<p>@@macro_1@@jeff@@</p><p>@macro_1@ is my name</p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_br_between(self):
+        """HTML with <br> between definition and usage."""
+        template = '<p>@@macro_1@@jeff@@<br>@macro_1@ is my name</p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_spans(self):
+        """HTML with spans wrapping macro and text separately."""
+        template = '<p><span>@@macro_1@@jeff@@</span><span> @macro_1@ is my name</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_usage_span_no_leading_space(self):
+        """HTML spans where space is only inside the usage text."""
+        template = '<p><span>@@macro_1@@jeff@@</span> <span>@macro_1@ is my name</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_adjacent_spans(self):
+        """Adjacent spans with no space between them."""
+        template = '<p><span>@@macro_1@@jeff@@</span></p><p><span>@macro_1@</span><span> is my name</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_br_between_usage_and_text(self):
+        """<br> between macro usage and following text must preserve spacing."""
+        template = '<p>@@macro_1@@jeff@@</p><p>@macro_1@<br>is my name</p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is my name' in result
+
+    def test_macro_space_html_adjacent_spans_no_space(self):
+        """Adjacent spans without any whitespace — editor edge case."""
+        template = '<p>@@macro_1@@jeff@@</p><p><span>@macro_1@</span><span>is my name</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        # When spans are truly adjacent with no whitespace at all, text joins;
+        # this mirrors browser rendering of adjacent inline elements.
+        assert 'jeffis my name' in result or 'jeff is my name' in result
+
+
 class TestArrayIndexDirect:
     """Direct <<identifier[N]>> usage (no macro) with array indexing."""
 

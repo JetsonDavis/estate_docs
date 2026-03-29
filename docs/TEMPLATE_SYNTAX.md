@@ -362,6 +362,46 @@ These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 
 ---
 
+## Formatting Tags
+
+Use these tags to format text in the Word output:
+
+### Text Alignment
+
+```
+<center>This text will be centered</center>
+<right>This text will be right-aligned</right>
+```
+
+**Example:**
+```
+<center>LAST WILL AND TESTAMENT</center>
+<cr>
+<center>OF</center>
+<cr>
+<center><<trustor.name>></center>
+```
+
+### Tabs and Indentation
+
+```
+<tab>     Insert a tab character (useful for columns or indentation)
+<indent>This paragraph will be indented</indent>
+```
+
+**Example with tabs:**
+```
+Name<tab>Address<tab>Phone
+<<trustee.name>><tab><<trustee.mailing_address.line1>><tab><<trustee.phone>>
+```
+
+**Example with indentation:**
+```
+<indent>This paragraph will appear indented in the Word document, useful for nested clauses or sub-sections.</indent>
+```
+
+---
+
 ## Quick Reference
 
 | Syntax | Purpose |
@@ -385,3 +425,7 @@ These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
 | `#^.` | Current counter (no increment) |
 | `<cr>` or `<CR>` | Explicit line break (paragraph break) |
 | `<p>` or `<P>` | Page break (starts a new page in Word output) |
+| `<center>text</center>` or `<CENTER>text</CENTER>` | Center-align text |
+| `<right>text</right>` or `<RIGHT>text</RIGHT>` | Right-align text |
+| `<indent>text</indent>` or `<INDENT>text</INDENT>` | Indent paragraph |
+| `<tab>` or `<TAB>` | Insert tab character |

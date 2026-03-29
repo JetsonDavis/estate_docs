@@ -2016,17 +2016,60 @@ class DocumentService:
         return template_content
 
     @staticmethod
+    def _process_formatting_tags(text: str) -> str:
+        """
+        Process formatting tags for alignment, tabs, and indentation.
+
+        Supported tags:
+        - <center>text</center> or <CENTER>text</CENTER> - Center alignment
+        - <right>text</right> or <RIGHT>text</RIGHT> - Right alignment
+        - <indent>text</indent> or <INDENT>text</INDENT> - Indent text
+        - <tab> or <TAB> - Insert a tab character
+
+        These tags are converted to HTML that the HTMLToWordConverter can process.
+        """
+        # Convert <tab> to actual tab character
+        text = re.sub(r'<[Tt][Aa][Bb]>', '\t', text)
+
+        # Convert <center>...</center> to HTML with alignment class
+        text = re.sub(
+            r'<[Cc][Ee][Nn][Tt][Ee][Rr]>(.*?)</[Cc][Ee][Nn][Tt][Ee][Rr]>',
+            r'</p><p class="ql-align-center">\1</p><p>',
+            text,
+            flags=re.DOTALL
+        )
+
+        # Convert <right>...</right> to HTML with alignment class
+        text = re.sub(
+            r'<[Rr][Ii][Gg][Hh][Tt]>(.*?)</[Rr][Ii][Gg][Hh][Tt]>',
+            r'</p><p class="ql-align-right">\1</p><p>',
+            text,
+            flags=re.DOTALL
+        )
+
+        # Convert <indent>...</indent> to HTML with left margin/indent
+        text = re.sub(
+            r'<[Ii][Nn][Dd][Ee][Nn][Tt]>(.*?)</[Ii][Nn][Dd][Ee][Nn][Tt]>',
+            r'</p><p style="margin-left: 48px;">\1</p><p>',
+            text,
+            flags=re.DOTALL
+        )
+
+        return text
+
+    @staticmethod
     def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
         """
         Merge template content with answer values.
 
-        Orchestrates six passes in order:
+        Orchestrates seven passes in order:
         0. Macros — extract and expand macro definitions
         1. FOR EACH loops — expand repeatable blocks
         2. IF / ELSE conditionals — evaluate nested conditional blocks
         3. [[ ... ]] conditional sections — remove sections with empty identifiers
         4. Counter tokens (##, ###, ##%) — replace with running numbers
         5. Identifier replacement — replace remaining <<identifier>> tokens
+        6. Formatting tags — process alignment, tabs, and indentation tags
 
         Args:
             template_content: Template markdown content
@@ -2061,7 +2104,7 @@ class DocumentService:
         # tokens are the only way to produce real line breaks in the output.
         template_content = re.sub(r'</p>\s*<p(?:\s[^>]*)?\s*>', ' ', template_content)
         template_content = re.sub(r'</?p(?:\s[^>]*)?\s*>', '', template_content)
-        template_content = re.sub(r'<br(?:\s[^>]*)?\s*/?>', '', template_content)
+        template_content = re.sub(r'<br(?:\s[^>]*)?\s*/?>', ' ', template_content)
         template_content = template_content.replace('\n', ' ').replace('\r', '')
         template_content = re.sub(r'  +', ' ', template_content).strip()
 
@@ -2095,6 +2138,9 @@ class DocumentService:
         merged = DocumentService._replace_identifiers(
             merged, answer_map, raw_answer_map, conjunction_map, identifier_group_map
         )
+
+        # Pass 6: Formatting tags (alignment, tabs, indentation)
+        merged = DocumentService._process_formatting_tags(merged)
 
         # Replace <cr>/<CR> tokens with paragraph breaks
         merged = re.sub(r'<[Cc][Rr]>', '</p>\n<p>', merged)

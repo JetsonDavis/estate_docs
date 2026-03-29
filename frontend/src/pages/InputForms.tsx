@@ -8,6 +8,7 @@ import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
 import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
+import RichTextEditor from '../components/common/RichTextEditor'
 
 const spin = keyframes`
   from { transform: rotate(0deg); }
@@ -2053,41 +2054,41 @@ const InputForms: React.FC = () => {
 
       case 'free_text':
         return (
-          <QuestionTextarea
-            className="question-textarea"
-            value={value}
-            onChange={(e) => handleValueChange(e.target.value)}
-            onBlur={(e) => {
-              // For repeatable questions, save the entire array to avoid overwriting other instances
-              if (question.repeatable) {
-                // Synthetic IDs (>= 100000) already encode the parent instance
-                // They maintain their own separate arrays, so instanceIndex is always used within that array
-                const currentValue = answers[question.id] || ''
-                let currentArray: string[]
-                try {
-                  const parsed = JSON.parse(currentValue)
-                  currentArray = Array.isArray(parsed) ? parsed : [currentValue]
-                } catch {
-                  currentArray = currentValue ? [currentValue] : ['']
+          <div>
+            <RichTextEditor
+              value={value || ''}
+              onChange={(newValue) => {
+                handleValueChange(newValue)
+                // Auto-save on change with debounce handled by the component
+                // For repeatable questions, save the entire array to avoid overwriting other instances
+                if (question.repeatable) {
+                  const currentValue = answers[question.id] || ''
+                  let currentArray: string[]
+                  try {
+                    const parsed = JSON.parse(currentValue)
+                    currentArray = Array.isArray(parsed) ? parsed : [currentValue]
+                  } catch {
+                    currentArray = currentValue ? [currentValue] : ['']
+                  }
+
+                  const updated = [...currentArray]
+                  // Ensure array is long enough
+                  while (updated.length <= instanceIndex) {
+                    updated.push('')
+                  }
+                  updated[instanceIndex] = newValue
+
+                  handleAnswerBlur(question.id, JSON.stringify(updated))
+                } else {
+                  // handleAnswerBlur handles array-building for non-repeatable
+                  // followups inside repeatable parents (synthetic IDs)
+                  handleAnswerBlur(question.id, newValue)
                 }
-                
-                const updated = [...currentArray]
-                // Ensure array is long enough
-                while (updated.length <= instanceIndex) {
-                  updated.push('')
-                }
-                // Use the fresh value from e.target.value to avoid stale state
-                updated[instanceIndex] = e.target.value
-                
-                handleAnswerBlur(question.id, JSON.stringify(updated))
-              } else {
-                // handleAnswerBlur handles array-building for non-repeatable
-                // followups inside repeatable parents (synthetic IDs)
-                handleAnswerBlur(question.id, e.target.value)
-              }
-            }}
-            placeholder="Enter your answer..."
-          />
+              }}
+              placeholder="Enter your answer... Use Tab for tabs, alignment buttons for text alignment."
+              height="200px"
+            />
+          </div>
         )
 
       case 'date':

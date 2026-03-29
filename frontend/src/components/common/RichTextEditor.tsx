@@ -79,6 +79,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       ['link'],
       ['clean']
     ],
+    keyboard: {
+      bindings: {
+        tab: {
+          key: 9, // Tab key code
+          handler: function(this: any, range: any) {
+            // Insert a tab character
+            this.quill.insertText(range.index, '\t')
+            // Move cursor after the tab
+            this.quill.setSelection(range.index + 1)
+            return false // Prevent default behavior
+          }
+        }
+      }
+    }
   }), [])
 
   const formats = [
