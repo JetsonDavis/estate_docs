@@ -4710,9 +4710,8 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   zIndex: 1
                 }} />
               )}
-            {/* Insert buttons above Question 1 */}
-            {qIndex === 0 && (
-              <div style={{
+            {/* Insert buttons above first question only; for others, the previous question's bottom buttons handle it */}
+              {qIndex === 0 && <div style={{
                 display: 'flex',
                 justifyContent: 'center',
                 gap: '0.5rem',
@@ -4720,7 +4719,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               }}>
                 <button
                   type="button"
-                  onClick={() => insertQuestionBeforeIndex(0, 0)}
+                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : 0, qIndex)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -4737,7 +4736,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                   onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert a new question before Question 1"
+                  title={`Insert a new question before Question ${qIndex + 1}`}
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -4765,15 +4764,14 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                   onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert a new conditional before Question 1"
+                  title={`Insert a new conditional before Question ${qIndex + 1}`}
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Insert Conditional
                 </button>
-              </div>
-            )}
+              </div>}
             <QuestionBuilder className="question-builder" $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               <QuestionBuilderHeader style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
@@ -5208,7 +5206,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               }}>
                 <button
                   type="button"
-                  onClick={() => insertQuestionBeforeIndex(logicIndex >= 0 ? logicIndex : qIndex, qIndex)}
+                  onClick={() => {
+                    // Find the next question's logic index so we insert AFTER this question + its conditionals
+                    const startIdx = (logicIndex >= 0 ? logicIndex : 0) + 1
+                    let nextQLogicIndex = questionLogic.length
+                    for (let i = startIdx; i < questionLogic.length; i++) {
+                      if (questionLogic[i].type === 'question') { nextQLogicIndex = i; break }
+                    }
+                    insertQuestionBeforeIndex(nextQLogicIndex, qIndex + 1)
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -5225,7 +5231,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   }}
                   onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                   onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                  title="Insert a new question here"
+                  title="Insert a new question after this one"
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

@@ -144,6 +144,175 @@ class TestMacroSpacing:
         # this mirrors browser rendering of adjacent inline elements.
         assert 'jeffis my name' in result or 'jeff is my name' in result
 
+    def test_macro_space_strong_tag_traps_space(self):
+        """Quill puts space inside <strong> between macro usage and text — space must survive."""
+        template = '<p><span>@@macro_1@@jeff@@</span></p><p><span>I, @macro_1@</span><strong> </strong><span>of Ohio</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff of Ohio' in result
+
+    def test_macro_split_across_strong_tags(self):
+        """Quill can split @macro@ across <strong>/<span> tags — macro must still match."""
+        template = '<p><span>@@client@@jeff@@</span></p><p><strong>@</strong><span>client</span><strong>@</strong><span> is here</span></p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'jeff is here' in result
+
+    def test_macro_split_across_em_tags(self):
+        """Quill can split @macro@ across <em> tags — macro must still match."""
+        template = '<p><span>@@name@@alice@@</span></p><p><em>@</em><span>name</span><em>@</em> hello</p>'
+        result = DocumentService._merge_template(template, {}, {})
+        assert 'alice hello' in result
+
+    def test_identifier_split_across_strong_tags(self):
+        """Quill can split <<id>> across <strong> tags — identifier must still resolve."""
+        template = '<p><strong>&lt;&lt;</strong><span>city</span><strong>&gt;&gt;</strong></p>'
+        answer_map = {'city': 'Columbus'}
+        raw_map = {'city': 'Columbus'}
+        result = DocumentService._merge_template(template, answer_map, raw_map)
+        assert 'Columbus' in result
+
+
+class TestIfIdentifierComparison:
+    """IF conditions comparing two identifiers (one may be subscripted)."""
+
+    def test_if_ident_eq_ident_subscript_inside_foreach(self):
+        """{{IF principal = principal[1]}} should match only the first iteration."""
+        template = (
+            '@@client@@<<principal[2]>>@@ '
+            '{{FOR EACH <<principal>>}}'
+            '{{IF principal = principal[1]}}FIRST '
+            '{{ELSE}}OTHER '
+            '{{END}}'
+            '{{END FOR EACH}}'
+        )
+        answer_map = {
+            'principal': json.dumps(['Alice', 'Bob']),
+        }
+        raw_map = dict(answer_map)
+        id_group_map = {'principal': 1}
+
+        result = DocumentService._merge_template(
+            template, answer_map, raw_map,
+            identifier_group_map=id_group_map
+        )
+        assert 'FIRST' in result
+        assert 'OTHER' in result
+        # FIRST should appear once (for Alice), OTHER once (for Bob)
+        assert result.count('FIRST') == 1
+        assert result.count('OTHER') == 1
+
+    def test_if_ident_neq_ident_subscript(self):
+        """{{IF principal != principal[1]}} should match all except the first."""
+        template = (
+            '{{FOR EACH <<principal>>}}'
+            '{{IF principal != principal[1]}}NOT_FIRST '
+            '{{END}}'
+            '{{END FOR EACH}}'
+        )
+        answer_map = {
+            'principal': json.dumps(['Alice', 'Bob', 'Carol']),
+        }
+        raw_map = dict(answer_map)
+        id_group_map = {'principal': 1}
+
+        result = DocumentService._merge_template(
+            template, answer_map, raw_map,
+            identifier_group_map=id_group_map
+        )
+        # NOT_FIRST should appear for Bob and Carol (2 times), not for Alice
+        assert result.count('NOT_FIRST') == 2
+
+    def test_subscripted_identifier_resolves_in_foreach_body(self):
+        """<<principal[2]>> inside FOR EACH should resolve to second array element."""
+        template = (
+            '{{FOR EACH <<principal>>}}'
+            '<<principal[2]>> '
+            '{{END FOR EACH}}'
+        )
+        answer_map = {
+            'principal': json.dumps(['Alice', 'Bob']),
+        }
+        raw_map = dict(answer_map)
+        id_group_map = {'principal': 1}
+
+        result = DocumentService._merge_template(
+            template, answer_map, raw_map,
+            identifier_group_map=id_group_map
+        )
+        assert 'Bob' in result
+
+
+class TestCountFunction:
+    """count() function in IF conditions and direct output."""
+
+    def test_count_eq_in_if(self):
+        """{{IF count(names) = 3}} should be true for a 3-element array."""
+        template = '{{IF count(names) = 3}}YES{{ELSE}}NO{{END}}'
+        raw = json.dumps(['Alice', 'Bob', 'Carol'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'YES' in result
+        assert 'NO' not in result
+
+    def test_count_neq_in_if(self):
+        template = '{{IF count(names) != 2}}NOT_TWO{{END}}'
+        raw = json.dumps(['Alice', 'Bob', 'Carol'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'NOT_TWO' in result
+
+    def test_count_gt_in_if(self):
+        template = '{{IF count(names) > 1}}MULTIPLE{{ELSE}}SINGLE{{END}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'MULTIPLE' in result
+
+    def test_count_lt_in_if(self):
+        template = '{{IF count(names) < 2}}FEW{{ELSE}}MANY{{END}}'
+        raw = json.dumps(['Alice'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'FEW' in result
+
+    def test_count_gte_in_if(self):
+        template = '{{IF count(names) >= 2}}OK{{ELSE}}NO{{END}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'OK' in result
+
+    def test_count_lte_in_if(self):
+        template = '{{IF count(names) <= 1}}ONE_OR_LESS{{ELSE}}MORE{{END}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'MORE' in result
+
+    def test_count_empty_array(self):
+        template = '{{IF count(names) = 0}}EMPTY{{ELSE}}HAS{{END}}'
+        raw = json.dumps([])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'EMPTY' in result
+
+    def test_count_scalar_value(self):
+        """A scalar (non-array) value should count as 1."""
+        template = '{{IF count(city) = 1}}SCALAR{{END}}'
+        result = DocumentService._merge_template(template, {'city': 'Columbus'}, {'city': 'Columbus'})
+        assert 'SCALAR' in result
+
+    def test_count_direct_output(self):
+        """<<count(names)>> should output the array length."""
+        template = 'There are <<count(names)>> people.'
+        raw = json.dumps(['Alice', 'Bob', 'Carol'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'There are 3 people.' in result
+
+    def test_count_direct_output_empty(self):
+        template = '<<count(missing)>> items'
+        result = DocumentService._merge_template(template, {}, {})
+        assert '0 items' in result
+
+    def test_count_quoted_number_in_if(self):
+        """count() should accept quoted numbers like count(names) = "2"."""
+        template = '{{IF count(names) = "2"}}PAIR{{END}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        result = DocumentService._merge_template(template, {'names': raw}, {'names': raw})
+        assert 'PAIR' in result
+
 
 class TestArrayIndexDirect:
     """Direct <<identifier[N]>> usage (no macro) with array indexing."""

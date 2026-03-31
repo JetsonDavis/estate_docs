@@ -254,7 +254,43 @@ This text appears only if the identifier does NOT equal "no".
 {{ END }}
 ```
 
-Note: Comparisons are case-insensitive.
+**Note**: Comparisons are case-insensitive but **exact** (not partial matches).
+
+### IF with array subscripts
+
+Array subscripts work in IF statements:
+
+```
+{{ IF <<names[1]>> = "Alice" }}
+The first name is Alice.
+{{ END }}
+```
+
+```
+{{ IF <<trustee[2].email>> }}
+Second trustee has an email address.
+{{ END }}
+```
+
+```
+{{ IF <<beneficiary[1].name>> = "John Smith" }}
+First beneficiary is John Smith.
+{{ END }}
+```
+
+**Important**: When comparing person fields like `name`, use the **full value** stored in the field. For example, if the name field contains "John Smith", you must compare with `"John Smith"`, not just `"John"`.
+
+### IF with out-of-bounds array indices
+
+If the array index is out of bounds, the identifier is treated as empty:
+
+```
+{{ IF <<names[10]>> }}
+Has 10th name
+{{ ELSE }}
+No 10th name
+{{ END }}
+```
 
 ### IF ANY / IF NONE — Aggregate checks on repeatable groups
 
@@ -356,6 +392,10 @@ If either `attorney_name` or `attorney_address` is empty, the entire clause (inc
 | Syntax | Description |
 |--------|-------------|
 | `##` | Replaced with an auto-incrementing number (1, 2, 3, ...) |
+| `###` | Cardinal words (one, two, three, ...) |
+| `##%` | Ordinal words (first, second, third, ...) |
+| `##A` | Uppercase letters (A, B, C, ..., Z, AA, AB, ...) |
+| `##V` | Roman numerals (I, II, III, IV, V, ...) |
 | `#^.` | Replaced with the current counter value **without** incrementing |
 
 These are useful for numbered paragraphs or clauses outside of FOR EACH loops.
@@ -373,7 +413,7 @@ Use these tags to format text in the Word output:
 <right>This text will be right-aligned</right>
 ```
 
-**Example:**
+**Example (separate tags):**
 ```
 <center>LAST WILL AND TESTAMENT</center>
 <cr>
@@ -381,6 +421,13 @@ Use these tags to format text in the Word output:
 <cr>
 <center><<trustor.name>></center>
 ```
+
+**Example (multiple lines in one tag):**
+```
+<center>LAST WILL AND TESTAMENT<cr>OF<cr><<trustor.name>></center>
+```
+
+Both approaches work! Use `<cr>` inside the tag to keep related content together.
 
 ### Tabs and Indentation
 
@@ -409,17 +456,23 @@ Name<tab>Address<tab>Phone
 | `@@ name @@ content @@` | Define macro (processed in Pass 0) |
 | `@ name @` | Use macro |
 | `<<identifier>>` | Replace with answer value (arrays joined with group conjunction) |
+| `<<identifier[N]>>` | Replace with Nth element of array (1-based index) |
 | `<<person.field>>` | Replace with person field value |
+| `<<person[N].field>>` | Replace with person field from Nth array element |
 | `{{ FOR EACH ident }} ... {{ END FOR EACH }}` | Loop over repeatable group |
 | `{{ FOR EACH ident WHERE filter = 'val' }}` | Loop with filtered entries (`=` or `!=`) |
-| `##` (inside FOR EACH) | 1-based loop index |
+| `##` (inside FOR EACH) | 1-based loop index (1, 2, 3, ...) |
+| `##V` | Roman numeral (I, II, III, IV, V, ...) |
 | `{{ IF <<ident>> }} ... {{ END }}` | Include if has value |
 | `{{ IF NOT <<ident>> }} ... {{ END }}` | Include if empty |
 | `{{ IF <<ident>> = "val" }} ... {{ END }}` | Include if equals value |
 | `{{ IF <<ident>> != "val" }} ... {{ END }}` | Include if not equals value |
+| `{{ IF ident = ident[1] }}` | Compare two identifiers (supports subscripts) |
+| `{{ IF count(ident) = N }}` | Compare array length (`=`, `!=`, `>`, `<`, `>=`, `<=`) |
 | `{{ IF ANY <<ident>> = "val" }} ... {{ END }}` | Include if any repeatable entry equals value |
 | `{{ IF NONE <<ident>> = "val" }} ... {{ END }}` | Include if no repeatable entry equals value |
 | `{{ IF ... }} ... {{ ELSE }} ... {{ END }}` | Alternate content when condition is false |
+| `<<count(ident)>>` | Output the number of elements in an array |
 | `[[ ... ]]` | Remove section if any identifier inside is empty |
 | `##` (outside FOR EACH) | Auto-incrementing counter |
 | `#^.` | Current counter (no increment) |

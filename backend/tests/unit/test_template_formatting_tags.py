@@ -29,6 +29,24 @@ class TestFormattingTagsInTemplate:
         assert title_para is not None, f"TITLE not found in paragraphs: {[p.text for p in doc.paragraphs]}"
         assert title_para.alignment == WD_ALIGN_PARAGRAPH.CENTER
 
+    def test_center_with_cr_inside(self):
+        """<center> with <cr> inside should center all lines."""
+        template = '<center>LINE1<cr>LINE2<cr>LINE3</center>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        # Should have 3 centered paragraphs
+        assert len(doc.paragraphs) >= 3
+        assert doc.paragraphs[0].text == 'LINE1'
+        assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.CENTER
+        assert doc.paragraphs[1].text == 'LINE2'
+        assert doc.paragraphs[1].alignment == WD_ALIGN_PARAGRAPH.CENTER
+        assert doc.paragraphs[2].text == 'LINE3'
+        assert doc.paragraphs[2].alignment == WD_ALIGN_PARAGRAPH.CENTER
+
     def test_right_tag_basic(self):
         """<right>text</right> should create right-aligned paragraph."""
         template = '<right>RIGHT ALIGNED</right>'
@@ -46,6 +64,19 @@ class TestFormattingTagsInTemplate:
 
         assert right_para is not None
         assert right_para.alignment == WD_ALIGN_PARAGRAPH.RIGHT
+
+    def test_right_with_cr_inside(self):
+        """<right> with <cr> inside should right-align all lines."""
+        template = '<right>LINE1<cr>LINE2</right>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        assert len(doc.paragraphs) >= 2
+        assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        assert doc.paragraphs[1].alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
     def test_indent_tag_basic(self):
         """<indent>text</indent> should create indented paragraph."""
@@ -66,6 +97,19 @@ class TestFormattingTagsInTemplate:
         assert indent_para is not None
         # The paragraph should have left_indent set
         assert indent_para.paragraph_format.left_indent is not None
+
+    def test_indent_with_cr_inside(self):
+        """<indent> with <cr> inside should indent all lines."""
+        template = '<indent>LINE1<cr>LINE2</indent>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        assert len(doc.paragraphs) >= 2
+        assert doc.paragraphs[0].paragraph_format.left_indent is not None
+        assert doc.paragraphs[1].paragraph_format.left_indent is not None
 
     def test_tab_tag_basic(self):
         """<tab> should insert tab character."""
@@ -99,6 +143,21 @@ class TestFormattingTagsInTemplate:
 
         assert title_para is not None
         assert title_para.alignment == WD_ALIGN_PARAGRAPH.CENTER
+
+    def test_center_with_identifier_and_cr(self):
+        """<center> with identifiers and <cr> inside."""
+        template = '<center>LAST WILL<cr>OF<cr><<name>></center>'
+        answer_map = {'name': 'John Doe'}
+        merged = DocumentService._merge_template(template, answer_map, answer_map)
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        # All 3 lines should be centered
+        assert len(doc.paragraphs) >= 3
+        for i in range(3):
+            assert doc.paragraphs[i].alignment == WD_ALIGN_PARAGRAPH.CENTER
 
     def test_mixed_formatting(self):
         """Multiple formatting tags in one template."""
@@ -162,3 +221,16 @@ Name<tab>Address<tab>Phone
 
         text = ''.join(run.text for run in doc.paragraphs[0].runs)
         assert '\t' in text
+
+    def test_no_extra_blank_paragraphs(self):
+        """Formatting tags should not create extra blank paragraphs."""
+        template = '<center>LINE1</center><center>LINE2</center>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        # Should have exactly 2 paragraphs, no blank ones
+        non_empty = [p for p in doc.paragraphs if p.text.strip()]
+        assert len(non_empty) == 2

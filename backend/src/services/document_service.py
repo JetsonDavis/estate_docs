@@ -650,7 +650,7 @@ class DocumentService:
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
     _END_RE = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
     _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
-    _COUNTER_RE = re.compile(r'(###|##%|##A|##)(?:\+(\d*))?')
+    _COUNTER_RE = re.compile(r'(###|##%|##A|##V|##)(?:\+(\d*))?')
     _COUNTER_RESET_RE = re.compile(r'#/A')
     _IDENTIFIER_RE = re.compile(r'[<«‹]{2}([^>»›]+?)(?:\[(\d+)\])?(?:\.([^>»›]+))?[>»›]{2}')
     _CONDITIONAL_RE = re.compile(r'\[\[(.*?)\]\]', re.DOTALL)
@@ -725,6 +725,20 @@ class DocumentService:
         return decoded
 
     @staticmethod
+    def _strip_value_html(value: str) -> str:
+        """Strip HTML tags from an answer value to prevent unwanted formatting.
+
+        Answer values stored by the Quill editor may contain <p>, <br>, and
+        inline formatting tags.  These must be removed before substitution
+        so they don't create spurious carriage returns in the output.
+        """
+        if not value:
+            return value
+        cleaned = re.sub(r'</?(?:p|br|span|strong|em|b|i|u)\b[^>]*/?>',
+                         '', value)
+        return cleaned.strip()
+
+    @staticmethod
     def _format_item(item, field: str = None) -> str:
         """Format a single array element for output.
 
@@ -750,17 +764,36 @@ class DocumentService:
             return ', '.join(n for n in names if n)
         if isinstance(decoded, str):
             if field:
-                return decoded if field == 'name' else ''
-            return decoded
-        return str(decoded)
+                return DocumentService._strip_value_html(decoded) if field == 'name' else ''
+            return DocumentService._strip_value_html(decoded)
+        return DocumentService._strip_value_html(str(decoded))
+
+    @staticmethod
+    def _int_to_roman(n: int) -> str:
+        """Convert a positive integer to an uppercase Roman numeral string."""
+        if n <= 0:
+            return 'I'
+        vals = [
+            (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
+            (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
+            (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I'),
+        ]
+        result = ''
+        for value, numeral in vals:
+            while n >= value:
+                result += numeral
+                n -= value
+        return result
 
     @staticmethod
     def _counter_to_str(token: str, n: int) -> str:
-        """Convert a counter token (##, ###, ##%, ##A) and number to its string representation."""
+        """Convert a counter token (##, ###, ##%, ##A, ##V) and number to its string representation."""
         if token == '###':
             return DocumentService._CARDINAL_WORDS[n] if n < len(DocumentService._CARDINAL_WORDS) else str(n)
         elif token == '##%':
             return DocumentService._ORDINAL_WORDS[n] if n < len(DocumentService._ORDINAL_WORDS) else f'{n}th'
+        elif token == '##V':
+            return DocumentService._int_to_roman(n)
         elif token == '##A':
             # Convert number to uppercase letter (1=A, 2=B, ..., 26=Z, 27=AA, 28=AB, etc.)
             if n <= 0:
@@ -1023,7 +1056,7 @@ class DocumentService:
                         replacement = ''
                     else:
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
-                        replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
+                        replacement = DocumentService._strip_value_html(scalar) if not DocumentService._is_value_empty(scalar) else ''
 
                     target = f'<<{orig_ident}>>'
                     for j in range(len(segments)):
@@ -1039,6 +1072,12 @@ class DocumentService:
                 # Same-group identifiers must resolve to their per-iteration
                 # scalar values (not the full array) so that conditions like
                 # {{IF <<amendment_type>> = "Update SSTEE"}} work correctly.
+                #
+                # iter_answer gets per-iteration scalars so that simple
+                # identifier lookups (e.g. {{IF principal = "Jeff"}}) resolve
+                # to the current person.  iter_raw is NOT overridden so that
+                # subscripted lookups like principal[1] still access the
+                # original full array.
                 iter_answer = dict(answer_map)
                 iter_raw = dict(raw_map)
                 for orig_ident in body_identifiers_raw:
@@ -1049,7 +1088,13 @@ class DocumentService:
                         field_name = ident.split('.', 1)[1] if '.' in ident else None
                         val = DocumentService._format_item(arr[idx], field_name)
                         iter_answer[ident] = val
-                        iter_raw[ident] = val
+                # Always add the loop identifier itself to iter_answer with
+                # the per-iteration scalar.  This is needed when the loop
+                # identifier only appears in IF conditions (without <<>>
+                # brackets) or only in subscripted form (<<principal[1]>>)
+                # and therefore isn't in body_identifiers_raw.
+                if idx < len(loop_array):
+                    iter_answer[loop_identifier] = DocumentService._format_item(loop_array[idx])
                 instance_body = DocumentService._process_if_blocks(
                     instance_body, iter_answer, iter_raw
                 )
@@ -1332,7 +1377,7 @@ class DocumentService:
                             replacement = ''
                     else:
                         scalar = answer_map.get(ident, '') or answer_map.get(base_ident, '')
-                        replacement = scalar if not DocumentService._is_value_empty(scalar) else ''
+                        replacement = DocumentService._strip_value_html(scalar) if not DocumentService._is_value_empty(scalar) else ''
 
                     target = f'<<{orig_ident}>>'
                     for j in range(len(segments)):
@@ -1475,8 +1520,45 @@ class DocumentService:
         """
         cond = condition_text.strip()
 
+        # count() function — returns the length of an array identifier.
+        # Supports =, !=, >, <, >=, <= with a numeric right-hand operand.
+        _q = r'["\'""''\u00ab\u00bb]'
+        count_match = re.match(
+            r'count\s*\(\s*(?:<<)?([^>=!\s\}>)]+)(?:>>)?\s*\)\s*(=|!=|>=?|<=?)\s*' + _q + r'?(\d+)' + _q + r'?',
+            cond, re.IGNORECASE
+        )
+        if count_match:
+            identifier = count_match.group(1).lower()
+            operator = count_match.group(2)
+            expected_count = int(count_match.group(3))
+            raw_value = (raw_answer_map or {}).get(identifier, '') or (answer_map or {}).get(identifier, '')
+            actual_count = 0
+            if raw_value:
+                try:
+                    parsed = json.loads(raw_value)
+                    if isinstance(parsed, list):
+                        actual_count = len(parsed)
+                    elif not DocumentService._is_value_empty(raw_value):
+                        actual_count = 1
+                except (json.JSONDecodeError, TypeError):
+                    if not DocumentService._is_value_empty(raw_value):
+                        actual_count = 1
+            _logger.debug(f"IF count(): count({identifier}) {operator} {expected_count} -> actual={actual_count}")
+            if operator == '=':
+                return actual_count == expected_count
+            elif operator == '!=':
+                return actual_count != expected_count
+            elif operator == '>':
+                return actual_count > expected_count
+            elif operator == '<':
+                return actual_count < expected_count
+            elif operator == '>=':
+                return actual_count >= expected_count
+            elif operator == '<=':
+                return actual_count <= expected_count
+            return False
+
         # type() function for PEOPLELOOP group classification
-        _q = r'["\'\u201c\u201d\u2018\u2019\u00ab\u00bb]'
         type_match = re.match(
             r'type\s*\(\s*(?:<<)?([^>=!\s\}>)]+)(?:>>)?\s*\)\s*(=|!=)\s*' + _q + r'([^"\'\u201c\u201d\u2018\u2019\u00ab\u00bb]*)' + _q + r'?',
             cond, re.IGNORECASE
@@ -1566,6 +1648,25 @@ class DocumentService:
                 return DocumentService._is_value_empty(actual)
             expected = eq_match.group(2) or ''
             return actual.lower() == expected.lower()
+
+        # Identifier-to-identifier comparison (unquoted right side).
+        # Supports subscripts and dot notation on both sides, e.g.:
+        #   {{IF principal = principal[1]}}
+        #   {{IF <<person>> != <<person[2]>>}}
+        ident_cmp_match = re.match(
+            r'(?:<<)?([^>=!\s\}>]+)(?:>>)?\s*(=|!=)\s*(?:<<)?([^>=!\s\}>]+)(?:>>)?$',
+            cond, re.IGNORECASE
+        )
+        if ident_cmp_match:
+            left_ident = ident_cmp_match.group(1).lower()
+            operator = ident_cmp_match.group(2)
+            right_ident = ident_cmp_match.group(3).lower()
+            left_value = DocumentService._resolve_identifier_value(left_ident, answer_map, raw_answer_map)
+            right_value = DocumentService._resolve_identifier_value(right_ident, answer_map, raw_answer_map)
+            _logger.debug(f"IF ident-cmp: {left_ident}='{left_value}' {operator} {right_ident}='{right_value}'")
+            if operator == '!=':
+                return left_value.lower() != right_value.lower()
+            return left_value.lower() == right_value.lower()
 
         plain_match = re.match(
             r'(?:<<)?([^>=!\s\}>]+)(?:>>)?$', cond, re.IGNORECASE
@@ -1657,9 +1758,15 @@ class DocumentService:
                 else_body = None
 
             if DocumentService._evaluate_if_condition(condition_text, answer_map, raw_answer_map):
-                result.append(DocumentService._process_if_blocks(if_body, answer_map, raw_answer_map))
+                chosen = DocumentService._process_if_blocks(if_body.strip(), answer_map, raw_answer_map)
+                if chosen:
+                    result.append(' ')
+                    result.append(chosen)
             elif else_body is not None:
-                result.append(DocumentService._process_if_blocks(else_body, answer_map, raw_answer_map))
+                chosen = DocumentService._process_if_blocks(else_body.strip(), answer_map, raw_answer_map)
+                if chosen:
+                    result.append(' ')
+                    result.append(chosen)
 
             pos = scan
 
@@ -1714,7 +1821,7 @@ class DocumentService:
         """
         # Process text sequentially to handle resets and counters in order
         # Combine both patterns to process in sequence
-        combined_pattern = re.compile(r'(##/|#/A)|(###|##%|##A|##)(?:\+(\d*))?')
+        combined_pattern = re.compile(r'(##/|#/A)|(###|##%|##A|##V|##)(?:\+(\d*))?')
 
         def _replacer(match):
             if match.group(1):  # Reset token ##/ or #/A
@@ -1746,12 +1853,33 @@ class DocumentService:
         _raw_map = raw_answer_map or {}
 
         def _replace(match):
+            """Wrapper that strips HTML tags from the substituted value."""
+            return DocumentService._strip_value_html(_replace_raw(match))
+
+        def _replace_raw(match):
             full_match = match.group(0)
             identifier = match.group(1).lower()
             array_index_str = match.group(2)  # Array index like [1], [2], etc.
             field_name = match.group(3)  # Field name after dot or array index
 
             _logger.debug(f"Replacing identifier: {full_match} -> identifier={identifier}, in_map={identifier in answer_map}")
+
+            # count() function: <<count(identifier)>> outputs the array length
+            count_fn_match = re.match(r'^count\((.+)\)$', identifier, re.IGNORECASE)
+            if count_fn_match:
+                count_ident = count_fn_match.group(1).lower()
+                raw_value = _raw_map.get(count_ident, '') or answer_map.get(count_ident, '')
+                if raw_value:
+                    try:
+                        parsed = json.loads(raw_value)
+                        if isinstance(parsed, list):
+                            return str(len(parsed))
+                        elif not DocumentService._is_value_empty(raw_value):
+                            return '1'
+                    except (json.JSONDecodeError, TypeError):
+                        if not DocumentService._is_value_empty(raw_value):
+                            return '1'
+                return '0'
 
             # Convert array index to integer (1-based, so subtract 1 for 0-based array access)
             array_index = int(array_index_str) - 1 if array_index_str else None
@@ -2027,14 +2155,25 @@ class DocumentService:
         - <tab> or <TAB> - Insert a tab character
 
         These tags are converted to HTML that the HTMLToWordConverter can process.
+        If there are <cr> tags inside formatting tags, each line gets the same formatting.
         """
         # Convert <tab> to actual tab character
         text = re.sub(r'<[Tt][Aa][Bb]>', '\t', text)
 
+        def apply_alignment(match, alignment_class):
+            """Helper to apply alignment to content, handling <cr> tokens inside."""
+            content = match.group(1)
+            # Split by <cr> or <CR> tokens
+            lines = re.split(r'<[Cc][Rr]>', content)
+            # Wrap each line in aligned paragraph
+            aligned_lines = [f'<p {alignment_class}>{line.strip()}</p>' for line in lines if line.strip()]
+            return '</p>' + '\n'.join(aligned_lines) + '<p>'
+
         # Convert <center>...</center> to HTML with alignment class
+        # Handle <cr> inside by applying centering to each line
         text = re.sub(
             r'<[Cc][Ee][Nn][Tt][Ee][Rr]>(.*?)</[Cc][Ee][Nn][Tt][Ee][Rr]>',
-            r'</p><p class="ql-align-center">\1</p><p>',
+            lambda m: apply_alignment(m, 'class="ql-align-center"'),
             text,
             flags=re.DOTALL
         )
@@ -2042,7 +2181,7 @@ class DocumentService:
         # Convert <right>...</right> to HTML with alignment class
         text = re.sub(
             r'<[Rr][Ii][Gg][Hh][Tt]>(.*?)</[Rr][Ii][Gg][Hh][Tt]>',
-            r'</p><p class="ql-align-right">\1</p><p>',
+            lambda m: apply_alignment(m, 'class="ql-align-right"'),
             text,
             flags=re.DOTALL
         )
@@ -2050,7 +2189,7 @@ class DocumentService:
         # Convert <indent>...</indent> to HTML with left margin/indent
         text = re.sub(
             r'<[Ii][Nn][Dd][Ee][Nn][Tt]>(.*?)</[Ii][Nn][Dd][Ee][Nn][Tt]>',
-            r'</p><p style="margin-left: 48px;">\1</p><p>',
+            lambda m: apply_alignment(m, 'style="margin-left: 48px;"'),
             text,
             flags=re.DOTALL
         )
@@ -2084,15 +2223,20 @@ class DocumentService:
         import html
 
         # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
-        # Remove span tags but keep their content.
+        # Remove all inline formatting tags but keep their content.
+        # Quill wraps text in <span>, <strong>, <em>, <u>, <b>, <i> tags.
+        # These MUST all be stripped because Quill can split template syntax
+        # (like @macro@ or <<id>>) across different formatting tags, which
+        # would prevent the regex patterns from matching.
         # Use .*? instead of [^<]* because template syntax like <<id>> contains
         # angle brackets that would prevent the old pattern from matching.
-        # Loop to handle nested spans.
+        # Loop to handle nested tags.
         for _ in range(5):
-            cleaned = re.sub(r'<span[^>]*>(.*?)</span>', r'\1', template_content, flags=re.DOTALL)
+            cleaned = re.sub(r'<(?:span|strong|em|b|i|u)\b[^>]*>(.*?)</(?:span|strong|em|b|i|u)\b>', r'\1', template_content, flags=re.DOTALL)
             if cleaned == template_content:
                 break
             template_content = cleaned
+
         # Protect page break tokens before unescaping (user-typed <p> is stored as &lt;p&gt;)
         template_content = re.sub(r'&lt;[pP]&gt;', '__PAGE_BREAK__', template_content)
 
@@ -2142,8 +2286,8 @@ class DocumentService:
         # Pass 6: Formatting tags (alignment, tabs, indentation)
         merged = DocumentService._process_formatting_tags(merged)
 
-        # Replace <cr>/<CR> tokens with paragraph breaks
-        merged = re.sub(r'<[Cc][Rr]>', '</p>\n<p>', merged)
+        # Replace <cr>/<CR> tokens with paragraph breaks, consuming surrounding whitespace
+        merged = re.sub(r'\s*<[Cc][Rr]>\s*', '</p>\n<p>', merged)
 
         # Replace page break placeholders with page break marker
         merged = merged.replace('__PAGE_BREAK__', '</p><pagebreak/><p>')
