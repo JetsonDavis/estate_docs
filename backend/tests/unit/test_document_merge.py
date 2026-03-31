@@ -314,6 +314,130 @@ class TestCountFunction:
         assert 'PAIR' in result
 
 
+class TestCompoundConditions:
+    """Tests for AND / OR compound conditions in {{IF}} blocks."""
+
+    def test_and_both_true(self):
+        template = '{{IF state = "FL" AND status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'married'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_and_one_false(self):
+        template = '{{IF state = "FL" AND status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' not in result
+
+    def test_and_both_false(self):
+        template = '{{IF state = "FL" AND status = "married"}}YES{{END}}'
+        am = {'state': 'CA', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' not in result
+
+    def test_or_both_true(self):
+        template = '{{IF state = "FL" OR state = "CA"}}YES{{END}}'
+        am = {'state': 'FL'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_or_first_true(self):
+        template = '{{IF state = "FL" OR status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_or_second_true(self):
+        template = '{{IF state = "CA" OR status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'married'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_or_both_false(self):
+        template = '{{IF state = "CA" OR status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' not in result
+
+    def test_and_with_else(self):
+        template = '{{IF state = "FL" AND status = "married"}}YES{{ELSE}}NO{{END}}'
+        am = {'state': 'FL', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'NO' in result
+        assert 'YES' not in result
+
+    def test_or_with_else(self):
+        template = '{{IF state = "CA" OR status = "married"}}YES{{ELSE}}NO{{END}}'
+        am = {'state': 'FL', 'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'NO' in result
+
+    def test_and_or_precedence(self):
+        """AND binds tighter than OR: A AND B OR C = (A AND B) OR C."""
+        template = '{{IF state = "CA" AND status = "married" OR override = "yes"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'single', 'override': 'yes'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_and_or_precedence_false(self):
+        """(A AND B) OR C — all false."""
+        template = '{{IF state = "CA" AND status = "married" OR override = "yes"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'single', 'override': 'no'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' not in result
+
+    def test_and_with_count(self):
+        """AND with count() function."""
+        template = '{{IF count(names) >= 2 AND state = "FL"}}YES{{END}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        am = {'names': raw, 'state': 'FL'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_or_with_not(self):
+        """OR with NOT condition."""
+        template = '{{IF NOT spouse OR status = "single"}}ALONE{{END}}'
+        am = {'status': 'single'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'ALONE' in result
+
+    def test_and_with_truthy(self):
+        """AND with bare truthy identifiers."""
+        template = '{{IF spouse AND children}}FAMILY{{END}}'
+        am = {'spouse': 'Jane', 'children': 'yes'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'FAMILY' in result
+
+    def test_and_with_truthy_one_empty(self):
+        template = '{{IF spouse AND children}}FAMILY{{END}}'
+        am = {'spouse': 'Jane', 'children': ''}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'FAMILY' not in result
+
+    def test_triple_and(self):
+        template = '{{IF a = "1" AND b = "2" AND c = "3"}}YES{{END}}'
+        am = {'a': '1', 'b': '2', 'c': '3'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_triple_or(self):
+        template = '{{IF a = "1" OR b = "2" OR c = "3"}}YES{{END}}'
+        am = {'a': 'x', 'b': 'x', 'c': '3'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+    def test_case_insensitive_and_or(self):
+        """AND/OR keywords should be case-insensitive."""
+        template = '{{IF state = "FL" and status = "married"}}YES{{END}}'
+        am = {'state': 'FL', 'status': 'married'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'YES' in result
+
+        template2 = '{{IF state = "CA" or state = "FL"}}YES{{END}}'
+        result2 = DocumentService._merge_template(template2, am, am)
+        assert 'YES' in result2
+
+
 class TestArrayIndexDirect:
     """Direct <<identifier[N]>> usage (no macro) with array indexing."""
 

@@ -373,6 +373,62 @@ In this example:
 - If `has_spouse` has a value, the spouse section appears with the prenup clause controlled by the inner IF/ELSE
 - The prenup inner block uses ELSE to guarantee one of the two clauses always appears
 
+### Compound Conditions (AND / OR)
+
+Combine multiple conditions in a single IF statement using `AND` and `OR`.
+
+**AND — all conditions must be true:**
+
+```
+{{ IF <<state>> = "Florida" AND <<status>> = "married" }}
+Florida married couple provisions apply.
+{{ END }}
+```
+
+**OR — at least one condition must be true:**
+
+```
+{{ IF <<state>> = "Florida" OR <<state>> = "California" }}
+Community property state provisions apply.
+{{ END }}
+```
+
+**Mixed AND/OR — AND binds tighter than OR:**
+
+```
+{{ IF <<state>> = "Florida" AND <<status>> = "married" OR <<override>> = "yes" }}
+```
+
+This evaluates as `(state = "Florida" AND status = "married") OR (override = "yes")`.
+
+**Multiple conditions:**
+
+```
+{{ IF <<spouse>> AND <<children>> AND <<has_trust>> }}
+Family trust provisions apply.
+{{ END }}
+```
+
+**Works with all condition types** — you can combine `count()`, `NOT`, `ANY`, `NONE`, value comparisons, and bare identifiers:
+
+```
+{{ IF count(<<beneficiary>>) >= 2 AND <<state>> = "Florida" }}
+Multiple Florida beneficiaries.
+{{ END }}
+```
+
+```
+{{ IF NOT <<spouse>> OR <<status>> = "single" }}
+Unmarried provisions.
+{{ END }}
+```
+
+**Notes:**
+- `AND` / `OR` keywords are case-insensitive (`and`, `AND`, `And` all work)
+- `AND` has higher precedence than `OR` (standard boolean logic)
+- `ELSE` works with compound conditions
+- No limit on the number of conditions you can chain
+
 ---
 
 ## Inline Conditional Brackets

@@ -1510,14 +1510,45 @@ class DocumentService:
     def _evaluate_if_condition(condition_text: str, answer_map: dict, raw_answer_map: dict) -> bool:
         """Evaluate the condition inside {{ IF <condition> }}.
 
-        Supports:
+        Supports compound conditions with AND / OR:
+          {{IF ident = "a" AND ident2 = "b"}}
+          {{IF ident = "a" OR ident2 = "b"}}
+          {{IF ident AND ident2 = "b" OR ident3}}  (AND binds tighter than OR)
+
+        Also supports all single-condition forms:
           identifier = "value"     / identifier != "value"
           NOT identifier
           ANY <<identifier>> = "value"   (true if any array element matches)
           NONE <<identifier>> = "value"  (true if no array element matches)
+          count(ident) op N / type(ident) = "value"
 
         Returns True if the content should be included.
         """
+        cond = condition_text.strip()
+
+        # --- Compound condition handling (AND / OR) ---
+        # Split on OR first (lower precedence), then AND (higher precedence).
+        # Use word-boundary split so we don't match inside identifiers or values.
+        or_parts = re.split(r'\s+OR\s+', cond, flags=re.IGNORECASE)
+        if len(or_parts) > 1:
+            # Any OR-group being true makes the whole condition true
+            for or_part in or_parts:
+                and_parts = re.split(r'\s+AND\s+', or_part.strip(), flags=re.IGNORECASE)
+                if all(DocumentService._evaluate_single_condition(p.strip(), answer_map, raw_answer_map) for p in and_parts):
+                    return True
+            return False
+
+        # Check for AND without OR
+        and_parts = re.split(r'\s+AND\s+', cond, flags=re.IGNORECASE)
+        if len(and_parts) > 1:
+            return all(DocumentService._evaluate_single_condition(p.strip(), answer_map, raw_answer_map) for p in and_parts)
+
+        # Single condition — delegate directly
+        return DocumentService._evaluate_single_condition(cond, answer_map, raw_answer_map)
+
+    @staticmethod
+    def _evaluate_single_condition(condition_text: str, answer_map: dict, raw_answer_map: dict) -> bool:
+        """Evaluate a single (non-compound) condition."""
         cond = condition_text.strip()
 
         # count() function — returns the length of an array identifier.
