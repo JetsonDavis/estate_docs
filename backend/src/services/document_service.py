@@ -655,7 +655,7 @@ class DocumentService:
         re.IGNORECASE
     )
     _CASE_RE = re.compile(
-        r"""\{\{\s*CASE\s+["'\u201c\u201d\u2018\u2019\u00ab\u00bb]([^"'\u201c\u201d\u2018\u2019\u00ab\u00bb]*?)["'\u201c\u201d\u2018\u2019\u00ab\u00bb]\s*\}\}""",
+        r"""\{\{\s*CASE\s+(?:["'\u201c\u201d\u2018\u2019\u00ab\u00bb]([^"'\u201c\u201d\u2018\u2019\u00ab\u00bb]*?)["'\u201c\u201d\u2018\u2019\u00ab\u00bb]|(\S+?))\s*\}\}""",
         re.IGNORECASE
     )
     _END_SWITCH_RE = re.compile(r'\{\{\s*END\s+SWITCH\s*\}\}', re.IGNORECASE)
@@ -1806,12 +1806,10 @@ class DocumentService:
             if DocumentService._evaluate_if_condition(condition_text, answer_map, raw_answer_map):
                 chosen = DocumentService._process_if_blocks(if_body.strip(), answer_map, raw_answer_map)
                 if chosen:
-                    result.append(' ')
                     result.append(chosen)
             elif else_body is not None:
                 chosen = DocumentService._process_if_blocks(else_body.strip(), answer_map, raw_answer_map)
                 if chosen:
-                    result.append(' ')
                     result.append(chosen)
 
             pos = scan
@@ -1876,10 +1874,31 @@ class DocumentService:
 
             block_content = text[block_start:block_end]
 
-            # Resolve the switch identifier value
-            switch_value = DocumentService._resolve_identifier_value(
-                identifier, answer_map, raw_answer_map
-            ).lower()
+            # Resolve the switch identifier value.
+            # Support count() function: {{SWITCH count(ident)}}
+            count_sw_match = re.match(
+                r'count\s*\(\s*(?:[<«‹]{2})?([^>»›\)\s]+)(?:[>»›]{2})?\s*\)',
+                identifier, re.IGNORECASE
+            )
+            if count_sw_match:
+                count_ident = count_sw_match.group(1).lower()
+                raw_value = (raw_answer_map or {}).get(count_ident, '') or (answer_map or {}).get(count_ident, '')
+                actual_count = 0
+                if raw_value:
+                    try:
+                        parsed = json.loads(raw_value)
+                        if isinstance(parsed, list):
+                            actual_count = len(parsed)
+                        elif not DocumentService._is_value_empty(raw_value):
+                            actual_count = 1
+                    except (json.JSONDecodeError, TypeError):
+                        if not DocumentService._is_value_empty(raw_value):
+                            actual_count = 1
+                switch_value = str(actual_count)
+            else:
+                switch_value = DocumentService._resolve_identifier_value(
+                    identifier, answer_map, raw_answer_map
+                ).lower()
 
             # Parse CASE / ELSE branches from block_content.
             # Collect (tag_start, body_start, case_value_or_None) for each branch.
@@ -1930,7 +1949,8 @@ class DocumentService:
                     inner_depth += 1
                     inner_pos = tag_match.end()
                 elif tag_type == 'case':
-                    branch_tags.append((tag_match.start(), tag_match.end(), tag_match.group(1)))
+                    case_val = tag_match.group(1) if tag_match.group(1) is not None else tag_match.group(2)
+                    branch_tags.append((tag_match.start(), tag_match.end(), case_val))
                     inner_pos = tag_match.end()
                 elif tag_type == 'else':
                     branch_tags.append((tag_match.start(), tag_match.end(), None))
@@ -1963,7 +1983,6 @@ class DocumentService:
                 processed = DocumentService._process_if_blocks(chosen_body.strip(), answer_map, raw_answer_map)
                 processed = DocumentService._process_switch_blocks(processed, answer_map, raw_answer_map)
                 if processed:
-                    result.append(' ')
                     result.append(processed)
 
             pos = scan
@@ -2339,7 +2358,7 @@ class DocumentService:
 
         template_content = re.sub(macro_usage_pattern, replace_macro, template_content)
 
-        return template_content
+        return template_content.strip()
 
     @staticmethod
     def _process_formatting_tags(text: str) -> str:
@@ -2419,6 +2438,9 @@ class DocumentService:
             Merged content with identifiers replaced
         """
         import html
+
+        # Strip BOM (byte order mark) — Python's strip() does NOT remove U+FEFF
+        template_content = template_content.replace('\ufeff', '')
 
         # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
         # Remove all inline formatting tags but keep their content.

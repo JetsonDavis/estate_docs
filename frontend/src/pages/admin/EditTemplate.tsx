@@ -148,11 +148,22 @@ const EditTemplate: React.FC = () => {
         stack1.push({ type: 'IF', idx: tagIdx })
       } else if (upper.startsWith('FOR EACH') || upper.startsWith('FOREACH')) {
         stack1.push({ type: 'FOR EACH', idx: tagIdx })
+      } else if (upper.startsWith('SWITCH')) {
+        stack1.push({ type: 'SWITCH', idx: tagIdx })
       } else if (upper === 'END FOR EACH' || upper === 'END FOREACH') {
         const last = stack1.pop()
         if (!last) {
           badTagIndices.add(tagIdx)
         } else if (last.type !== 'FOR EACH') {
+          badTagIndices.add(tagIdx)
+          badTagIndices.add(last.idx)
+          stack1.push(last)
+        }
+      } else if (upper === 'END SWITCH') {
+        const last = stack1.pop()
+        if (!last) {
+          badTagIndices.add(tagIdx)
+        } else if (last.type !== 'SWITCH') {
           badTagIndices.add(tagIdx)
           badTagIndices.add(last.idx)
           stack1.push(last)
@@ -183,15 +194,15 @@ const EditTemplate: React.FC = () => {
       tagIdx2++
       const highlight = isBad ? 'background-color: #fde047; padding: 1px 3px; border-radius: 2px;' : ''
 
-      if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOR EACH') || upper.startsWith('FOREACH')) {
+      if (upper.startsWith('IF ') || upper === 'IF' || upper.startsWith('FOR EACH') || upper.startsWith('FOREACH') || upper.startsWith('SWITCH')) {
         const color = colors[Math.min(depth, colors.length - 1)]
         depth++
         return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
-      } else if (upper === 'END FOR EACH' || upper === 'END FOREACH' || upper === 'END') {
+      } else if (upper === 'END FOR EACH' || upper === 'END FOREACH' || upper === 'END' || upper === 'END SWITCH') {
         depth = Math.max(0, depth - 1)
         const color = colors[Math.min(depth, colors.length - 1)]
         return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
-      } else if (upper === 'ELSE') {
+      } else if (upper === 'ELSE' || upper.startsWith('CASE ')) {
         const color = colors[Math.min(Math.max(0, depth - 1), colors.length - 1)]
         return `<strong style="color: ${color}; ${highlight}">{{${inner}}}</strong>`
       } else {
@@ -243,14 +254,14 @@ const EditTemplate: React.FC = () => {
         if (
           inner.startsWith('IF ') || inner === 'IF' ||
           inner.startsWith('FOR EACH') || inner.startsWith('FOREACH') ||
-          inner.startsWith('PEOPLELOOP')
+          inner.startsWith('PEOPLELOOP') || inner.startsWith('SWITCH')
         ) {
           editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(depth, SYNTAX_COLORS.length - 1)], 'api')
           depth++
         } else if (inner.startsWith('END')) {
           depth = Math.max(0, depth - 1)
           editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(depth, SYNTAX_COLORS.length - 1)], 'api')
-        } else if (inner === 'ELSE') {
+        } else if (inner === 'ELSE' || inner.startsWith('CASE ')) {
           editor.formatText(start, mlen, 'color', SYNTAX_COLORS[Math.min(Math.max(0, depth - 1), SYNTAX_COLORS.length - 1)], 'api')
         }
       }

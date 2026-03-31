@@ -314,6 +314,74 @@ class TestCountFunction:
         assert 'PAIR' in result
 
 
+class TestNoLeadingWhitespace:
+    """Verify IF/SWITCH blocks produce no leading whitespace.
+
+    _merge_template wraps output in <p>...</p> tags, so we check
+    that content immediately follows '<p>' with no space.
+    """
+
+    def test_if_at_start_no_leading_space(self):
+        """IF block at document start should have no leading space."""
+        template = '{{IF name}}Hello{{END}}'
+        am = {'name': 'Joe'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '<p>Hello</p>' == result
+
+    def test_if_after_macro_no_leading_space(self):
+        """Macro definition + IF block should have no leading space after macro is removed."""
+        template = '@@client@@<<principal>>@@ {{IF name}}Hello{{END}}'
+        am = {'name': 'Joe', 'principal': 'Mary'}
+        result = DocumentService._merge_template(template, am, am)
+        assert result.startswith('<p>Hello'), f"Expected '<p>Hello' at start, got: {repr(result[:20])}"
+        assert '<p> ' not in result, f"Found '<p> ' (space after p tag): {repr(result[:20])}"
+
+    def test_switch_at_start_no_leading_space(self):
+        """SWITCH block at document start should have no leading space."""
+        template = '{{SWITCH <<color>>}}{{CASE "red"}}RED{{END SWITCH}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '<p>RED</p>' == result
+
+    def test_switch_after_macro_no_leading_space(self):
+        """Macro definition + SWITCH block should have no leading space."""
+        template = '@@client@@<<principal>>@@ {{SWITCH <<color>>}}{{CASE "red"}}RED{{END SWITCH}}'
+        am = {'color': 'red', 'principal': 'Mary'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '<p> ' not in result, f"Found '<p> ' (space after p tag): {repr(result[:20])}"
+
+    def test_if_else_no_leading_space(self):
+        template = '{{IF missing}}YES{{ELSE}}NO{{END}}'
+        am = {}
+        result = DocumentService._merge_template(template, am, am)
+        assert '<p>NO</p>' == result
+
+    def test_if_after_empty_paragraph_no_leading_space(self):
+        """Simulates Quill HTML: macro + empty paragraph + IF block."""
+        template = '<p>@@client@@&lt;&lt;principal&gt;&gt;@@</p><p><br></p><p>{{IF name}}Hello{{END}}</p>'
+        am = {'name': 'Joe', 'principal': 'Mary'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '<p> ' not in result, f"Found '<p> ' (space after p tag): {repr(result[:30])}"
+        assert '<p>Hello</p>' == result
+
+    def test_bom_character_stripped(self):
+        """BOM (U+FEFF) from Quill editor must not appear in output."""
+        template = '\ufeff<p>{{IF name}}Hello{{END}}</p>'
+        am = {'name': 'Joe'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '\ufeff' not in result, f"BOM found in output: {repr(result[:20])}"
+        assert '<p>Hello</p>' == result
+
+    def test_bom_with_macro_no_leading_space(self):
+        """BOM + macro + IF block should produce clean output."""
+        template = '\ufeff<p>@@client@@&lt;&lt;principal&gt;&gt;@@</p><p><br></p><p>{{IF name}}Hello{{END}}</p>'
+        am = {'name': 'Joe', 'principal': 'Mary'}
+        result = DocumentService._merge_template(template, am, am)
+        assert '\ufeff' not in result, f"BOM found in output: {repr(result[:20])}"
+        assert '<p> ' not in result, f"Leading space in p tag: {repr(result[:20])}"
+        assert '<p>Hello</p>' == result
+
+
 class TestCompoundConditions:
     """Tests for AND / OR compound conditions in {{IF}} blocks."""
 
@@ -537,6 +605,28 @@ class TestSwitchCase:
         result = DocumentService._merge_template(template, am, am)
         assert 'ONE' in result
         assert 'TWO' in result
+
+    def test_switch_unquoted_case_number(self):
+        """CASE values should work without quotes (e.g. {{ CASE 1 }})."""
+        template = '{{SWITCH count(bene)}}{{CASE 1}}one bene{{CASE 2}}two benes{{CASE 3}}three benes{{ELSE}}many benes{{END SWITCH}}'
+        raw = json.dumps(['Alice', 'Bob'])
+        am = {'bene': raw}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'two benes' in result
+
+    def test_switch_unquoted_case_string(self):
+        """Unquoted string CASE values."""
+        template = '{{SWITCH <<name>>}}{{CASE joe}}JOE{{CASE tom}}TOM{{ELSE}}OTHER{{END SWITCH}}'
+        am = {'name': 'joe'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'JOE' in result
+        assert 'TOM' not in result
+
+    def test_switch_unquoted_case_no_match(self):
+        template = '{{SWITCH <<name>>}}{{CASE joe}}JOE{{CASE tom}}TOM{{ELSE}}OTHER{{END SWITCH}}'
+        am = {'name': 'alice'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'OTHER' in result
 
 
 class TestArrayIndexDirect:
