@@ -438,6 +438,107 @@ class TestCompoundConditions:
         assert 'YES' in result2
 
 
+class TestSwitchCase:
+    """Tests for {{ SWITCH }} / {{ CASE }} / {{ ELSE }} / {{ END SWITCH }} blocks."""
+
+    def test_switch_case_match(self):
+        template = '{{SWITCH <<color>>}}{{CASE "red"}}RED{{CASE "blue"}}BLUE{{END SWITCH}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'RED' in result
+        assert 'BLUE' not in result
+
+    def test_switch_case_second_match(self):
+        template = '{{SWITCH <<color>>}}{{CASE "red"}}RED{{CASE "blue"}}BLUE{{END SWITCH}}'
+        am = {'color': 'blue'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'BLUE' in result
+        assert 'RED' not in result
+
+    def test_switch_no_match_no_else(self):
+        template = 'Before {{SWITCH <<color>>}}{{CASE "red"}}RED{{CASE "blue"}}BLUE{{END SWITCH}} After'
+        am = {'color': 'green'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'RED' not in result
+        assert 'BLUE' not in result
+        assert 'Before' in result
+        assert 'After' in result
+
+    def test_switch_else_fallback(self):
+        template = '{{SWITCH <<color>>}}{{CASE "red"}}RED{{ELSE}}OTHER{{END SWITCH}}'
+        am = {'color': 'green'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'OTHER' in result
+        assert 'RED' not in result
+
+    def test_switch_case_insensitive(self):
+        """CASE matching should be case-insensitive."""
+        template = '{{SWITCH <<color>>}}{{CASE "Red"}}FOUND{{END SWITCH}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'FOUND' in result
+
+    def test_switch_with_angle_brackets(self):
+        """Identifier can be wrapped in << >> or not."""
+        template = '{{SWITCH color}}{{CASE "red"}}RED{{END SWITCH}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'RED' in result
+
+    def test_switch_first_case_wins(self):
+        """First matching CASE should win."""
+        template = '{{SWITCH <<x>>}}{{CASE "a"}}FIRST{{CASE "a"}}SECOND{{END SWITCH}}'
+        am = {'x': 'a'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'FIRST' in result
+        assert 'SECOND' not in result
+
+    def test_switch_with_nested_if(self):
+        """CASE body can contain IF blocks."""
+        template = '{{SWITCH <<state>>}}{{CASE "FL"}}{{IF spouse}}FL-MARRIED{{ELSE}}FL-SINGLE{{END}}{{END SWITCH}}'
+        am = {'state': 'FL', 'spouse': 'Jane'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'FL-MARRIED' in result
+
+    def test_switch_keywords_case_insensitive(self):
+        """SWITCH/CASE/END SWITCH keywords should be case-insensitive."""
+        template = '{{switch <<color>>}}{{case "red"}}RED{{else}}OTHER{{end switch}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'RED' in result
+
+    def test_switch_smart_quotes(self):
+        """CASE values can use smart quotes."""
+        template = '{{SWITCH <<color>>}}{{CASE \u201cred\u201d}}RED{{END SWITCH}}'
+        am = {'color': 'red'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'RED' in result
+
+    def test_switch_multiple_cases_with_else(self):
+        template = '{{SWITCH <<role>>}}{{CASE "admin"}}ADMIN{{CASE "editor"}}EDITOR{{CASE "viewer"}}VIEWER{{ELSE}}UNKNOWN{{END SWITCH}}'
+        am = {'role': 'editor'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'EDITOR' in result
+        assert 'ADMIN' not in result
+        assert 'VIEWER' not in result
+        assert 'UNKNOWN' not in result
+
+    def test_switch_empty_identifier(self):
+        """Empty identifier should fall through to ELSE."""
+        template = '{{SWITCH <<missing>>}}{{CASE "a"}}A{{ELSE}}EMPTY{{END SWITCH}}'
+        am = {}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'EMPTY' in result
+
+    def test_multiple_switch_blocks(self):
+        """Multiple SWITCH blocks in same template."""
+        template = '{{SWITCH <<a>>}}{{CASE "1"}}ONE{{END SWITCH}} and {{SWITCH <<b>>}}{{CASE "2"}}TWO{{END SWITCH}}'
+        am = {'a': '1', 'b': '2'}
+        result = DocumentService._merge_template(template, am, am)
+        assert 'ONE' in result
+        assert 'TWO' in result
+
+
 class TestArrayIndexDirect:
     """Direct <<identifier[N]>> usage (no macro) with array indexing."""
 

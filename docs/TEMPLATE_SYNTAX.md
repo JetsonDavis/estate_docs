@@ -431,6 +431,63 @@ Unmarried provisions.
 
 ---
 
+## SWITCH / CASE Blocks
+
+Use SWITCH/CASE for multi-way branching on a single identifier's value. This is cleaner than chaining multiple IF/ELSE blocks when you need to test one identifier against several possible values.
+
+### Basic Syntax
+
+```
+{{ SWITCH <<identifier>> }}
+{{ CASE "value1" }}
+Content when identifier equals "value1".
+{{ CASE "value2" }}
+Content when identifier equals "value2".
+{{ ELSE }}
+Content when no CASE matches (optional).
+{{ END SWITCH }}
+```
+
+### Example — State-specific provisions
+
+```
+{{ SWITCH <<state>> }}
+{{ CASE "Florida" }}
+This trust is governed by the laws of the State of Florida.
+{{ CASE "California" }}
+This trust is governed by the laws of the State of California, including community property provisions.
+{{ CASE "Texas" }}
+This trust is governed by the laws of the State of Texas.
+{{ ELSE }}
+This trust is governed by the laws of the state of <<state>>.
+{{ END SWITCH }}
+```
+
+### Example — Distribution type
+
+```
+{{ SWITCH <<distribution_type>> }}
+{{ CASE "outright" }}
+The Trustee shall distribute the trust property outright and free of trust.
+{{ CASE "staggered" }}
+The Trustee shall distribute the trust property in staggered distributions as follows...
+{{ CASE "discretionary" }}
+The Trustee shall hold and manage the trust property, making discretionary distributions...
+{{ END SWITCH }}
+```
+
+### Rules
+
+- **First match wins** — if multiple CASEs have the same value, only the first is used
+- **Case-insensitive** — both keywords (`SWITCH`, `CASE`, `END SWITCH`) and value matching are case-insensitive
+- **ELSE is optional** — if no CASE matches and there's no ELSE, the entire block produces no output
+- **Smart quotes supported** — `{{ CASE "value" }}` and `{{ CASE "value" }}` both work
+- **Identifier angle brackets optional** — `{{ SWITCH <<state>> }}` and `{{ SWITCH state }}` both work
+- **Nestable** — CASE bodies can contain IF blocks, and SWITCH blocks can appear inside IF blocks
+- **Works inside loops** — SWITCH works inside FOR EACH and PEOPLELOOP blocks
+
+---
+
 ## Inline Conditional Brackets
 
 Use double brackets `[[ ... ]]` to conditionally include a section. If **any** identifier inside the brackets is empty/unanswered, the **entire** section is removed.

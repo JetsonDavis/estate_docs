@@ -640,16 +640,25 @@ class DocumentService:
     )
     # Block-level regexes for depth counting across IF, FOREACH, and PEOPLELOOP
     _BLOCK_OPEN_RE = re.compile(
-        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|PEOPLELOOP\s+|IF\s)',
+        r'\{\{\s*(?:(?:FOR\s+EACH|FOREACH)(?:\(\d+\))?\s+|PEOPLELOOP\s+|IF\s|SWITCH\s)',
         re.IGNORECASE
     )
     _BLOCK_CLOSE_RE = re.compile(
-        r'\{\{\s*END(?:\s+(?:FOR\s+EACH|FOREACH|PEOPLELOOP))?\s*\}\}',
+        r'\{\{\s*END(?:\s+(?:FOR\s+EACH|FOREACH|PEOPLELOOP|SWITCH))?\s*\}\}',
         re.IGNORECASE
     )
     _IF_OPEN_RE = re.compile(r'\{\{\s*IF\s+(.*?)\s*\}\}', re.IGNORECASE)
     _END_RE = re.compile(r'\{\{\s*END\s*\}\}', re.IGNORECASE)
     _ELSE_RE = re.compile(r'\{\{\s*ELSE\s*\}\}', re.IGNORECASE)
+    _SWITCH_OPEN_RE = re.compile(
+        r'\{\{\s*SWITCH\s+(?:[<«‹]{2})?([^>»›\}]+?)(?:[>»›]{2})?\s*\}\}',
+        re.IGNORECASE
+    )
+    _CASE_RE = re.compile(
+        r"""\{\{\s*CASE\s+["'\u201c\u201d\u2018\u2019\u00ab\u00bb]([^"'\u201c\u201d\u2018\u2019\u00ab\u00bb]*?)["'\u201c\u201d\u2018\u2019\u00ab\u00bb]\s*\}\}""",
+        re.IGNORECASE
+    )
+    _END_SWITCH_RE = re.compile(r'\{\{\s*END\s+SWITCH\s*\}\}', re.IGNORECASE)
     _COUNTER_RE = re.compile(r'(###|##%|##A|##V|##)(?:\+(\d*))?')
     _COUNTER_RESET_RE = re.compile(r'#/A')
     _IDENTIFIER_RE = re.compile(r'[<«‹]{2}([^>»›]+?)(?:\[(\d+)\])?(?:\.([^>»›]+))?[>»›]{2}')
@@ -1098,6 +1107,9 @@ class DocumentService:
                 instance_body = DocumentService._process_if_blocks(
                     instance_body, iter_answer, iter_raw
                 )
+                instance_body = DocumentService._process_switch_blocks(
+                    instance_body, iter_answer, iter_raw
+                )
 
                 # Restore nested FOREACH/PEOPLELOOP blocks AFTER IF processing
                 for ph, original in placeholders.items():
@@ -1407,6 +1419,9 @@ class DocumentService:
                             iter_answer[ident] = val
                             iter_raw[ident] = val
                 instance_body = DocumentService._process_if_blocks(
+                    instance_body, iter_answer, iter_raw
+                )
+                instance_body = DocumentService._process_switch_blocks(
                     instance_body, iter_answer, iter_raw
                 )
 
@@ -1798,6 +1813,158 @@ class DocumentService:
                 if chosen:
                     result.append(' ')
                     result.append(chosen)
+
+            pos = scan
+
+        return ''.join(result)
+
+    @staticmethod
+    def _process_switch_blocks(text: str, answer_map: dict, raw_answer_map: dict) -> str:
+        """Process {{ SWITCH <<identifier>> }} ... {{ CASE "val" }} ... {{ ELSE }} ... {{ END SWITCH }} blocks.
+
+        Resolves the switch identifier, then walks through CASE branches
+        to find the first match (case-insensitive).  If no CASE matches
+        and an ELSE branch exists, the ELSE body is used.  The chosen
+        body is recursively processed for nested IF / SWITCH blocks.
+        """
+        _switch_re = DocumentService._SWITCH_OPEN_RE
+        _case_re = DocumentService._CASE_RE
+        _else_re = DocumentService._ELSE_RE
+        _end_switch_re = DocumentService._END_SWITCH_RE
+
+        result: list[str] = []
+        pos = 0
+
+        while pos < len(text):
+            sw_match = _switch_re.search(text, pos)
+            if not sw_match:
+                result.append(text[pos:])
+                break
+
+            result.append(text[pos:sw_match.start()])
+
+            identifier = sw_match.group(1).strip().lower()
+            block_start = sw_match.end()
+
+            # Find matching {{ END SWITCH }}, respecting nested SWITCH blocks
+            depth = 1
+            scan = block_start
+            block_end = None
+            while depth > 0 and scan < len(text):
+                next_open = _switch_re.search(text, scan)
+                next_close = _end_switch_re.search(text, scan)
+
+                if next_close is None:
+                    scan = len(text)
+                    break
+
+                if next_open and next_open.start() < next_close.start():
+                    depth += 1
+                    scan = next_open.end()
+                else:
+                    depth -= 1
+                    if depth == 0:
+                        block_end = next_close.start()
+                        scan = next_close.end()
+                    else:
+                        scan = next_close.end()
+
+            if depth != 0:
+                # Unmatched SWITCH — keep original text
+                result.append(text[sw_match.start():])
+                break
+
+            block_content = text[block_start:block_end]
+
+            # Resolve the switch identifier value
+            switch_value = DocumentService._resolve_identifier_value(
+                identifier, answer_map, raw_answer_map
+            ).lower()
+
+            # Parse CASE / ELSE branches from block_content.
+            # Collect (tag_start, body_start, case_value_or_None) for each branch.
+            branch_tags: list[tuple[int, int, str | None]] = []  # (tag_start, body_start, case_val)
+
+            inner_depth = 0
+            inner_pos = 0
+            while inner_pos < len(block_content):
+                nested_sw = _switch_re.search(block_content, inner_pos)
+                nested_end_sw = _end_switch_re.search(block_content, inner_pos)
+
+                if inner_depth > 0:
+                    candidates = []
+                    if nested_sw:
+                        candidates.append(('open', nested_sw))
+                    if nested_end_sw:
+                        candidates.append(('close', nested_end_sw))
+                    if not candidates:
+                        break
+                    candidates.sort(key=lambda c: c[1].start())
+                    tag_type, tag_match = candidates[0]
+                    if tag_type == 'open':
+                        inner_depth += 1
+                    else:
+                        inner_depth -= 1
+                    inner_pos = tag_match.end()
+                    continue
+
+                # At top level — look for CASE, ELSE, or nested SWITCH open
+                case_m = _case_re.search(block_content, inner_pos)
+                else_m = _else_re.search(block_content, inner_pos)
+
+                candidates = []
+                if case_m:
+                    candidates.append(('case', case_m))
+                if else_m:
+                    candidates.append(('else', else_m))
+                if nested_sw:
+                    candidates.append(('open', nested_sw))
+
+                if not candidates:
+                    break
+
+                candidates.sort(key=lambda c: c[1].start())
+                tag_type, tag_match = candidates[0]
+
+                if tag_type == 'open':
+                    inner_depth += 1
+                    inner_pos = tag_match.end()
+                elif tag_type == 'case':
+                    branch_tags.append((tag_match.start(), tag_match.end(), tag_match.group(1)))
+                    inner_pos = tag_match.end()
+                elif tag_type == 'else':
+                    branch_tags.append((tag_match.start(), tag_match.end(), None))
+                    inner_pos = tag_match.end()
+
+            # Build branches: body runs from body_start to the next tag_start (or block end)
+            branches: list[tuple[str | None, str]] = []
+            for i, (tag_start, body_start, case_val) in enumerate(branch_tags):
+                if i + 1 < len(branch_tags):
+                    body_text = block_content[body_start:branch_tags[i + 1][0]]
+                else:
+                    body_text = block_content[body_start:]
+                branches.append((case_val, body_text))
+
+            # Select the matching branch
+            chosen_body = None
+            else_body = None
+            for case_val, body in branches:
+                if case_val is None:
+                    else_body = body
+                elif case_val.lower() == switch_value:
+                    chosen_body = body
+                    break
+
+            if chosen_body is None:
+                chosen_body = else_body
+
+            if chosen_body is not None:
+                # Recursively process IF and SWITCH blocks in the chosen body
+                processed = DocumentService._process_if_blocks(chosen_body.strip(), answer_map, raw_answer_map)
+                processed = DocumentService._process_switch_blocks(processed, answer_map, raw_answer_map)
+                if processed:
+                    result.append(' ')
+                    result.append(processed)
 
             pos = scan
 
@@ -2302,6 +2469,9 @@ class DocumentService:
 
         # Pass 2: IF / ELSE conditionals
         merged = DocumentService._process_if_blocks(merged, answer_map, raw_answer_map)
+
+        # Pass 2.5: SWITCH / CASE blocks
+        merged = DocumentService._process_switch_blocks(merged, answer_map, raw_answer_map)
 
         # Pass 3: [[ ... ]] conditional sections
         merged = DocumentService._process_conditional_sections(merged, answer_map, raw_answer_map)
