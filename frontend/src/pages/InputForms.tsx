@@ -358,6 +358,7 @@ const FormInput = styled.input`
   }
 `
 
+// Stable key for a conditional branch join/skip choice.
 const US_STATES = [
   { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' }, { value: 'AZ', label: 'Arizona' },
   { value: 'AR', label: 'Arkansas' }, { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
@@ -802,10 +803,23 @@ const InputForms: React.FC = () => {
   }
 
   // Shared conditional evaluation: supports equals, not_equals, any_equals, none_equals, count_greater_than, count_equals, count_less_than
+  // Strip HTML tags and decode entities for plain-text conditional comparison
+  const stripHtmlForCompare = (html: string): string => {
+    if (!html || !html.includes('<')) return html.trim()
+    try {
+      const div = document.createElement('div')
+      div.innerHTML = html
+      return (div.textContent || div.innerText || '').trim()
+    } catch {
+      return html.replace(/<[^>]*>/g, '').trim()
+    }
+  }
+
   const evaluateConditional = (operator: string | undefined, answer: string, triggerValue: string, fullAnswer?: string): boolean => {
     const op = operator || 'equals'
-    if (op === 'equals') return answer === triggerValue
-    if (op === 'not_equals') return answer !== triggerValue
+    const plainAnswer = stripHtmlForCompare(answer)
+    if (op === 'equals') return plainAnswer === triggerValue
+    if (op === 'not_equals') return plainAnswer !== triggerValue
     if (op === 'any_equals' || op === 'none_equals') {
       // any_equals / none_equals: check if ANY or NONE of the repeatable group instances match
       const source = fullAnswer !== undefined ? fullAnswer : answer
@@ -813,12 +827,12 @@ const InputForms: React.FC = () => {
       try {
         const parsed = JSON.parse(source)
         if (Array.isArray(parsed)) {
-          values = parsed.map((v: any) => (v != null ? String(v) : ''))
+          values = parsed.map((v: any) => stripHtmlForCompare(v != null ? String(v) : ''))
         } else {
-          values = [source]
+          values = [stripHtmlForCompare(source)]
         }
       } catch {
-        values = [source]
+        values = [stripHtmlForCompare(source)]
       }
       const anyMatch = values.some(v => v === triggerValue)
       return op === 'any_equals' ? anyMatch : !anyMatch
@@ -2085,7 +2099,7 @@ const InputForms: React.FC = () => {
                   handleAnswerBlur(question.id, newValue)
                 }
               }}
-              placeholder="Enter your answer... Use Tab for tabs, alignment buttons for text alignment."
+              placeholder="Enter your answer..."
               height="200px"
             />
           </div>
@@ -3426,11 +3440,9 @@ const InputForms: React.FC = () => {
                                   ? getRepeatableAnswerArray(setQuestion.id)[instanceIdx] || ''
                                   : answers[setQuestion.id] || ''
 
-                                // Find matching conditional follow-ups for this instance's answer
+                                // All conditional follow-ups — show based on user_opt_in flag + trigger
                                 const fullRawAnswer = answers[setQuestion.id] || ''
-                                const matchingFollowups = setQuestion.conditional_followups?.filter(fu => {
-                                  return evaluateConditional(fu.operator, instanceAnswer, fu.trigger_value, fullRawAnswer)
-                                }) || []
+                                const matchingFollowups = setQuestion.conditional_followups || []
 
                                 return (
                                   <React.Fragment key={setQuestion.id}>
@@ -3608,13 +3620,17 @@ const InputForms: React.FC = () => {
                                         })
                                       }
 
-                                      // Collect all follow-up questions, grouping repeatable ones by group ID
-                                      const allFuQuestions = matchingFollowups.flatMap(fu => fu.questions)
-                                      const renderedFuGroups = new Set<string>()
-                                      let fuQCounter = 0
-                                      // Capture instanceIdx by value to avoid closure issues
+                                      // Auto-show conditional follow-ups based on trigger
                                       const capturedInstanceIdx = instanceIdx
-                                      return allFuQuestions.map(fq => {
+                                      return matchingFollowups.map((fu, fuBranchIdx) => {
+                                        const repTriggerFires = evaluateConditional(fu.operator, instanceAnswer, fu.trigger_value, fullRawAnswer)
+                                        if (!repTriggerFires) return null
+                                        const allFuQuestions = fu.questions
+                                        const renderedFuGroups = new Set<string>()
+                                        let fuQCounter = 0
+                                        return (
+                                          <React.Fragment key={`fu-auto-${fuBranchIdx}-${capturedInstanceIdx}`}>
+                                            {allFuQuestions.map(fq => {
                                         if (!fq.repeatable) {
                                           fuQCounter++
                                           const fuLabel = (fq.hierarchical_number ? adjustNumber(fq.hierarchical_number, capturedInstanceIdx) : '') || `${setQLabel}-${fuQCounter}`
@@ -3898,6 +3914,9 @@ const InputForms: React.FC = () => {
                                               Add Another ({(fuSetQuestions[0] as any)?.hierarchical_number || fuRepLabel})
                                             </button>
                                           </div>
+                                        )
+                                      })}
+                                          </React.Fragment>
                                         )
                                       })
                                     })()}

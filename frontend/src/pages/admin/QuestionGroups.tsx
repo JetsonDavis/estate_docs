@@ -2728,7 +2728,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     }
   }
 
-  const updateConditionalValue = (itemId: string, field: 'ifIdentifier' | 'value' | 'operator', value: string) => {
+  const updateConditionalValue = (itemId: string, field: 'ifIdentifier' | 'value' | 'operator' | 'userOptIn', value: string | boolean) => {
     const updateItem = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
       return items.map(item => {
         if (item.id === itemId && item.conditional) {
@@ -4276,6 +4276,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 })()}
               </div>
 
+
             </div>}
 
           {/* Insert buttons after Value dropdown, before nested items */}
@@ -4689,27 +4690,333 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             const nextQuestion = qIndex < mainLevelQuestions.length - 1 ? mainLevelQuestions[qIndex + 1] : null
             const nextInSameGroup = nextQuestion?.repeatable && nextQuestion?.repeatable_group_id === groupId && groupId !== null
 
+            // Pre-compute conditionals following this question (split by join/no-join)
+            const conditionalsAfterThisQ: { item: QuestionLogicItem; idx: number }[] = []
+            if (logicIndex >= 0) {
+              for (let ci = logicIndex + 1; ci < questionLogic.length; ci++) {
+                const qliTmp = questionLogic[ci]
+                if (qliTmp.type === 'question') break
+                if (qliTmp.type === 'conditional') conditionalsAfterThisQ.push({ item: qliTmp, idx: ci })
+              }
+            }
+            const renderConditionalBlockFn = (logicItem: QuestionLogicItem, logicIndex: number, condIndex: number): React.ReactNode => {
+                  // Use stored depth if available, otherwise default to 0 for root-level conditionals
+                  const conditionalDepth = logicItem.depth !== undefined ? logicItem.depth : 0
+                  
+                  return (
+                    <React.Fragment key={logicItem.id}>
+                    <div className="conditional-block" style={{
+                      marginTop: '0.5rem',
+                      padding: '1rem 1.5rem',
+                      border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
+                      borderRadius: '0.5rem',
+                      backgroundColor: getDepthBackgroundColor(conditionalDepth)
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`c-${logicItem.id}`) ? 0 : '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`c-${logicItem.id}`)}>
+                          <span style={{ fontSize: '0.65rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`c-${logicItem.id}`) ? '\u25B6' : '\u25BC'}</span>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
+                            Conditional ({qIndex + 1}-{condIndex + 1})
+                          </div>
+                          {collapsedItems.has(`c-${logicItem.id}`) && (
+                            <div style={{ marginLeft: '0.5rem' }}>{renderConditionalSummary(logicItem)}</div>
+                          )}
+                          {(() => {
+                            const selIdent = logicItem.conditional?.ifIdentifier || question?.identifier || ''
+                            const selQ = questions.find(q => q.identifier === selIdent)
+                            if (!selQ?.repeatable) return null
+                            const optIn = logicItem.conditional?.userOptIn ?? false
+                            return (
+                              <div style={{ display: 'flex', gap: '0.4rem', marginLeft: '0.75rem' }} onClick={e => e.stopPropagation()}>
+                                <label style={{
+                                  display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '0.7rem',
+                                  padding: '0.15rem 0.5rem', borderRadius: '0.3rem', whiteSpace: 'nowrap',
+                                  border: `1px solid ${!optIn ? '#6b7280' : '#d1d5db'}`,
+                                  background: !optIn ? '#f3f4f6' : '#fff', color: !optIn ? '#374151' : '#9ca3af'
+                                }}>
+                                  <input type="radio" name={`oi-${logicItem.id}`} checked={!optIn}
+                                    onChange={() => updateConditionalValue(logicItem.id, 'userOptIn', false)} />
+                                  Don't Join Repeatable Group
+                                </label>
+                                <label style={{
+                                  display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '0.7rem',
+                                  padding: '0.15rem 0.5rem', borderRadius: '0.3rem', whiteSpace: 'nowrap',
+                                  border: `1px solid ${optIn ? '#2563eb' : '#d1d5db'}`,
+                                  background: optIn ? '#eff6ff' : '#fff', color: optIn ? '#1d4ed8' : '#9ca3af'
+                                }}>
+                                  <input type="radio" name={`oi-${logicItem.id}`} checked={optIn}
+                                    onChange={() => updateConditionalValue(logicItem.id, 'userOptIn', true)} />
+                                  Join Repeatable Group
+                                </label>
+                              </div>
+                            )
+                          })()}
+                        </div>
+              
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          {/* Right arrow - move root-level conditional into nearest conditional above in questionLogic */}
+                          {canMoveQuestionRight(logicIndex) && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); moveConditionalRight(logicIndex) }}
+                              style={{
+                                background: 'none',
+                                border: '1px solid #9ca3af',
+                                borderRadius: '0.25rem',
+                                padding: '0.15rem 0.25rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#6b7280'
+                              }}
+                              title="Move conditional one level right (into conditional above)"
+                            >
+                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeLogicItem(logicItem.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: '0.25rem',
+                              cursor: 'pointer',
+                              color: '#dc2626'
+                            }}
+                            title="Remove conditional"
+                          >
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {/* If identifier - dropdown of all questions */}
+                        <div>
+                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
+                            If identifier
+                          </label>
+                          <select
+                            value={logicItem.conditional?.ifIdentifier || question.identifier}
+                            onChange={(e) => updateConditionalValue(logicItem.id, 'ifIdentifier', e.target.value)}
+                            className="form-select"
+                            style={{ fontSize: '0.875rem' }}
+                          >
+                            {questions.filter(q => q.identifier.trim()).map(q => (
+                              <option key={q.id} value={q.identifier}>
+                                {q.identifier}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Operator dropdown */}
+                        <div>
+                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
+                            Operator
+                          </label>
+                          {(() => {
+                            // Find the selected question by ifIdentifier to check if it's repeatable
+                            const selectedIdentifier = logicItem.conditional?.ifIdentifier || question?.identifier || ''
+                            const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
+                            const isRepeatable = selectedQuestion?.repeatable || false
+                            
+                            return (
+                              <select
+                                value={logicItem.conditional?.operator || 'equals'}
+                                onChange={(e) => updateConditionalValue(logicItem.id, 'operator', e.target.value)}
+                                className="form-select"
+                                style={{ fontSize: '0.875rem' }}
+                              >
+                                <option value="equals">equals</option>
+                                <option value="not_equals">does not equal</option>
+                                {isRepeatable && (
+                                  <>
+                                    <option value="any_equals">if any equals</option>
+                                    <option value="none_equals">if none equals</option>
+                                    <option value="count_greater_than">entry count &gt;</option>
+                                    <option value="count_equals">entry count =</option>
+                                    <option value="count_less_than">entry count &lt;</option>
+                                  </>
+                                )}
+                              </select>
+                            )
+                          })()}
+                        </div>
+
+                        {/* Value - based on question type */}
+                        <div>
+                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
+                            Value
+                          </label>
+                          {(() => {
+                            const currentOperator = logicItem.conditional?.operator || 'equals'
+                            const isCountOperator = ['count_greater_than', 'count_equals', 'count_less_than'].includes(currentOperator)
+                            
+                            // If count operator, show numeric input
+                            if (isCountOperator) {
+                              return (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem', width: '80px' }}
+                                  placeholder="0"
+                                />
+                              )
+                            }
+                            
+                            // Find the selected question by ifIdentifier to get its type and options
+                            const selectedIdentifier = logicItem.conditional?.ifIdentifier || question?.identifier || ''
+                            const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
+                            const isChoiceType = selectedQuestion && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(selectedQuestion.question_type)
+                            const isPersonType = selectedQuestion && selectedQuestion.question_type === 'person'
+                            const isDateType = selectedQuestion && selectedQuestion.question_type === 'date'
+
+                            if (isDateType) {
+                              return (
+                                <input
+                                  type="date"
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem' }}
+                                />
+                              )
+                            } else if (isChoiceType && selectedQuestion.options && Array.isArray(selectedQuestion.options)) {
+                              return (
+                                <select
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
+                                  className="form-select"
+                                  style={{ fontSize: '0.875rem' }}
+                                >
+                                  <option value="">Select value...</option>
+                                  {selectedQuestion.options.map((opt: any, idx: number) => {
+                                    const optionValue = opt.value || opt.label
+                                    return (
+                                      <option key={optionValue || `opt-${idx}`} value={optionValue}>
+                                        {opt.label}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                              )
+                            } else if (isPersonType) {
+                              return (
+                                <PersonTypeahead
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(value) => updateConditionalValue(logicItem.id, 'value', value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem' }}
+                                  placeholder="Type to search people..."
+                                  id={`people-list-${logicItem.id}`}
+                                />
+                              )
+                            } else {
+                              return (
+                                <input
+                                  type="text"
+                                  value={logicItem.conditional?.value || ''}
+                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
+                                  className="form-input"
+                                  style={{ fontSize: '0.875rem' }}
+                                  placeholder="Enter value"
+                                />
+                              )
+                            }
+                          })()}
+                        </div>
+
+                      </div>}
+
+                      {/* Insert buttons after Value dropdown, before nested items */}
+                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        marginTop: '0.5rem',
+                        marginBottom: '0.25rem'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => insertNestedQuestionBeforeIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], 1)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.65rem',
+                            background: 'white',
+                            color: '#2563eb',
+                            border: '1px dashed #2563eb',
+                            borderRadius: '0.25rem',
+                            cursor: 'pointer',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                          title="Insert a question inside this conditional"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Insert Question
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addConditionalToLogicAtIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], question)
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.65rem',
+                            background: 'white',
+                            color: '#7c3aed',
+                            border: '1px dashed #7c3aed',
+                            borderRadius: '0.25rem',
+                            cursor: 'pointer',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                          title="Insert a conditional inside this conditional"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Insert Conditional
+                        </button>
+                      </div>}
+
+                      {/* Nested items - always visible even when conditional is collapsed */}
+                      {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
+                        <div style={{ marginTop: collapsedItems.has(`c-${logicItem.id}`) ? '0.25rem' : '0.5rem' }}>
+                          {renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)}
+                        </div>
+                      )}
+
+                    </div>
+
+                    </React.Fragment>
+                  )
+            }
+
             return (
-            <div key={question.id} style={{ position: 'relative' }}>
-              {/* Repeatable group bracket */}
-              {groupColor && (
-                <div style={{
-                  position: 'absolute',
-                  left: '-10px',
-                  top: prevInSameGroup ? '-6px' : '40px',
-                  bottom: nextInSameGroup ? '-6px' : '12px',
-                  width: '10px',
-                  borderLeft: `3px solid ${groupColor}`,
-                  borderTop: !prevInSameGroup ? `3px solid ${groupColor}` : 'none',
-                  borderBottom: !nextInSameGroup ? `3px solid ${groupColor}` : 'none',
-                  borderRight: 'none',
-                  borderRadius: !prevInSameGroup && !nextInSameGroup ? '4px 0 0 4px'
-                    : !prevInSameGroup ? '4px 0 0 0'
-                    : !nextInSameGroup ? '0 0 0 4px'
-                    : '0',
-                  zIndex: 1
-                }} />
-              )}
+            <div key={question.id}>
             {/* Insert buttons above first question only; for others, the previous question's bottom buttons handle it */}
               {qIndex === 0 && <div style={{
                 display: 'flex',
@@ -4772,6 +5079,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                   Insert Conditional
                 </button>
               </div>}
+            <div style={{ position: 'relative' }}>
+              {/* Repeatable group bracket */}
+              {groupColor && (
+                <div style={{
+                  position: 'absolute',
+                  left: '-10px',
+                  top: prevInSameGroup ? '-6px' : '40px',
+                  bottom: nextInSameGroup ? '-6px' : '12px',
+                  width: '10px',
+                  borderLeft: `3px solid ${groupColor}`,
+                  borderTop: !prevInSameGroup ? `3px solid ${groupColor}` : 'none',
+                  borderBottom: !nextInSameGroup ? `3px solid ${groupColor}` : 'none',
+                  borderRight: 'none',
+                  borderRadius: !prevInSameGroup && !nextInSameGroup ? '4px 0 0 4px'
+                    : !prevInSameGroup ? '4px 0 0 0'
+                    : !nextInSameGroup ? '0 0 0 4px'
+                    : '0',
+                  zIndex: 1
+                }} />
+              )}
             <QuestionBuilder className="question-builder" $flash={flashingQuestions.has(question.id) ? flashingQuestions.get(question.id) : undefined} style={isCollapsed ? { marginBottom: '3px' } : undefined}>
               <QuestionBuilderHeader style={isCollapsed ? { marginBottom: 0 } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`q-${question.id}`)}>
@@ -5270,313 +5597,16 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               </div>}
 
             </QuestionBuilder>
+            {/* Join Repeatable Group conditionals - inside bracket scope */}
+            {conditionalsAfterThisQ.filter(c => c.item.conditional?.userOptIn === true).map(({ item: logicItem, idx: logicIndex }) =>
+              renderConditionalBlockFn(logicItem, logicIndex, conditionalsAfterThisQ.findIndex(c => c.idx === logicIndex))
+            )}
+            </div>
+            {/* Don't Join conditionals - outside bracket scope */}
+            {conditionalsAfterThisQ.filter(c => c.item.conditional?.userOptIn !== true).map(({ item: logicItem, idx: logicIndex }) =>
+              renderConditionalBlockFn(logicItem, logicIndex, conditionalsAfterThisQ.findIndex(c => c.idx === logicIndex))
+            )}
 
-              {/* Render conditionals that follow this question in questionLogic */}
-              {(() => {
-                // Find the index of this question in questionLogic
-                const thisQuestionLogicIndex = questionLogic.findIndex(item =>
-                  item.type === 'question' &&
-                  isLogicItemForQuestion(item, question)
-                )
-                
-                // Find conditionals that come after this question but before the next question
-                const conditionalsAfterQuestion: { item: QuestionLogicItem; idx: number }[] = []
-                if (thisQuestionLogicIndex >= 0) {
-                  for (let i = thisQuestionLogicIndex + 1; i < questionLogic.length; i++) {
-                    const item = questionLogic[i]
-                    if (item.type === 'question') break // Stop at next question
-                    if (item.type === 'conditional') {
-                      conditionalsAfterQuestion.push({ item, idx: i })
-                    }
-                  }
-                }
-                
-                return conditionalsAfterQuestion.map(({ item: logicItem, idx: logicIndex }, condIndex) => {
-                  // Use stored depth if available, otherwise default to 0 for root-level conditionals
-                  const conditionalDepth = logicItem.depth !== undefined ? logicItem.depth : 0
-                  
-                  return (
-                    <React.Fragment key={logicItem.id}>
-                    <div className="conditional-block" style={{
-                      marginTop: '0.5rem',
-                      padding: '1rem 1.5rem',
-                      border: `1px solid ${getDepthBorderColor(conditionalDepth)}`,
-                      borderRadius: '0.5rem',
-                      backgroundColor: getDepthBackgroundColor(conditionalDepth)
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedItems.has(`c-${logicItem.id}`) ? 0 : '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, cursor: 'pointer' }} onClick={() => toggleCollapsed(`c-${logicItem.id}`)}>
-                          <span style={{ fontSize: '0.65rem', flexShrink: 0, color: '#6b7280' }}>{collapsedItems.has(`c-${logicItem.id}`) ? '\u25B6' : '\u25BC'}</span>
-                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: getDepthTextColor(conditionalDepth) }}>
-                            Conditional ({qIndex + 1}-{condIndex + 1})
-                          </div>
-                          {collapsedItems.has(`c-${logicItem.id}`) && (
-                            <div style={{ marginLeft: '0.5rem' }}>{renderConditionalSummary(logicItem)}</div>
-                          )}
-                        </div>
-              
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          {/* Right arrow - move root-level conditional into nearest conditional above in questionLogic */}
-                          {canMoveQuestionRight(logicIndex) && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); moveConditionalRight(logicIndex) }}
-                              style={{
-                                background: 'none',
-                                border: '1px solid #9ca3af',
-                                borderRadius: '0.25rem',
-                                padding: '0.15rem 0.25rem',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#6b7280'
-                              }}
-                              title="Move conditional one level right (into conditional above)"
-                            >
-                              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => removeLogicItem(logicItem.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: '0.25rem',
-                              cursor: 'pointer',
-                              color: '#dc2626'
-                            }}
-                            title="Remove conditional"
-                          >
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem' }}>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {/* If identifier - dropdown of all questions */}
-                        <div>
-                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                            If identifier
-                          </label>
-                          <select
-                            value={logicItem.conditional?.ifIdentifier || question.identifier}
-                            onChange={(e) => updateConditionalValue(logicItem.id, 'ifIdentifier', e.target.value)}
-                            className="form-select"
-                            style={{ fontSize: '0.875rem' }}
-                          >
-                            {questions.filter(q => q.identifier.trim()).map(q => (
-                              <option key={q.id} value={q.identifier}>
-                                {q.identifier}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Operator dropdown */}
-                        <div>
-                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                            Operator
-                          </label>
-                          {(() => {
-                            // Find the selected question by ifIdentifier to check if it's repeatable
-                            const selectedIdentifier = logicItem.conditional?.ifIdentifier || question?.identifier || ''
-                            const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
-                            const isRepeatable = selectedQuestion?.repeatable || false
-                            
-                            return (
-                              <select
-                                value={logicItem.conditional?.operator || 'equals'}
-                                onChange={(e) => updateConditionalValue(logicItem.id, 'operator', e.target.value)}
-                                className="form-select"
-                                style={{ fontSize: '0.875rem' }}
-                              >
-                                <option value="equals">equals</option>
-                                <option value="not_equals">does not equal</option>
-                                {isRepeatable && (
-                                  <>
-                                    <option value="any_equals">if any equals</option>
-                                    <option value="none_equals">if none equals</option>
-                                    <option value="count_greater_than">entry count &gt;</option>
-                                    <option value="count_equals">entry count =</option>
-                                    <option value="count_less_than">entry count &lt;</option>
-                                  </>
-                                )}
-                              </select>
-                            )
-                          })()}
-                        </div>
-
-                        {/* Value - based on question type */}
-                        <div>
-                          <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>
-                            Value
-                          </label>
-                          {(() => {
-                            const currentOperator = logicItem.conditional?.operator || 'equals'
-                            const isCountOperator = ['count_greater_than', 'count_equals', 'count_less_than'].includes(currentOperator)
-                            
-                            // If count operator, show numeric input
-                            if (isCountOperator) {
-                              return (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={logicItem.conditional?.value || ''}
-                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
-                                  className="form-input"
-                                  style={{ fontSize: '0.875rem', width: '80px' }}
-                                  placeholder="0"
-                                />
-                              )
-                            }
-                            
-                            // Find the selected question by ifIdentifier to get its type and options
-                            const selectedIdentifier = logicItem.conditional?.ifIdentifier || question?.identifier || ''
-                            const selectedQuestion = questions.find(q => q.identifier === selectedIdentifier)
-                            const isChoiceType = selectedQuestion && ['multiple_choice', 'dropdown', 'checkbox_group'].includes(selectedQuestion.question_type)
-                            const isPersonType = selectedQuestion && selectedQuestion.question_type === 'person'
-                            const isDateType = selectedQuestion && selectedQuestion.question_type === 'date'
-
-                            if (isDateType) {
-                              return (
-                                <input
-                                  type="date"
-                                  value={logicItem.conditional?.value || ''}
-                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
-                                  className="form-input"
-                                  style={{ fontSize: '0.875rem' }}
-                                />
-                              )
-                            } else if (isChoiceType && selectedQuestion.options && Array.isArray(selectedQuestion.options)) {
-                              return (
-                                <select
-                                  value={logicItem.conditional?.value || ''}
-                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
-                                  className="form-select"
-                                  style={{ fontSize: '0.875rem' }}
-                                >
-                                  <option value="">Select value...</option>
-                                  {selectedQuestion.options.map((opt: any, idx: number) => {
-                                    const optionValue = opt.value || opt.label
-                                    return (
-                                      <option key={optionValue || `opt-${idx}`} value={optionValue}>
-                                        {opt.label}
-                                      </option>
-                                    )
-                                  })}
-                                </select>
-                              )
-                            } else if (isPersonType) {
-                              return (
-                                <PersonTypeahead
-                                  value={logicItem.conditional?.value || ''}
-                                  onChange={(value) => updateConditionalValue(logicItem.id, 'value', value)}
-                                  className="form-input"
-                                  style={{ fontSize: '0.875rem' }}
-                                  placeholder="Type to search people..."
-                                  id={`people-list-${logicItem.id}`}
-                                />
-                              )
-                            } else {
-                              return (
-                                <input
-                                  type="text"
-                                  value={logicItem.conditional?.value || ''}
-                                  onChange={(e) => updateConditionalValue(logicItem.id, 'value', e.target.value)}
-                                  className="form-input"
-                                  style={{ fontSize: '0.875rem' }}
-                                  placeholder="Enter value"
-                                />
-                              )
-                            }
-                          })()}
-                        </div>
-
-                      </div>}
-
-                      {/* Insert buttons after Value dropdown, before nested items */}
-                      {!collapsedItems.has(`c-${logicItem.id}`) && <div style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        gap: '0.5rem',
-                        marginTop: '0.5rem',
-                        marginBottom: '0.25rem'
-                      }}>
-                        <button
-                          type="button"
-                          onClick={() => insertNestedQuestionBeforeIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], 1)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.2rem 0.5rem',
-                            fontSize: '0.65rem',
-                            background: 'white',
-                            color: '#2563eb',
-                            border: '1px dashed #2563eb',
-                            borderRadius: '0.25rem',
-                            cursor: 'pointer',
-                            opacity: 0.7,
-                            transition: 'opacity 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                          title="Insert a question inside this conditional"
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Insert Question
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            addConditionalToLogicAtIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], question)
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.2rem 0.5rem',
-                            fontSize: '0.65rem',
-                            background: 'white',
-                            color: '#7c3aed',
-                            border: '1px dashed #7c3aed',
-                            borderRadius: '0.25rem',
-                            cursor: 'pointer',
-                            opacity: 0.7,
-                            transition: 'opacity 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-                          title="Insert a conditional inside this conditional"
-                        >
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.65rem', height: '0.65rem' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Insert Conditional
-                        </button>
-                      </div>}
-
-                      {/* Nested items - always visible even when conditional is collapsed */}
-                      {logicItem.conditional?.nestedItems && logicItem.conditional.nestedItems.length > 0 && (
-                        <div style={{ marginTop: collapsedItems.has(`c-${logicItem.id}`) ? '0.25rem' : '0.5rem' }}>
-                          {renderNestedItems(logicItem.conditional.nestedItems, [logicIndex], 1, question, `${qIndex + 1}-${condIndex + 1}`)}
-                        </div>
-                      )}
-
-                    </div>
-
-                    </React.Fragment>
-                  )
-                })
-              })()}
             </div>
           )})
           })()}

@@ -77,6 +77,7 @@ export interface ConditionalFollowup {
   trigger_value: string
   operator: string
   questions: ConditionalFollowupQuestion[]
+  user_opt_in?: boolean  // when true, show join/skip radios to the user in the input form
 }
 
 export interface QuestionToDisplay {

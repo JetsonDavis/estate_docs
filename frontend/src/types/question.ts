@@ -80,6 +80,7 @@ export interface QuestionLogicItem {
     value: string
     nestedItems: QuestionLogicItem[]
     endFlow?: boolean
+    userOptIn?: boolean  // when true, user must explicitly join this group in the input form
   }
   depth?: number
 }

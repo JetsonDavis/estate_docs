@@ -97,6 +97,7 @@ class ConditionalFollowup(BaseModel):
     trigger_value: str
     operator: str = "equals"
     questions: List[ConditionalFollowupQuestion]
+    user_opt_in: bool = False  # when True, input form shows join/skip radios to the user
 
 
 # Resolve forward reference for the circular dependency

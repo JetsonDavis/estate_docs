@@ -531,7 +531,8 @@ class SessionService:
                     cond_followups.append(ConditionalFollowup(
                         trigger_value=fu['trigger_value'],
                         operator=fu['operator'],
-                        questions=fu_questions
+                        questions=fu_questions,
+                        user_opt_in=fu.get('user_opt_in', False)
                     ))
 
             question_responses.append(QuestionToDisplay(
@@ -982,13 +983,15 @@ class SessionService:
                         followup_questions = collect_nested_questions(nested_items)
 
                         if followup_questions:
+                            user_opt_in = bool(cond.get('userOptIn', False))
                             # Always collect into all_followups for answer deletion
                             if parent_q_id not in all_followups:
                                 all_followups[parent_q_id] = []
                             all_followups[parent_q_id].append({
                                 'trigger_value': expected_value,
                                 'operator': operator,
-                                'questions': followup_questions
+                                'questions': followup_questions,
+                                'user_opt_in': user_opt_in
                             })
                             # Also collect into repeatable_followups if it's a repeatable question
                             if identifier in repeatable_identifier_to_question_id:
@@ -997,7 +1000,8 @@ class SessionService:
                                 repeatable_followups[parent_q_id].append({
                                     'trigger_value': expected_value,
                                     'operator': operator,
-                                    'questions': followup_questions
+                                    'questions': followup_questions,
+                                    'user_opt_in': user_opt_in
                                 })
                             _logger.debug(f"{indent}  Collected {len(followup_questions)} follow-up questions for q_id={parent_q_id}, trigger='{expected_value}'")
 
