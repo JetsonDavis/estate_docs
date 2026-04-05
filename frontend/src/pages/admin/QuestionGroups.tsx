@@ -4932,7 +4932,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       }}>
                         <button
                           type="button"
-                          onClick={() => insertNestedQuestionBeforeIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], 1)}
+                          onClick={() => insertNestedQuestionBeforeIndex(0, [logicIndex], 1)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -4959,7 +4959,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         <button
                           type="button"
                           onClick={() => {
-                            addConditionalToLogicAtIndex(logicItem.conditional?.nestedItems?.length || 0, [logicIndex], question)
+                            addConditionalToLogicAtIndex(-1, [logicIndex], question)
                           }}
                           style={{
                             display: 'flex',
