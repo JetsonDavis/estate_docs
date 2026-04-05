@@ -1148,14 +1148,22 @@ function normalizeGroupData(groupData: any): {
   let fixedLogic = fixUndefinedQuestionIds(groupData.question_logic)
   fixedLogic = stripConditionalNamespaces(fixedLogic)
 
-  // Recursively clean orphaned question items from logic
+  // After syncQuestionIds and fixUndefinedQuestionIds have run, build the set of valid local IDs
+  // (question.id values that correspond to real DB questions)
+  const validLocalIds = new Set(questions.map(q => q.id).filter(Boolean) as string[])
+
+  // Recursively clean orphaned question items from logic.
+  // Items with a questionId must reference a valid DB question.
+  // Items with only a localQuestionId (no questionId) must reference a question that
+  // actually exists in the questions array – otherwise they are stale orphans from a
+  // previous session whose corresponding question was never saved.
   const cleanOrphanedItems = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
     return items
       .filter(item => {
         if (item.type === 'question') {
           if (item.questionId && validQuestionIds.has(item.questionId)) return true
-          const localId = item.localQuestionId
-          if (!item.questionId && localId) return true
+          const localId = item.localQuestionId as string | undefined
+          if (!item.questionId && localId && validLocalIds.has(localId)) return true
           return false
         }
         return true
@@ -1199,8 +1207,9 @@ function normalizeGroupData(groupData: any): {
     return count
   }
 
+  // Compare against cleanedLogic so orphan-item removal also triggers a DB save
   const wasFixed =
-    JSON.stringify(groupData.question_logic) !== JSON.stringify(fixedLogic)
+    JSON.stringify(groupData.question_logic) !== JSON.stringify(cleanedLogic)
 
   const questionIdsInLogic = getQuestionIdsFromLogic(cleanedLogic)
   const totalSlots = countQuestionSlotsInLogic(cleanedLogic)
@@ -2495,6 +2504,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       is_required: false,
       options: []
     }
+
+    // Mark as nested IMMEDIATELY so mainLevelQuestions filters it out before state updates settle
+    nestedQuestionIdsRef.current.add(newQuestion.id)
 
     // Add to questions array
     setQuestions(prev => [...prev, newQuestion])
@@ -3929,34 +3941,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               )}
             </div>
 
-            {/* Action buttons after nested question */}
-            {depth <= 10 && !collapsedItems.has(`nq-${nestedQuestion.id}`) && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginLeft: '1rem' }}>
-                {isLastQuestionInGroup && (
-                  <button
-                    type="button"
-                    onClick={() => addQuestionToLogic(itemIndex, parentPath)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.7rem',
-                      background: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Follow-on Question
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         )
       } else if (item.type === 'conditional' && item.conditional) {
@@ -5534,13 +5518,54 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Find the next question's logic index so we insert AFTER this question + its conditionals
-                    const startIdx = (logicIndex >= 0 ? logicIndex : 0) + 1
-                    let nextQLogicIndex = questionLogic.length
-                    for (let i = startIdx; i < questionLogic.length; i++) {
-                      if (questionLogic[i].type === 'question') { nextQLogicIndex = i; break }
+                    // Identify the next main-level question so we can insert before it.
+                    // We look it up inside the functional-update callbacks (prevLogic / prev)
+                    // to avoid stale-closure issues with questionLogic or questions.
+                    const nextQ = qIndex + 1 < mainLevelQuestions.length
+                      ? mainLevelQuestions[qIndex + 1]
+                      : null
+
+                    const newQuestion: QuestionFormData = {
+                      id: crypto.randomUUID(),
+                      question_text: '',
+                      question_type: 'free_text',
+                      identifier: '',
+                      repeatable: false,
+                      is_required: false,
+                      options: []
                     }
-                    insertQuestionBeforeIndex(nextQLogicIndex, qIndex + 1)
+                    flashQuestion(newQuestion.id, 'add')
+
+                    const newLogicItem: QuestionLogicItem = {
+                      id: crypto.randomUUID(),
+                      type: 'question',
+                      questionId: undefined,
+                      depth: 0
+                    }
+                    ;newLogicItem.localQuestionId = newQuestion.id
+
+                    const currentGroupId = savedGroupIdRef.current
+
+                    // Insert in questions array: before nextQ's position, or at end
+                    setQuestions(prev => {
+                      const insertAt = nextQ != null
+                        ? prev.findIndex(q => q.id === nextQ.id || (nextQ.dbId != null && q.dbId === nextQ.dbId))
+                        : -1
+                      const pos = insertAt >= 0 ? insertAt : prev.length
+                      return [...prev.slice(0, pos), newQuestion, ...prev.slice(pos)]
+                    })
+
+                    // Insert in questionLogic: before nextQ's logic item, or at end
+                    setQuestionLogic(prevLogic => {
+                      const insertAt = nextQ != null
+                        ? prevLogic.findIndex(item =>
+                            item.type === 'question' && isLogicItemForQuestion(item, nextQ))
+                        : -1
+                      const pos = insertAt >= 0 ? insertAt : prevLogic.length
+                      const newLogic = [...prevLogic.slice(0, pos), newLogicItem, ...prevLogic.slice(pos)]
+                      if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+                      return newLogic
+                    })
                   }}
                   style={{
                     display: 'flex',
@@ -5605,6 +5630,124 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
             {/* Don't Join conditionals - outside bracket scope */}
             {conditionalsAfterThisQ.filter(c => c.item.conditional?.userOptIn !== true).map(({ item: logicItem, idx: logicIndex }) =>
               renderConditionalBlockFn(logicItem, logicIndex, conditionalsAfterThisQ.findIndex(c => c.idx === logicIndex))
+            )}
+
+            {/* After-conditional insert buttons: let user insert at the main level below a conditional block */}
+            {conditionalsAfterThisQ.length > 0 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                marginTop: '0.75rem',
+                marginBottom: '0.25rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextQ = qIndex + 1 < mainLevelQuestions.length
+                      ? mainLevelQuestions[qIndex + 1]
+                      : null
+
+                    const newQuestion: QuestionFormData = {
+                      id: crypto.randomUUID(),
+                      question_text: '',
+                      question_type: 'free_text',
+                      identifier: '',
+                      repeatable: false,
+                      is_required: false,
+                      options: []
+                    }
+                    flashQuestion(newQuestion.id, 'add')
+
+                    const newLogicItem: QuestionLogicItem = {
+                      id: crypto.randomUUID(),
+                      type: 'question',
+                      questionId: undefined,
+                      depth: 0
+                    }
+                    ;newLogicItem.localQuestionId = newQuestion.id
+
+                    const currentGroupId = savedGroupIdRef.current
+
+                    setQuestions(prev => {
+                      const insertAt = nextQ != null
+                        ? prev.findIndex(q => q.id === nextQ.id || (nextQ.dbId != null && q.dbId === nextQ.dbId))
+                        : -1
+                      const pos = insertAt >= 0 ? insertAt : prev.length
+                      return [...prev.slice(0, pos), newQuestion, ...prev.slice(pos)]
+                    })
+
+                    setQuestionLogic(prevLogic => {
+                      const insertAt = nextQ != null
+                        ? prevLogic.findIndex(item =>
+                            item.type === 'question' && isLogicItemForQuestion(item, nextQ))
+                        : -1
+                      const pos = insertAt >= 0 ? insertAt : prevLogic.length
+                      const newLogic = [...prevLogic.slice(0, pos), newLogicItem, ...prevLogic.slice(pos)]
+                      if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
+                      return newLogic
+                    })
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#2563eb',
+                    border: '1px dashed #2563eb',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new question at this level"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Insert Question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextQ = qIndex + 1 < mainLevelQuestions.length
+                      ? mainLevelQuestions[qIndex + 1]
+                      : null
+                    addConditionalToLogic(
+                      logicIndex >= 0 ? logicIndex : qIndex,
+                      undefined,
+                      question,
+                      nextQ || undefined
+                    )
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.7rem',
+                    background: 'white',
+                    color: '#7c3aed',
+                    border: '1px dashed #7c3aed',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                  title="Insert a new conditional at this level"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.75rem', height: '0.75rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Insert Conditional
+                </button>
+              </div>
             )}
 
             </div>
