@@ -5632,7 +5632,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
               renderConditionalBlockFn(logicItem, logicIndex, conditionalsAfterThisQ.findIndex(c => c.idx === logicIndex))
             )}
 
-            {/* After-conditional insert buttons: let user insert at the main level below a conditional block */}
+            {/* After-conditional insert buttons: insert at the main level right after this question's last conditional */}
             {conditionalsAfterThisQ.length > 0 && (
               <div style={{
                 display: 'flex',
@@ -5644,9 +5644,9 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    const nextQ = qIndex + 1 < mainLevelQuestions.length
-                      ? mainLevelQuestions[qIndex + 1]
-                      : null
+                    // Use the last conditional's logic index so the new item lands
+                    // immediately after this question's conditional block, not at the end.
+                    const lastCondLogicIdx = conditionalsAfterThisQ[conditionalsAfterThisQ.length - 1].idx
 
                     const newQuestion: QuestionFormData = {
                       id: crypto.randomUUID(),
@@ -5669,20 +5669,11 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
                     const currentGroupId = savedGroupIdRef.current
 
-                    setQuestions(prev => {
-                      const insertAt = nextQ != null
-                        ? prev.findIndex(q => q.id === nextQ.id || (nextQ.dbId != null && q.dbId === nextQ.dbId))
-                        : -1
-                      const pos = insertAt >= 0 ? insertAt : prev.length
-                      return [...prev.slice(0, pos), newQuestion, ...prev.slice(pos)]
-                    })
+                    // Order in the questions array doesn't matter (display is sorted by logic)
+                    setQuestions(prev => [...prev, newQuestion])
 
                     setQuestionLogic(prevLogic => {
-                      const insertAt = nextQ != null
-                        ? prevLogic.findIndex(item =>
-                            item.type === 'question' && isLogicItemForQuestion(item, nextQ))
-                        : -1
-                      const pos = insertAt >= 0 ? insertAt : prevLogic.length
+                      const pos = Math.min(lastCondLogicIdx + 1, prevLogic.length)
                       const newLogic = [...prevLogic.slice(0, pos), newLogicItem, ...prevLogic.slice(pos)]
                       if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
                       return newLogic
@@ -5714,15 +5705,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    const nextQ = qIndex + 1 < mainLevelQuestions.length
-                      ? mainLevelQuestions[qIndex + 1]
-                      : null
-                    addConditionalToLogic(
-                      logicIndex >= 0 ? logicIndex : qIndex,
-                      undefined,
-                      question,
-                      nextQ || undefined
-                    )
+                    // Insert after the last conditional's index so the new conditional
+                    // lands immediately after this question's conditional block.
+                    const lastCondLogicIdx = conditionalsAfterThisQ[conditionalsAfterThisQ.length - 1].idx
+                    addConditionalToLogic(lastCondLogicIdx, undefined, question)
                   }}
                   style={{
                     display: 'flex',
