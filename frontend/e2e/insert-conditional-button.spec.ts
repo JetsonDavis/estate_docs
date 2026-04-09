@@ -158,14 +158,12 @@ test.describe('Insert Conditional Button', () => {
     // Gray background for depth 0: rgb(249, 250, 251)
     expect(newConditionalBgColor).toBe('rgb(249, 250, 251)')
 
-    // Verify the new conditional is placed directly ABOVE the second question,
-    // not directly below Q1 (which would place it before the existing conditional).
-    // The setup creates: Q1 -> Conditional(value=yes) -> Q2
-    // After insertion we expect: Q1 -> Conditional(value=yes) -> NEW Conditional -> Q2
-    // If the bug is present it would be: Q1 -> NEW Conditional -> Conditional(value=yes) -> Q2
+    // The "Insert Conditional" button at the bottom of Q1's card inserts at
+    // Q1_logicIndex + 1, placing the NEW conditional right after Q1 and BEFORE
+    // Q1's existing conditional. This gives the order:
+    //   Q1 -> NEW Conditional -> original Conditional(value=yes) -> Q2
     //
-    // We verify by collecting all conditional-block and question-builder elements in DOM order
-    // between Q1 and Q2, then checking that the LAST conditional before Q2 is the new one (empty nested identifier).
+    // We verify by checking the DOM order of conditional blocks between Q1 and Q2.
     const placement = await page.evaluate((uid: string) => {
       // Find Q1 and Q2 identifier inputs
       const allIdInputs = Array.from(document.querySelectorAll('input[placeholder*="full_name"]'))
@@ -181,35 +179,34 @@ test.describe('Insert Conditional Button', () => {
         return afterQ1 && beforeQ2
       })
 
-      // The last conditional between Q1 and Q2 should be the newly inserted one.
-      // The new conditional has a nested question with an EMPTY identifier (placeholder "nested_field").
-      // The original conditional has a nested question with identifier "nested_q_*".
-      const lastCond = conditionalsBetween[conditionalsBetween.length - 1]
-      const lastNestedIdInput = lastCond?.querySelector('input[placeholder*="nested_field"]') as HTMLInputElement | null
-      const lastNestedIdIsEmpty = lastNestedIdInput ? lastNestedIdInput.value === '' : false
-
+      // The FIRST conditional between Q1 and Q2 is the newly inserted one (empty nested identifier).
+      // The LAST conditional is the original one with identifier "nested_q_*".
       const firstCond = conditionalsBetween[0]
       const firstNestedIdInput = firstCond?.querySelector('input[placeholder*="nested_field"]') as HTMLInputElement | null
-      const firstNestedIdValue = firstNestedIdInput ? firstNestedIdInput.value : ''
+      const firstNestedIdIsEmpty = firstNestedIdInput ? firstNestedIdInput.value === '' : false
+
+      const lastCond = conditionalsBetween[conditionalsBetween.length - 1]
+      const lastNestedIdInput = lastCond?.querySelector('input[placeholder*="nested_field"]') as HTMLInputElement | null
+      const lastNestedIdValue = lastNestedIdInput ? lastNestedIdInput.value : ''
 
       return {
         conditionalsBetweenCount: conditionalsBetween.length,
-        lastConditionalNestedIdIsEmpty: lastNestedIdIsEmpty,
-        firstConditionalNestedId: firstNestedIdValue,
+        firstConditionalNestedIdIsEmpty: firstNestedIdIsEmpty,
+        lastConditionalNestedId: lastNestedIdValue,
       }
     }, uniqueId)
 
     // There should be at least 2 conditionals between Q1 and Q2
     expect((placement as any).conditionalsBetweenCount).toBeGreaterThanOrEqual(2)
-    // The LAST conditional before Q2 should be the new one (empty nested identifier)
-    expect(placement).toHaveProperty('lastConditionalNestedIdIsEmpty', true)
-    // The FIRST conditional should be the original one (with the filled nested_q_* identifier)
-    expect((placement as any).firstConditionalNestedId).toContain('nested_q_')
+    // The FIRST conditional after Q1 should be the new one (empty nested identifier)
+    expect(placement).toHaveProperty('firstConditionalNestedIdIsEmpty', true)
+    // The LAST conditional before Q2 should be the original one (with the filled nested_q_* identifier)
+    expect((placement as any).lastConditionalNestedId).toContain('nested_q_')
 
     console.log('Insert conditional at root level: passed')
   })
 
-  test('should insert follow-on conditional inside parent conditional', async ({ page }) => {
+  test('should insert conditional inside parent conditional via top-of-conditional button', async ({ page }) => {
     const uniqueId = Date.now().toString()
     await createGroupWithConditionalAndNestedQuestion(page, uniqueId)
 
@@ -218,10 +215,13 @@ test.describe('Insert Conditional Button', () => {
       return document.querySelectorAll('.conditional-block').length
     })
 
-    // Use "Add Follow-on Conditional" button inside the existing conditional
-    const followOnBtn = page.locator('button').filter({ hasText: 'Add Follow-on Conditional' }).first()
-    await followOnBtn.scrollIntoViewIfNeeded()
-    await followOnBtn.click()
+    // The "Add Follow-on Conditional" button was removed.
+    // Use "Insert a conditional inside this conditional" (the button in the conditional header
+    // area, between the header fields and the first nested item). It inserts at position 0
+    // within the nestedItems — i.e., before the first nested item.
+    const innerCondBtn = page.locator('button[title="Insert a conditional inside this conditional"]').first()
+    await innerCondBtn.scrollIntoViewIfNeeded()
+    await innerCondBtn.click()
 
     await page.waitForTimeout(1500)
 
@@ -230,13 +230,31 @@ test.describe('Insert Conditional Button', () => {
       return document.querySelectorAll('.conditional-block').length
     })
 
-    // Should have one more conditional block
+    // Should have one more conditional block (nested inside the outer one)
     expect(afterCount).toBe(beforeCount + 1)
 
-    // Verify we now have 2 conditional blocks visible
-    const conditionalBlocks = page.locator('.conditional-block')
-    expect(await conditionalBlocks.count()).toBeGreaterThanOrEqual(2)
+    // The outer conditional should now contain a nested conditional block
+    const outerCond = page.locator('.conditional-block').first()
+    const nestedCondInsideOuter = outerCond.locator('.conditional-block')
+    expect(await nestedCondInsideOuter.count()).toBeGreaterThanOrEqual(1)
 
-    console.log('Insert follow-on conditional: passed')
+    // The new nested conditional should appear BEFORE the existing nested question
+    // (because it was inserted at position 0 in nestedItems)
+    const firstNestedIsConditional = await page.evaluate((uid: string) => {
+      const outer = document.querySelector('.conditional-block')
+      if (!outer) return false
+      const children = Array.from(outer.querySelectorAll(':scope > div > *'))
+      // Find the first child that is either a nested conditional or a nested question input
+      for (const child of outer.querySelectorAll('.conditional-block, input[placeholder*="nested_field"]')) {
+        // If it's a conditional-block, the new conditional is first
+        if (child.classList.contains('conditional-block')) return true
+        // If it's a nested_field input, the original question came first (unexpected)
+        return false
+      }
+      return false
+    }, uniqueId)
+    expect(firstNestedIsConditional).toBe(true)
+
+    console.log('Insert conditional inside parent: passed')
   })
 })

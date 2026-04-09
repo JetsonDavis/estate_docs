@@ -7,6 +7,27 @@ from datetime import datetime
 import json
 import logging
 import math
+import re
+
+
+def _strip_html(text: str) -> str:
+    """Strip HTML tags and decode basic entities for plain-text conditional comparison.
+
+    RichTextEditor answers are stored as HTML (e.g. '<p>1</p>'). This helper
+    normalises them so backend conditional evaluation matches the same value a
+    user sees and the frontend already strips client-side.
+    """
+    if not text or '<' not in text:
+        return text.strip()
+    clean = re.sub(r'<[^>]+>', '', text)
+    clean = (clean
+             .replace('&amp;', '&')
+             .replace('&lt;', '<')
+             .replace('&gt;', '>')
+             .replace('&nbsp;', ' ')
+             .replace('&#39;', "'")
+             .replace('&quot;', '"'))
+    return clean.strip()
 
 _logger = logging.getLogger(__name__)
 
@@ -1014,6 +1035,11 @@ class SessionService:
                         if actual_value is None or actual_value == '':
                             _logger.debug(f"{indent}  Condition NOT MET (field is empty)")
                             continue
+
+                        # Strip HTML from the stored answer before comparison.
+                        # RichTextEditor (free_text) answers are stored as HTML like <p>1</p>.
+                        # Stripping normalises them to plain text so comparisons work correctly.
+                        actual_value = _strip_html(actual_value)
 
                         # Evaluate based on operator
                         if operator == 'not_equals':

@@ -8,8 +8,6 @@ import { personService } from '../services/personService'
 import PersonFormModal from '../components/common/PersonFormModal'
 import { useToast } from '../hooks/useToast'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import RichTextEditor from '../components/common/RichTextEditor'
-
 const spin = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -1269,41 +1267,72 @@ const InputForms: React.FC = () => {
       || false
     if (!isConditionalDependency) return
 
-    // Delete answers from ALL conditional branches that don't match the current value.
-    // This mirrors the logic in handleRadioChange.
+    // Derive instance index from synthetic ID
+    const blurInstanceIndex = questionId >= 100000 ? questionId % 100000 : 0
+
+    // Compute which base followup IDs are no longer triggered (used for non-repeatable
+    // deletion and for the server-refresh guard checks below).
     const allFollowupIds = collectFollowupQuestionIds(question)
     const newMatchIds = new Set(collectFollowupQuestionIds(question, currentValue))
     const idsToDelete = allFollowupIds.filter(id => !newMatchIds.has(id))
 
-    // Derive instance index from synthetic ID
-    const blurInstanceIndex = questionId >= 100000 ? questionId % 100000 : 0
+    // For repeatable parents, evaluating against the full JSON array string (e.g.
+    // '["test","tes"]') never matches a plain trigger value like "test", so idsToDelete
+    // would contain every followup ID even though some instances still match.
+    // Instead, evaluate each instance value separately and build the exact set of
+    // synthetic IDs that need to be cleared (instance-0 uses the real ID, instance-N
+    // uses id * 100000 + N).
+    let syntheticIdsToDelete: number[] = idsToDelete.map(id =>
+      blurInstanceIndex > 0 ? id * 100000 + blurInstanceIndex : id
+    )
+
+    if (question.repeatable && idsToDelete.length > 0) {
+      let instanceArr: string[] = []
+      try {
+        const parsed = JSON.parse(currentValue)
+        instanceArr = Array.isArray(parsed)
+          ? parsed.map((v: any) => (v == null ? '' : String(v)))
+          : [currentValue]
+      } catch {
+        instanceArr = currentValue ? [currentValue] : []
+      }
+      const perInstanceIds: number[] = []
+      instanceArr.forEach((instanceValue, idx) => {
+        const matchIds = new Set(collectFollowupQuestionIds(question, instanceValue))
+        for (const id of idsToDelete) {
+          if (!matchIds.has(id)) {
+            perInstanceIds.push(idx === 0 ? id : id * 100000 + idx)
+          }
+        }
+      })
+      syntheticIdsToDelete = perInstanceIds
+    }
 
     if (idsToDelete.length > 0) {
       if (question.repeatable) {
-        // For repeatable parents, followup answer rows are shared across instances.
-        // Only clear local state for THIS instance's synthetic IDs.
-        const syntheticIdsToDelete = idsToDelete.map(id => blurInstanceIndex > 0 ? id * 100000 + blurInstanceIndex : id)
-        setAnswers(prev => {
-          const updated = { ...prev }
-          for (const id of syntheticIdsToDelete) {
-            delete updated[id]
-          }
-          return updated
-        })
-        setPersonAnswers(prev => {
-          const updated = { ...prev }
-          for (const id of syntheticIdsToDelete) {
-            delete updated[id]
-          }
-          return updated
-        })
-        setPersonConjunctions(prev => {
-          const updated = { ...prev }
-          for (const id of syntheticIdsToDelete) {
-            delete updated[id]
-          }
-          return updated
-        })
+        if (syntheticIdsToDelete.length > 0) {
+          setAnswers(prev => {
+            const updated = { ...prev }
+            for (const id of syntheticIdsToDelete) {
+              delete updated[id]
+            }
+            return updated
+          })
+          setPersonAnswers(prev => {
+            const updated = { ...prev }
+            for (const id of syntheticIdsToDelete) {
+              delete updated[id]
+            }
+            return updated
+          })
+          setPersonConjunctions(prev => {
+            const updated = { ...prev }
+            for (const id of syntheticIdsToDelete) {
+              delete updated[id]
+            }
+            return updated
+          })
+        }
       } else {
         // Non-repeatable: delete from backend and clear local state
         try {
@@ -1348,11 +1377,10 @@ const InputForms: React.FC = () => {
       // Update session data with new questions
       setSessionData(data)
 
-      // For repeatable parents, deletions target synthetic IDs for the current instance,
-      // NOT the real IDs (which belong to instance 0 and must be preserved).
-      const effectiveIdsToDelete = question.repeatable && blurInstanceIndex > 0
-        ? idsToDelete.map(id => id * 100000 + blurInstanceIndex)
-        : idsToDelete
+      // For repeatable parents, syntheticIdsToDelete already contains the correct
+      // per-instance IDs (real ID for instance-0, synthetic for instance N).
+      // Non-repeatable questions use idsToDelete (real IDs).
+      const effectiveIdsToDelete = question.repeatable ? syntheticIdsToDelete : idsToDelete
 
       // Use functional updates to get current state and merge with new data
       setAnswers(currentAnswers => {
@@ -2068,41 +2096,32 @@ const InputForms: React.FC = () => {
 
       case 'free_text':
         return (
-          <div>
-            <RichTextEditor
-              value={value || ''}
-              onChange={(newValue) => {
-                handleValueChange(newValue)
-                // Auto-save on change with debounce handled by the component
-                // For repeatable questions, save the entire array to avoid overwriting other instances
-                if (question.repeatable) {
-                  const currentValue = answers[question.id] || ''
-                  let currentArray: string[]
-                  try {
-                    const parsed = JSON.parse(currentValue)
-                    currentArray = Array.isArray(parsed) ? parsed : [currentValue]
-                  } catch {
-                    currentArray = currentValue ? [currentValue] : ['']
-                  }
-
-                  const updated = [...currentArray]
-                  // Ensure array is long enough
-                  while (updated.length <= instanceIndex) {
-                    updated.push('')
-                  }
-                  updated[instanceIndex] = newValue
-
-                  handleAnswerBlur(question.id, JSON.stringify(updated))
-                } else {
-                  // handleAnswerBlur handles array-building for non-repeatable
-                  // followups inside repeatable parents (synthetic IDs)
-                  handleAnswerBlur(question.id, newValue)
+          <QuestionTextarea
+            value={value || ''}
+            onChange={(e) => handleValueChange(e.target.value)}
+            onBlur={(e) => {
+              if (question.repeatable) {
+                const currentValue = answers[question.id] || ''
+                let currentArray: string[]
+                try {
+                  const parsed = JSON.parse(currentValue)
+                  currentArray = Array.isArray(parsed) ? parsed : [currentValue]
+                } catch {
+                  currentArray = currentValue ? [currentValue] : ['']
                 }
-              }}
-              placeholder="Enter your answer..."
-              height="200px"
-            />
-          </div>
+                const updated = [...currentArray]
+                while (updated.length <= instanceIndex) {
+                  updated.push('')
+                }
+                updated[instanceIndex] = e.target.value
+                handleAnswerBlur(question.id, JSON.stringify(updated))
+              } else {
+                handleAnswerBlur(question.id, e.target.value)
+              }
+            }}
+            placeholder="Enter your answer..."
+            rows={4}
+          />
         )
 
       case 'date':

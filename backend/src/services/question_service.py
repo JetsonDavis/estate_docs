@@ -396,7 +396,18 @@ class QuestionService:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Question group {question.question_group_id} not found; cannot build namespaced identifier"
                 )
-            question.identifier = f"{group.identifier}.{question_data.identifier}"
+            new_namespaced = f"{group.identifier}.{question_data.identifier}"
+            # Guard against renaming to an identifier already used by another question
+            conflicting = db.query(Question).filter(
+                Question.identifier == new_namespaced,
+                Question.id != question_id
+            ).first()
+            if conflicting:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Question with this identifier already exists in this group"
+                )
+            question.identifier = new_namespaced
         if question_data.display_order is not None:
             question.display_order = question_data.display_order
         if question_data.is_required is not None:

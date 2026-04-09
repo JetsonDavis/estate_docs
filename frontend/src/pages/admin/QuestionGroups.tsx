@@ -1932,8 +1932,19 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     // Don't save if missing identifier (question_text can be empty initially)
     if (!question.identifier.trim()) { return }
 
-    // Don't save if identifier is duplicate
+    // Don't save if identifier is duplicate (React state flag set by debounced check)
     if (question.isDuplicateIdentifier) { return }
+
+    // Synchronous local check to guard against the race condition where the
+    // 300ms auto-save fires before the 500ms checkIdentifierUniqueness sets
+    // isDuplicateIdentifier. Without this, a partial identifier typed just
+    // before an existing one could slip through as a valid save.
+    const localIdentifierDuplicate = questionsRef.current.some(q =>
+      q.id !== question.id &&
+      q.identifier.trim() !== '' &&
+      q.identifier.toLowerCase() === question.identifier.trim().toLowerCase()
+    )
+    if (localIdentifierDuplicate) { return }
 
     // If a save is already in progress for this question, mark as pending and return
     if (savingInProgressRefs.current[question.id]) {
@@ -2066,8 +2077,15 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
       ))
     } catch (error: any) {
       console.error('Failed to auto-save question:', error)
+      // If the backend rejected the save because the identifier already exists,
+      // mark the question as a duplicate so the UI shows the red error indicator.
+      const isDuplicateError =
+        error?.response?.status === 400 &&
+        (error?.response?.data?.detail ?? '').toLowerCase().includes('identifier already exists')
       setQuestions(prev => prev.map(q =>
-        q.id === question.id ? { ...q, isSaving: false } : q
+        q.id === question.id
+          ? { ...q, isSaving: false, ...(isDuplicateError ? { isDuplicateIdentifier: true } : {}) }
+          : q
       ))
     } finally {
       decrementPendingRequests()

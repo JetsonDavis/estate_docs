@@ -9,10 +9,61 @@ from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 
-from src.services.session_service import SessionService
+from src.services.session_service import SessionService, _strip_html
 from src.models.session import InputForm, SessionAnswer
 from src.models.question import QuestionGroup, Question
 from src.schemas.session import InputFormCreate, SessionAnswerCreate
+
+
+class TestStripHtml:
+    """Tests for the _strip_html helper used in conditional evaluation."""
+
+    def test_plain_text_unchanged(self):
+        assert _strip_html("hello") == "hello"
+
+    def test_empty_string(self):
+        assert _strip_html("") == ""
+
+    def test_paragraph_tag(self):
+        assert _strip_html("<p>1</p>") == "1"
+
+    def test_nested_tags(self):
+        assert _strip_html("<strong><em>yes</em></strong>") == "yes"
+
+    def test_whitespace_trimmed(self):
+        assert _strip_html("  plain  ") == "plain"
+        assert _strip_html("<p>  spaced  </p>") == "spaced"
+
+    def test_html_entities_inside_tags(self):
+        # Entities are decoded only when HTML tags are present (the common case
+        # for RichTextEditor answers that contain both tags and entities).
+        assert _strip_html("<p>&amp;</p>") == "&"
+        assert _strip_html("<p>&lt;tag&gt;</p>") == "<tag>"
+        assert _strip_html("<p>&nbsp;text</p>") == "text"  # leading space trimmed
+        assert _strip_html("<p>&quot;hello&quot;</p>") == '"hello"'
+        assert _strip_html("<p>it&#39;s</p>") == "it's"
+
+    def test_plain_text_entities_unchanged(self):
+        # Plain text without tags is returned as-is (fast-path).
+        assert _strip_html("&amp;") == "&amp;"
+        assert _strip_html("1 < 2") == "1 < 2"
+
+    def test_quill_paragraph_value(self):
+        """RichTextEditor wraps answers in <p> tags — typical free_text answer."""
+        assert _strip_html("<p>test</p>") == "test"
+
+    def test_quill_multiline_value(self):
+        assert _strip_html("<p>line one</p><p>line two</p>") == "line oneline two"
+
+    def test_json_array_no_html(self):
+        """JSON arrays without HTML tags must pass through unchanged."""
+        raw = '["yes", "no"]'
+        assert _strip_html(raw) == raw
+
+    def test_json_array_with_html_elements(self):
+        """JSON array where each element is wrapped in HTML (repeatable free_text)."""
+        result = _strip_html('["<p>yes</p>", "<p>no</p>"]')
+        assert result == '["yes", "no"]'
 
 
 class TestSessionService:
