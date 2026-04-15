@@ -832,6 +832,10 @@ class SessionService:
         # Track counters per prefix so multiple conditionals referencing the same
         # triggering question continue numbering instead of restarting at 1
         prefix_counters = {}  # Maps prefix string -> last counter used
+        # Root-level conditional follow-ups: T-1, T-2, … under trigger T (not T-1-1).
+        slot_under_trigger: Dict[str, int] = {}
+        last_root_cond_key: Optional[Tuple[str, str]] = None
+        last_nested_cond_key: Dict[str, Tuple[str, str]] = {}
 
         def _resolve_nested_prefix(cond_identifier: str, fallback: str) -> str:
             """Look up the trigger question's hierarchical number to use as prefix."""
@@ -845,11 +849,56 @@ class SessionService:
                         break
             return fallback
 
+        def assign_root_conditional_nested_items(
+            items: List[Dict],
+            trigger_hier: str,
+            cond_identifier: str,
+            cond_value: Any,
+        ) -> None:
+            """Number questions directly under a root conditional as T-1, T-2, … (not T-1-1).
+
+            Mutually exclusive branches (same ifIdentifier, different value) reset the
+            sub-sequence so each branch uses 1-1, 1-2, … again. Same (id, value) blocks
+            continue the sequence (e.g. two far-apart IF trustor_living=no → 2-1, 2-2).
+            """
+            nonlocal last_root_cond_key
+            key = (cond_identifier or "", str(cond_value) if cond_value is not None else "")
+            if last_root_cond_key is not None:
+                prev_id, prev_val = last_root_cond_key
+                if prev_id == key[0] and prev_val != key[1]:
+                    slot_under_trigger[trigger_hier] = 0
+            last_root_cond_key = key
+
+            last_local = trigger_hier
+            i = 0
+            while i < len(items):
+                item = items[i]
+                if item.get('type') == 'question':
+                    question_id = item.get('questionId')
+                    if question_id:
+                        slot_under_trigger[trigger_hier] = slot_under_trigger.get(trigger_hier, 0) + 1
+                        sn = slot_under_trigger[trigger_hier]
+                        hierarchical_number = f"{trigger_hier}-{sn}"
+                        question_numbers[question_id] = hierarchical_number
+                        last_local = hierarchical_number
+                        _logger.debug(
+                            f"Assigned root-conditional number {hierarchical_number} to question_id {question_id}"
+                        )
+                    i += 1
+                elif item.get('type') == 'conditional' and item.get('conditional'):
+                    c2 = item['conditional']
+                    inner_trigger = _resolve_nested_prefix(c2.get('ifIdentifier'), last_local)
+                    nested2 = c2.get('nestedItems', [])
+                    if nested2:
+                        assign_hierarchical_numbers(nested2, inner_trigger)
+                    i += 1
+                else:
+                    i += 1
+
         def assign_hierarchical_numbers(items: List[Dict], number_prefix: str = ""):
             """Traverse entire tree and assign numbers to all questions.
 
-            Root-level conditionals add a sequential index per preceding
-            question (matching admin UI: Q2 → Cond(2-1), Cond(2-2), …).
+            Root-level conditionals add T-1, T-2 under trigger T (not T-1-1).
             Nested conditionals reuse the trigger question's number as the
             prefix without adding an extra level (matches admin behaviour).
             """
@@ -878,19 +927,26 @@ class SessionService:
                     cond_identifier = cond.get('ifIdentifier')
                     trigger_number = _resolve_nested_prefix(cond_identifier, last_question_number)
 
-                    if is_root:
-                        # Root conditionals numbered sequentially after the
-                        # preceding question: Q3 → (3-1),(3-2),…,(3-6)
-                        conditional_counter += 1
-                        cond_prefix = f"{trigger_number}-{conditional_counter}"
-                    else:
-                        # Nested conditionals reuse the trigger question's
-                        # number directly (no extra level, matches admin UI)
-                        cond_prefix = trigger_number
-
                     nested = cond.get('nestedItems', [])
                     if nested:
-                        assign_hierarchical_numbers(nested, cond_prefix)
+                        if is_root:
+                            assign_root_conditional_nested_items(
+                                nested,
+                                trigger_number,
+                                cond_identifier or "",
+                                cond.get('value'),
+                            )
+                        else:
+                            cond_prefix = trigger_number
+                            key = (
+                                cond_identifier or "",
+                                str(cond.get('value')) if cond.get('value') is not None else "",
+                            )
+                            prev_k = last_nested_cond_key.get(cond_prefix)
+                            if prev_k is not None and prev_k[0] == key[0] and prev_k[1] != key[1]:
+                                prefix_counters[cond_prefix] = 0
+                            last_nested_cond_key[cond_prefix] = key
+                            assign_hierarchical_numbers(nested, cond_prefix)
 
                     i += 1
 
