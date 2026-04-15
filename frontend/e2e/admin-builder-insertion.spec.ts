@@ -2,8 +2,8 @@
  * E2E tests for admin question-group builder insertion fixes (2026-04-04 / 2026-04-05)
  *
  * Covers:
- *  1. Insert Question between two main-level questions lands between them, not after the second
- *  1b. Same when Q1 has a following conditional (regression: stale logic / wrong index)
+ *  1. Insert Question (bottom of Q1 card) inserts at same position as Insert Conditional — between Q1 and next root item (e.g. Conditional 1-1), not below the whole conditional chain
+ *  1b. With Q1 + conditional + Q2, new question stays before Q2 in identifier order
  *  2. After-conditional insert buttons place items immediately after the conditional block
  *  3. Top-of-conditional insert buttons insert at the BEGINNING (before first nested item)
  *  4. "Add Follow-on Question" blue button is gone from the UI

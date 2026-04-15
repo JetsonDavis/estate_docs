@@ -5768,11 +5768,10 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     // Append to questions array – display order is determined by questionLogic
                     setQuestions(prev => [...prev, newQuestion])
 
-                    // Find Q1's position in the latest logic inside the functional update
-                    // (avoids the stale-closure / ID-mismatch bug where looking up nextQ by
-                    // dbId fails when the logic item only carries localQuestionId).
-                    // Walk forward from Q1's index to skip any of Q1's own conditionals,
-                    // then insert the new question immediately after that block.
+                    // Insert immediately after this question's root logic row — same index rule as
+                    // "Insert Conditional" (addConditionalToLogic(afterIndex) → slice at afterIndex+1).
+                    // So the new main-level card sits between this question and the next root items
+                    // (including Conditional 1-1), not below the whole conditional chain.
                     setQuestionLogic(prevLogic => {
                       const q1Idx = resolveRootQuestionAnchorIndex(
                         prevLogic,
@@ -5781,14 +5780,7 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         qIndex,
                         isLogicItemForQuestion
                       )
-                      let insertAfterIdx = q1Idx
-                      if (q1Idx >= 0) {
-                        for (let ci = q1Idx + 1; ci < prevLogic.length; ci++) {
-                          if (prevLogic[ci].type === 'question') break
-                          insertAfterIdx = ci
-                        }
-                      }
-                      const pos = q1Idx >= 0 ? insertAfterIdx + 1 : prevLogic.length
+                      const pos = q1Idx >= 0 ? q1Idx + 1 : prevLogic.length
                       const newLogic = [...prevLogic.slice(0, pos), newLogicItem, ...prevLogic.slice(pos)]
                       if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
                       return newLogic
