@@ -3,6 +3,7 @@
  *
  * Covers:
  *  1. Insert Question between two main-level questions lands between them, not after the second
+ *  1b. Same when Q1 has a following conditional (regression: stale logic / wrong index)
  *  2. After-conditional insert buttons place items immediately after the conditional block
  *  3. Top-of-conditional insert buttons insert at the BEGINNING (before first nested item)
  *  4. "Add Follow-on Question" blue button is gone from the UI
@@ -150,6 +151,46 @@ test.describe('Admin builder – insertion position fixes', () => {
     expect(order[0]).toContain(`q1_${uid}`)
     expect(order[1]).toBe('')
     expect(order[2]).toContain(`q2_${uid}`)
+  })
+
+  test('Insert after Q1 with conditional: new question lands before Q2 (not after Q2)', async ({ page }) => {
+    const uid = Date.now().toString()
+    groupId = await createGroup(page, `InsertBetweenCond_${uid}`)
+
+    await addQuestion(page, `q1_${uid}`, 'Question 1')
+    await addConditional(page, 'yes')
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    const nestedInputs = page.locator('input[placeholder*="nested_field"]')
+    if (await nestedInputs.count() > 0) {
+      await nestedInputs.last().fill(`nested_${uid}`)
+      await page.waitForTimeout(1500)
+    }
+
+    await addQuestion(page, `q2_${uid}`, 'Question 2')
+
+    const insertBtns = page.locator('button[title="Insert a new question after this one"]')
+    await insertBtns.first().scrollIntoViewIfNeeded()
+    await insertBtns.first().click()
+    await page.waitForTimeout(1500)
+
+    const order = await page.evaluate((u: string) => {
+      const inputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>(
+          'input[placeholder*="full_name"], input[placeholder*="e.g., full_name"]'
+        )
+      )
+      return inputs.map(el => el.value)
+    }, uid)
+
+    const q1Idx = order.findIndex(v => v.includes(`q1_${uid}`))
+    const q2Idx = order.findIndex(v => v.includes(`q2_${uid}`))
+    const emptyIdx = order.findIndex(v => v === '')
+    expect(q1Idx).toBeGreaterThanOrEqual(0)
+    expect(q2Idx).toBeGreaterThanOrEqual(0)
+    expect(emptyIdx).toBeGreaterThanOrEqual(0)
+    expect(q1Idx).toBeLessThan(emptyIdx)
+    expect(emptyIdx).toBeLessThan(q2Idx)
   })
 
   // ── 2. After-conditional insert buttons land right after the conditional ────
