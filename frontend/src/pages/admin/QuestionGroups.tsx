@@ -4756,6 +4756,43 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                         </div>
               
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          {/* Left arrow - leave the repeatable group (undo userOptIn) */}
+                          {logicItem.conditional?.userOptIn && (() => {
+                            // Find the group color so the arrow matches the bracket it's leaving
+                            let nearestGroupColor: string = '#3b82f6'
+                            for (let i = qIndex; i >= 0; i--) {
+                              const q = mainLevelQuestions[i]
+                              if (q.repeatable && q.repeatable_group_id) {
+                                nearestGroupColor = groupColorMap.get(q.repeatable_group_id) || '#3b82f6'
+                                break
+                              }
+                            }
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  updateConditionalValue(logicItem.id, 'userOptIn', false)
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: `1px solid ${nearestGroupColor}`,
+                                  borderRadius: '0.25rem',
+                                  padding: '0.15rem 0.25rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: nearestGroupColor
+                                }}
+                                title="Leave the repeatable group"
+                              >
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                              </button>
+                            )
+                          })()}
                           {/* Right arrow - move root-level conditional into nearest conditional above in questionLogic */}
                           {canMoveQuestionRight(logicIndex) && (
                             <button
@@ -4779,6 +4816,49 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                               </svg>
                             </button>
                           )}
+                          {/* Right arrow - join the nearest preceding repeatable group */}
+                          {(() => {
+                            // Walk backwards through main-level questions to find the nearest repeatable group
+                            let nearestGroupId: string | null = null
+                            let nearestGroupColor: string = '#3b82f6'
+                            let nearestGroupQNum: number = 0
+                            for (let i = qIndex; i >= 0; i--) {
+                              const q = mainLevelQuestions[i]
+                              if (q.repeatable && q.repeatable_group_id) {
+                                nearestGroupId = q.repeatable_group_id
+                                nearestGroupColor = groupColorMap.get(q.repeatable_group_id) || '#3b82f6'
+                                nearestGroupQNum = i + 1
+                                break
+                              }
+                            }
+                            // Show only when a group exists and the conditional isn't already opted in
+                            if (!nearestGroupId || logicItem.conditional?.userOptIn) return null
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  updateConditionalValue(logicItem.id, 'userOptIn', true)
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: `1px solid ${nearestGroupColor}`,
+                                  borderRadius: '0.25rem',
+                                  padding: '0.15rem 0.25rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: nearestGroupColor
+                                }}
+                                title={`Join the repeatable group starting at Question ${nearestGroupQNum}`}
+                              >
+                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            )
+                          })()}
                           <button
                             type="button"
                             onClick={() => removeLogicItem(logicItem.id)}
@@ -5140,6 +5220,51 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                       </svg>
                     </button>
                   )}
+                  {/* Right arrow - join the nearest preceding repeatable group */}
+                  {(() => {
+                    // Walk backwards through all preceding main-level questions to find
+                    // the nearest repeatable group, even if non-repeatable questions sit
+                    // in between this question and that group.
+                    let nearestGroupId: string | null = null
+                    let nearestGroupColor: string = '#3b82f6'
+                    let nearestGroupQNum: number = 0
+                    for (let i = qIndex - 1; i >= 0; i--) {
+                      const q = mainLevelQuestions[i]
+                      if (q.repeatable && q.repeatable_group_id) {
+                        nearestGroupId = q.repeatable_group_id
+                        nearestGroupColor = groupColorMap.get(q.repeatable_group_id) || '#3b82f6'
+                        nearestGroupQNum = i + 1
+                        break
+                      }
+                    }
+                    // Only show when a preceding group exists and this question isn't already in it
+                    if (!nearestGroupId || question.repeatable_group_id === nearestGroupId) return null
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          updateQuestionFields(question.id, { repeatable: true, repeatable_group_id: nearestGroupId! })
+                        }}
+                        style={{
+                          background: 'none',
+                          border: `1px solid ${nearestGroupColor}`,
+                          borderRadius: '0.25rem',
+                          padding: '0.15rem 0.25rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: nearestGroupColor
+                        }}
+                        title={`Join the repeatable group starting at Question ${nearestGroupQNum}`}
+                      >
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '0.85rem', height: '0.85rem' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    )
+                  })()}
                   <RemoveButton
                     className="remove-button"
                     type="button"
@@ -5536,13 +5661,6 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                 <button
                   type="button"
                   onClick={() => {
-                    // Identify the next main-level question so we can insert before it.
-                    // We look it up inside the functional-update callbacks (prevLogic / prev)
-                    // to avoid stale-closure issues with questionLogic or questions.
-                    const nextQ = qIndex + 1 < mainLevelQuestions.length
-                      ? mainLevelQuestions[qIndex + 1]
-                      : null
-
                     const newQuestion: QuestionFormData = {
                       id: crypto.randomUUID(),
                       question_text: '',
@@ -5564,22 +5682,26 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
 
                     const currentGroupId = savedGroupIdRef.current
 
-                    // Insert in questions array: before nextQ's position, or at end
-                    setQuestions(prev => {
-                      const insertAt = nextQ != null
-                        ? prev.findIndex(q => q.id === nextQ.id || (nextQ.dbId != null && q.dbId === nextQ.dbId))
-                        : -1
-                      const pos = insertAt >= 0 ? insertAt : prev.length
-                      return [...prev.slice(0, pos), newQuestion, ...prev.slice(pos)]
-                    })
+                    // Append to questions array – display order is determined by questionLogic
+                    setQuestions(prev => [...prev, newQuestion])
 
-                    // Insert in questionLogic: before nextQ's logic item, or at end
+                    // Find Q1's position in the latest logic inside the functional update
+                    // (avoids the stale-closure / ID-mismatch bug where looking up nextQ by
+                    // dbId fails when the logic item only carries localQuestionId).
+                    // Walk forward from Q1's index to skip any of Q1's own conditionals,
+                    // then insert the new question immediately after that block.
                     setQuestionLogic(prevLogic => {
-                      const insertAt = nextQ != null
-                        ? prevLogic.findIndex(item =>
-                            item.type === 'question' && isLogicItemForQuestion(item, nextQ))
-                        : -1
-                      const pos = insertAt >= 0 ? insertAt : prevLogic.length
+                      const q1Idx = prevLogic.findIndex(item =>
+                        item.type === 'question' && isLogicItemForQuestion(item, question)
+                      )
+                      let insertAfterIdx = q1Idx
+                      if (q1Idx >= 0) {
+                        for (let ci = q1Idx + 1; ci < prevLogic.length; ci++) {
+                          if (prevLogic[ci].type === 'question') break
+                          insertAfterIdx = ci
+                        }
+                      }
+                      const pos = q1Idx >= 0 ? insertAfterIdx + 1 : prevLogic.length
                       const newLogic = [...prevLogic.slice(0, pos), newLogicItem, ...prevLogic.slice(pos)]
                       if (currentGroupId) saveQuestionLogic(newLogic, currentGroupId)
                       return newLogic
