@@ -3374,32 +3374,31 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     return nestedIds
   }
 
-  // Get questions that are NOT nested inside conditionals (main level only)
-  // AND sort them according to their order in questionLogic
+  // Main-level questions: order follows root questionLogic left-to-right (each root
+  // `question` row that maps to a live QuestionFormData). Do NOT use findIndex+sort:
+  // a new question can briefly mismatch or duplicate-index in edge cases and sort to
+  // Infinity, which pins it at the bottom of the list.
   const mainLevelQuestions = (() => {
     const nestedIds = getNestedQuestionIds(questionLogic)
-    // Also check the ref for immediately-added nested questions (before state updates)
     const filtered = questions.filter(q => {
-      // Check both the computed nestedIds AND the ref for immediate filtering
       if (nestedQuestionIdsRef.current.has(q.id)) return false
       return !nestedIds.has(q.id) && !nestedIds.has(q.dbId?.toString() || '')
     })
-    
-    // Sort by position in questionLogic
-    return filtered.sort((a, b) => {
-      const aIndex = questionLogic.findIndex(item => 
-        item.type === 'question' && 
-        isLogicItemForQuestion(item, a)
-      )
-      const bIndex = questionLogic.findIndex(item => 
-        item.type === 'question' && 
-        isLogicItemForQuestion(item, b)
-      )
-      // If not found in logic, put at end
-      const aPos = aIndex === -1 ? Infinity : aIndex
-      const bPos = bIndex === -1 ? Infinity : bIndex
-      return aPos - bPos
-    })
+
+    const ordered: QuestionFormData[] = []
+    const seen = new Set<string>()
+
+    for (const item of questionLogic) {
+      if (item.type !== 'question') continue
+      const q = filtered.find(fq => isLogicItemForQuestion(item, fq))
+      if (!q || seen.has(q.id)) continue
+      seen.add(q.id)
+      ordered.push(q)
+    }
+    for (const q of filtered) {
+      if (!seen.has(q.id)) ordered.push(q)
+    }
+    return ordered
   })()
 
   // Recursive function to render nested items within a conditional
