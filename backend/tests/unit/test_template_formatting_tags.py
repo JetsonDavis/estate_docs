@@ -30,7 +30,7 @@ class TestFormattingTagsInTemplate:
         assert title_para.alignment == WD_ALIGN_PARAGRAPH.CENTER
 
     def test_center_with_cr_inside(self):
-        """<center> with <cr> inside should center all lines."""
+        """<center> with <cr> inside should center all lines (one paragraph, tight line spacing)."""
         template = '<center>LINE1<cr>LINE2<cr>LINE3</center>'
         merged = DocumentService._merge_template(template, {}, {})
 
@@ -38,14 +38,10 @@ class TestFormattingTagsInTemplate:
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        # Should have 3 centered paragraphs
-        assert len(doc.paragraphs) >= 3
-        assert doc.paragraphs[0].text == 'LINE1'
-        assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.CENTER
-        assert doc.paragraphs[1].text == 'LINE2'
-        assert doc.paragraphs[1].alignment == WD_ALIGN_PARAGRAPH.CENTER
-        assert doc.paragraphs[2].text == 'LINE3'
-        assert doc.paragraphs[2].alignment == WD_ALIGN_PARAGRAPH.CENTER
+        centered = [p for p in doc.paragraphs if p.alignment == WD_ALIGN_PARAGRAPH.CENTER and p.text.strip()]
+        assert len(centered) >= 1
+        block = centered[0].text.replace('\n', '').replace('\r', '')
+        assert 'LINE1' in block and 'LINE2' in block and 'LINE3' in block
 
     def test_right_tag_basic(self):
         """<right>text</right> should create right-aligned paragraph."""
@@ -66,7 +62,7 @@ class TestFormattingTagsInTemplate:
         assert right_para.alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
     def test_right_with_cr_inside(self):
-        """<right> with <cr> inside should right-align all lines."""
+        """<right> with <cr> inside should right-align all lines in one paragraph."""
         template = '<right>LINE1<cr>LINE2</right>'
         merged = DocumentService._merge_template(template, {}, {})
 
@@ -74,9 +70,10 @@ class TestFormattingTagsInTemplate:
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        assert len(doc.paragraphs) >= 2
-        assert doc.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
-        assert doc.paragraphs[1].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        right_blocks = [p for p in doc.paragraphs if p.alignment == WD_ALIGN_PARAGRAPH.RIGHT and p.text.strip()]
+        assert len(right_blocks) >= 1
+        text = right_blocks[0].text.replace('\n', '').replace('\r', '')
+        assert 'LINE1' in text and 'LINE2' in text
 
     def test_indent_tag_basic(self):
         """<indent>text</indent> should create indented paragraph."""
@@ -99,7 +96,7 @@ class TestFormattingTagsInTemplate:
         assert indent_para.paragraph_format.left_indent is not None
 
     def test_indent_with_cr_inside(self):
-        """<indent> with <cr> inside should indent all lines."""
+        """<indent> with <cr> inside should indent all lines in one paragraph."""
         template = '<indent>LINE1<cr>LINE2</indent>'
         merged = DocumentService._merge_template(template, {}, {})
 
@@ -107,9 +104,10 @@ class TestFormattingTagsInTemplate:
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        assert len(doc.paragraphs) >= 2
-        assert doc.paragraphs[0].paragraph_format.left_indent is not None
-        assert doc.paragraphs[1].paragraph_format.left_indent is not None
+        indented = [p for p in doc.paragraphs if p.paragraph_format.left_indent is not None and p.text.strip()]
+        assert len(indented) >= 1
+        text = indented[0].text.replace('\n', '').replace('\r', '')
+        assert 'LINE1' in text and 'LINE2' in text
 
     def test_tab_tag_basic(self):
         """<tab> should insert tab character."""
@@ -154,10 +152,10 @@ class TestFormattingTagsInTemplate:
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        # All 3 lines should be centered
-        assert len(doc.paragraphs) >= 3
-        for i in range(3):
-            assert doc.paragraphs[i].alignment == WD_ALIGN_PARAGRAPH.CENTER
+        centered = [p for p in doc.paragraphs if p.alignment == WD_ALIGN_PARAGRAPH.CENTER and p.text.strip()]
+        assert len(centered) >= 1
+        text = centered[0].text.replace('\n', '').replace('\r', '')
+        assert 'LAST WILL' in text and 'OF' in text and 'John Doe' in text
 
     def test_mixed_formatting(self):
         """Multiple formatting tags in one template."""
@@ -221,6 +219,14 @@ Name<tab>Address<tab>Phone
 
         text = ''.join(run.text for run in doc.paragraphs[0].runs)
         assert '\t' in text
+
+    def test_cr_after_center_before_body_no_giant_gap(self):
+        """<cr> after </center> must not become an extra paragraph + break (Word gap bug)."""
+        template = '<center>TITLE</center><cr>Body paragraph starts here.'
+        merged = DocumentService._merge_template(template, {}, {})
+        # Should not contain </p><br/> before "Body" (that produced oversized vertical space in Word)
+        assert '</p><br/>Body' not in merged.replace(' ', '')
+        assert 'Body paragraph' in merged
 
     def test_no_extra_blank_paragraphs(self):
         """Formatting tags should not create extra blank paragraphs."""

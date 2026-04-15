@@ -2372,7 +2372,8 @@ class DocumentService:
         - <tab> or <TAB> - Insert a tab character
 
         These tags are converted to HTML that the HTMLToWordConverter can process.
-        If there are <cr> tags inside formatting tags, each line gets the same formatting.
+        If there are <cr> tags inside formatting tags, lines are joined with <br/> in one
+        paragraph so Word does not add extra space between lines (vs one <p> per line).
         """
         # Convert <tab> to actual tab character
         text = re.sub(r'<[Tt][Aa][Bb]>', '\t', text)
@@ -2380,11 +2381,13 @@ class DocumentService:
         def apply_alignment(match, alignment_class):
             """Helper to apply alignment to content, handling <cr> tokens inside."""
             content = match.group(1)
-            # Split by <cr> or <CR> tokens
-            lines = re.split(r'<[Cc][Rr]>', content)
-            # Wrap each line in aligned paragraph
-            aligned_lines = [f'<p {alignment_class}>{line.strip()}</p>' for line in lines if line.strip()]
-            return '</p>' + '\n'.join(aligned_lines) + '<p>'
+            # Split by <cr> or <CR> tokens; single <p> with <br/> avoids paragraph spacing
+            lines = [line.strip() for line in re.split(r'<[Cc][Rr]>', content) if line.strip()]
+            if not lines:
+                return ''
+            inner = '<br/>'.join(lines)
+            # Single <p> per block — do not emit </p>...<p> glue (orphan <p> + <cr> caused huge Word gaps).
+            return f'<p {alignment_class}>{inner}</p>'
 
         # Convert <center>...</center> to HTML with alignment class
         # Handle <cr> inside by applying centering to each line
@@ -2412,6 +2415,92 @@ class DocumentService:
         )
 
         return text
+
+    # Sentinels (PUA + delimiter) so merge passes treat bold/italic/etc. as opaque text.
+    # Innermost tags are replaced first; nested same-type tags are unwrapped over iterations.
+    _QF_STRONG_O = '\ue000S1\ue001'
+    _QF_STRONG_C = '\ue000S0\ue001'
+    _QF_BOLD_O = '\ue000B1\ue001'
+    _QF_BOLD_C = '\ue000B0\ue001'
+    _QF_EM_O = '\ue000E1\ue001'
+    _QF_EM_C = '\ue000E0\ue001'
+    _QF_I_O = '\ue000I1\ue001'
+    _QF_I_C = '\ue000I0\ue001'
+    _QF_U_O = '\ue000U1\ue001'
+    _QF_U_C = '\ue000U0\ue001'
+
+    @staticmethod
+    def _protect_quill_inline_format(html: str) -> str:
+        """Replace Quill inline tags with sentinels so merge logic does not drop formatting."""
+        patterns = [
+            (r'<u\b[^>]*>((?:(?!<u\b).)*?)</u>', DocumentService._QF_U_O, DocumentService._QF_U_C),
+            (r'<em\b[^>]*>((?:(?!<em\b).)*?)</em>', DocumentService._QF_EM_O, DocumentService._QF_EM_C),
+            (r'<i\b[^>]*>((?:(?!<i\b).)*?)</i>', DocumentService._QF_I_O, DocumentService._QF_I_C),
+            (r'<strong\b[^>]*>((?:(?!<strong\b).)*?)</strong>', DocumentService._QF_STRONG_O, DocumentService._QF_STRONG_C),
+            (r'<b\b[^>]*>((?:(?!<b\b).)*?)</b>', DocumentService._QF_BOLD_O, DocumentService._QF_BOLD_C),
+        ]
+        for _ in range(64):
+            changed = False
+            for open_re, open_tok, close_tok in patterns:
+                def _repl(m, o=open_tok, c=close_tok):
+                    return o + m.group(1) + c
+
+                new = re.sub(open_re, _repl, html, flags=re.DOTALL | re.IGNORECASE)
+                if new != html:
+                    changed = True
+                    html = new
+            if not changed:
+                break
+        return html
+
+    @staticmethod
+    def _restore_quill_inline_format(text: str) -> str:
+        """Restore Quill inline formatting sentinels to HTML for HTMLToWordConverter."""
+        pairs = [
+            (DocumentService._QF_STRONG_O, '<strong>'),
+            (DocumentService._QF_STRONG_C, '</strong>'),
+            (DocumentService._QF_BOLD_O, '<b>'),
+            (DocumentService._QF_BOLD_C, '</b>'),
+            (DocumentService._QF_EM_O, '<em>'),
+            (DocumentService._QF_EM_C, '</em>'),
+            (DocumentService._QF_I_O, '<i>'),
+            (DocumentService._QF_I_C, '</i>'),
+            (DocumentService._QF_U_O, '<u>'),
+            (DocumentService._QF_U_C, '</u>'),
+        ]
+        for tok, tag in pairs:
+            text = text.replace(tok, tag)
+        return text
+
+    @staticmethod
+    def _unwrap_inline_tags_splitting_template_syntax(html: str) -> str:
+        """
+        Unwrap strong/em/b/i/u that only wrap delimiter fragments or whitespace.
+
+        Quill can split @macro@ or <<id>> across tags; those must merge as plain text
+        before identifier/macro passes. Formatting that wraps real words is left for
+        _protect_quill_inline_format.
+        """
+        for _ in range(12):
+            prev = html
+            # Whitespace-only (or empty) — keeps the whitespace run
+            html = re.sub(
+                r'<(strong|em|b|i|u)\b[^>]*>(\s*)</\1>',
+                lambda m: m.group(2),
+                html,
+                flags=re.IGNORECASE,
+            )
+            for inner in ('@', '<<', '>>'):
+                esc = re.escape(inner)
+                html = re.sub(
+                    rf'<(strong|em|b|i|u)\b[^>]*>{esc}</\1>',
+                    inner,
+                    html,
+                    flags=re.IGNORECASE,
+                )
+            if html == prev:
+                break
+        return html
 
     @staticmethod
     def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
@@ -2442,17 +2531,11 @@ class DocumentService:
         # Strip BOM (byte order mark) — Python's strip() does NOT remove U+FEFF
         template_content = template_content.replace('\ufeff', '')
 
-        # Pre-process: Strip HTML tags and decode HTML entities from rich text editors
-        # Remove all inline formatting tags but keep their content.
-        # Quill wraps text in <span>, <strong>, <em>, <u>, <b>, <i> tags.
-        # These MUST all be stripped because Quill can split template syntax
-        # (like @macro@ or <<id>>) across different formatting tags, which
-        # would prevent the regex patterns from matching.
-        # Use .*? instead of [^<]* because template syntax like <<id>> contains
-        # angle brackets that would prevent the old pattern from matching.
-        # Loop to handle nested tags.
+        # Pre-process: strip <span> only so @macro@ and <<identifier>> are not split across tags.
+        # Quill uses spans for colors/sizes; semantic tags (strong, em, …) are preserved via sentinels.
+        # Use .*? because template syntax like <<id>> contains angle brackets.
         for _ in range(5):
-            cleaned = re.sub(r'<(?:span|strong|em|b|i|u)\b[^>]*>(.*?)</(?:span|strong|em|b|i|u)\b>', r'\1', template_content, flags=re.DOTALL)
+            cleaned = re.sub(r'<span\b[^>]*>(.*?)</span>', r'\1', template_content, flags=re.DOTALL | re.IGNORECASE)
             if cleaned == template_content:
                 break
             template_content = cleaned
@@ -2463,9 +2546,14 @@ class DocumentService:
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
 
+        # Unwrap delimiter-only inline tags before protecting bold/italic (so @ / << / >> still match).
+        template_content = DocumentService._unwrap_inline_tags_splitting_template_syntax(template_content)
+
+        template_content = DocumentService._protect_quill_inline_format(template_content)
+
         # Flatten: strip HTML paragraph/break tags and literal newlines.
-        # The editor uses line breaks for readability only; explicit <cr> or <CR>
-        # tokens are the only way to produce real line breaks in the output.
+        # The editor uses line breaks for readability only; use <cr> or <CR> for line breaks
+        # in the merged document (rendered as <br/>, not new paragraphs, to avoid extra gap).
         template_content = re.sub(r'</p>\s*<p(?:\s[^>]*)?\s*>', ' ', template_content)
         template_content = re.sub(r'</?p(?:\s[^>]*)?\s*>', '', template_content)
         template_content = re.sub(r'<br(?:\s[^>]*)?\s*/?>', ' ', template_content)
@@ -2509,14 +2597,26 @@ class DocumentService:
         # Pass 6: Formatting tags (alignment, tabs, indentation)
         merged = DocumentService._process_formatting_tags(merged)
 
-        # Replace <cr>/<CR> tokens with paragraph breaks, consuming surrounding whitespace
-        merged = re.sub(r'\s*<[Cc][Rr]>\s*', '</p>\n<p>', merged)
+        # <cr> after </p> or before <p> is redundant (block boundary already breaks lines); if turned
+        # into <br/> it becomes </p><br/>… which Word renders as an extra paragraph + break (large gap).
+        merged = re.sub(r'</p>\s*<cr>\s*', '</p>', merged, flags=re.IGNORECASE)
+        merged = re.sub(r'<cr>\s*(?=<p\b)', '', merged, flags=re.IGNORECASE)
+        # Remaining <cr> = line breaks inside one block
+        merged = re.sub(r'\s*<[Cc][Rr]>\s*', '<br/>', merged)
 
         # Replace page break placeholders with page break marker
         merged = merged.replace('__PAGE_BREAK__', '</p><pagebreak/><p>')
 
-        # Wrap output in <p> tags for HTML rendering
-        merged = f'<p>{merged}</p>'
+        merged = DocumentService._restore_quill_inline_format(merged)
+
+        # Drop stray </p><br/> before plain text or before the next <p> (fixes oversized gaps in Word).
+        merged = re.sub(r'</p>\s*<br\s*/?>\s*(?=<p\b)', '</p>', merged, flags=re.IGNORECASE)
+        merged = re.sub(r'</p>\s*<br\s*/?>\s*(?=[^<\s])', '</p>', merged, flags=re.IGNORECASE)
+
+        # Wrap in <p> only when there is no leading <p> (avoid nested <p> and duplicate paragraph gaps).
+        _m = merged.strip()
+        if _m and not re.match(r'^<p\b', _m, re.IGNORECASE):
+            merged = f'<p>{merged}</p>'
 
         # HTML-aware cleanup: remove empty <p> tags left behind by removed blocks
         # Matches <p ...> containing only whitespace, &nbsp;, and/or <br> tags

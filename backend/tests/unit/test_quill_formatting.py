@@ -3,7 +3,7 @@
 import pytest
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from src.services.document_service import HTMLToWordConverter
+from src.services.document_service import HTMLToWordConverter, DocumentService
 import io
 
 
@@ -156,3 +156,37 @@ class TestQuillCombined:
         assert para.alignment == WD_ALIGN_PARAGRAPH.RIGHT
         text = ''.join(run.text for run in para.runs)
         assert '\t' in text
+
+
+class TestMergePreservesQuillInline:
+    """Bold/italic from the template editor must survive _merge_template for Word output."""
+
+    def test_merge_preserves_strong(self):
+        template = '<p>Hello <strong>world</strong></p>'
+        merged = DocumentService._merge_template(template, {}, {})
+        assert '<strong>world</strong>' in merged
+
+    def test_merge_strong_with_identifier(self):
+        template = '<p><strong><<name>></strong></p>'
+        merged = DocumentService._merge_template(template, {'name': 'Alice'}, {})
+        assert '<strong>Alice</strong>' in merged
+
+    def test_merge_nested_strong(self):
+        template = '<p><strong>outer <strong>inner</strong> end</strong></p>'
+        merged = DocumentService._merge_template(template, {}, {})
+        assert '<strong>' in merged
+        assert 'inner' in merged
+
+    def test_merge_preserves_em(self):
+        template = '<p>Plain <em>emphasis</em>.</p>'
+        merged = DocumentService._merge_template(template, {}, {})
+        assert '<em>emphasis</em>' in merged
+
+    def test_word_output_has_bold_run_after_merge(self):
+        template = '<p><strong>Bold bit</strong> normal</p>'
+        merged = DocumentService._merge_template(template, {}, {})
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+        runs = doc.paragraphs[0].runs
+        assert any(r.bold for r in runs if r.text.strip())
