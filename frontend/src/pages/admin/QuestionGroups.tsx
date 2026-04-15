@@ -1029,6 +1029,59 @@ function normalizeLogicQuestionId(id: unknown): number | null {
 }
 
 /**
+ * Index in root `questionLogic` for a main-level question, for insert/move.
+ * Prefer render-time index when it still matches, then id matching, then qIndex vs
+ * root question rows (handles skewed/orphan logic where findIndex alone returns -1).
+ */
+function resolveRootQuestionAnchorIndex(
+  prevLogic: QuestionLogicItem[],
+  question: QuestionFormData,
+  logicIndexFromRender: number,
+  mainLevelQIndex: number,
+  matchFn: (item: QuestionLogicItem, q: QuestionFormData) => boolean
+): number {
+  const matches = (item: QuestionLogicItem) => item.type === 'question' && matchFn(item, question)
+
+  if (
+    logicIndexFromRender >= 0 &&
+    logicIndexFromRender < prevLogic.length &&
+    matches(prevLogic[logicIndexFromRender]!)
+  ) {
+    return logicIndexFromRender
+  }
+
+  let idx = prevLogic.findIndex(matches)
+  if (idx >= 0) return idx
+
+  const qid = normalizeLogicQuestionId(question.dbId)
+  if (qid != null) {
+    idx = prevLogic.findIndex(
+      item => item.type === 'question' && normalizeLogicQuestionId(item.questionId) === qid
+    )
+    if (idx >= 0) return idx
+  }
+
+  if (question.id) {
+    idx = prevLogic.findIndex(
+      item =>
+        item.type === 'question' &&
+        item.localQuestionId != null &&
+        item.localQuestionId === question.id
+    )
+    if (idx >= 0) return idx
+  }
+
+  const rootQPositions: number[] = []
+  for (let i = 0; i < prevLogic.length; i++) {
+    if (prevLogic[i].type === 'question') rootQPositions.push(i)
+  }
+  if (mainLevelQIndex >= 0 && mainLevelQIndex < rootQPositions.length) {
+    return rootQPositions[mainLevelQIndex]!
+  }
+  return -1
+}
+
+/**
  * Pure normalizer: transforms raw API group data into the component state shape.
  * Returns { questions, questionLogic, collapsedItems, wasFixed } without any side-effects.
  */
@@ -5722,8 +5775,12 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
                     // Walk forward from Q1's index to skip any of Q1's own conditionals,
                     // then insert the new question immediately after that block.
                     setQuestionLogic(prevLogic => {
-                      const q1Idx = prevLogic.findIndex(item =>
-                        item.type === 'question' && isLogicItemForQuestion(item, question)
+                      const q1Idx = resolveRootQuestionAnchorIndex(
+                        prevLogic,
+                        question,
+                        logicIndex,
+                        qIndex,
+                        isLogicItemForQuestion
                       )
                       let insertAfterIdx = q1Idx
                       if (q1Idx >= 0) {
