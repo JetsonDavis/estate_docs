@@ -1021,6 +1021,13 @@ const stripIdentifierNamespace = (identifier: string): string => {
   return dotIndex >= 0 ? identifier.substring(dotIndex + 1) : identifier
 }
 
+/** Coerce persisted/API question ids so string "6658" and number 6658 match (fixes logic cleanup + findIndex). */
+function normalizeLogicQuestionId(id: unknown): number | null {
+  if (id == null || id === '') return null
+  const n = typeof id === 'number' ? id : Number(id)
+  return Number.isFinite(n) ? Math.trunc(n) : null
+}
+
 /**
  * Pure normalizer: transforms raw API group data into the component state shape.
  * Returns { questions, questionLogic, collapsedItems, wasFixed } without any side-effects.
@@ -1061,18 +1068,24 @@ function normalizeGroupData(groupData: any): {
     return { questions, questionLogic: [], collapsedItems, wasFixed: false }
   }
 
-  const validQuestionIds = new Set(questions.map(q => q.dbId))
+  const validQuestionIds = new Set(
+    questions.map(q => normalizeLogicQuestionId(q.dbId)).filter((n): n is number => n != null)
+  )
 
   const dbIdToQuestion = new Map<number, QuestionFormData>()
   for (const q of questions) {
-    if (q.dbId) dbIdToQuestion.set(q.dbId, q)
+    const nid = normalizeLogicQuestionId(q.dbId)
+    if (nid != null) dbIdToQuestion.set(nid, q)
   }
 
   // Collect all questionIds already assigned in logic items
   const collectAssignedIds = (items: any[]): Set<number> => {
     const ids = new Set<number>()
     for (const item of items) {
-      if (item.type === 'question' && item.questionId) ids.add(item.questionId)
+      if (item.type === 'question' && item.questionId) {
+        const nid = normalizeLogicQuestionId(item.questionId)
+        if (nid != null) ids.add(nid)
+      }
       if (item.type === 'conditional' && item.conditional?.nestedItems) {
         for (const id of collectAssignedIds(item.conditional.nestedItems)) ids.add(id)
       }
@@ -1085,7 +1098,8 @@ function normalizeGroupData(groupData: any): {
   const syncQuestionIds = (items: any[]) => {
     for (const item of items) {
       if (item.type === 'question' && item.questionId && item.localQuestionId) {
-        const q = dbIdToQuestion.get(item.questionId)
+        const qid = normalizeLogicQuestionId(item.questionId)
+        const q = qid != null ? dbIdToQuestion.get(qid) : undefined
         if (q) q.id = item.localQuestionId
       }
       if (item.type === 'conditional' && item.conditional?.nestedItems) {
@@ -1096,7 +1110,12 @@ function normalizeGroupData(groupData: any): {
   syncQuestionIds(groupData.question_logic)
 
   // For items WITHOUT questionId, find unassigned questions and patch
-  const unassignedDbIds = questions.filter(q => q.dbId && !assignedIds.has(q.dbId)).map(q => q.dbId!)
+  const unassignedDbIds = questions
+    .filter(q => {
+      const nid = normalizeLogicQuestionId(q.dbId)
+      return nid != null && !assignedIds.has(nid)
+    })
+    .map(q => normalizeLogicQuestionId(q.dbId)!)
   let unassignedIdx = 0
 
   const fixUndefinedQuestionIds = (items: QuestionLogicItem[]): QuestionLogicItem[] => {
@@ -1161,7 +1180,8 @@ function normalizeGroupData(groupData: any): {
     return items
       .filter(item => {
         if (item.type === 'question') {
-          if (item.questionId && validQuestionIds.has(item.questionId)) return true
+          const nid = normalizeLogicQuestionId(item.questionId)
+          if (nid != null && validQuestionIds.has(nid)) return true
           const localId = item.localQuestionId as string | undefined
           if (!item.questionId && localId && validLocalIds.has(localId)) return true
           return false
@@ -1188,7 +1208,10 @@ function normalizeGroupData(groupData: any): {
   const getQuestionIdsFromLogic = (items: QuestionLogicItem[]): Set<number> => {
     const ids = new Set<number>()
     for (const item of items) {
-      if (item.type === 'question' && item.questionId) ids.add(item.questionId)
+      if (item.type === 'question' && item.questionId) {
+        const nid = normalizeLogicQuestionId(item.questionId)
+        if (nid != null) ids.add(nid)
+      }
       if (item.type === 'conditional' && item.conditional?.nestedItems) {
         getQuestionIdsFromLogic(item.conditional.nestedItems).forEach(id => ids.add(id))
       }
@@ -1758,15 +1781,23 @@ const CreateQuestionGroupForm: React.FC<CreateQuestionGroupFormProps> = ({ group
     if (localId && localId === question.id) {
       return true
     }
-    return item.questionId != null && question.dbId != null && item.questionId === question.dbId
+    const iq = normalizeLogicQuestionId(item.questionId)
+    const qdb = normalizeLogicQuestionId(question.dbId)
+    if (iq != null && qdb != null && iq === qdb) return true
+    if (iq != null && question.id != null && String(iq) === String(question.id)) return true
+    return false
   }
 
   const findQuestionForLogicItem = (item: QuestionLogicItem): QuestionFormData | undefined => {
     const localId = item.localQuestionId as string | undefined
-    return questions.find(q =>
-      (localId != null && q.id === localId) ||
-      (item.questionId != null && q.dbId != null && q.dbId === item.questionId)
-    )
+    const iq = normalizeLogicQuestionId(item.questionId)
+    return questions.find(q => {
+      if (localId != null && q.id === localId) return true
+      const qdb = normalizeLogicQuestionId(q.dbId)
+      if (iq != null && qdb != null && iq === qdb) return true
+      if (iq != null && String(iq) === String(q.id)) return true
+      return false
+    })
   }
 
   const addQuestion = (): QuestionFormData => {
