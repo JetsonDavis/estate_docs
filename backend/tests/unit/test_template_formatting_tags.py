@@ -229,7 +229,7 @@ Name<tab>Address<tab>Phone
         assert 'Body paragraph' in merged
 
     def test_no_extra_blank_paragraphs(self):
-        """Formatting tags should not create extra blank paragraphs."""
+        """Adjacent <center> blocks merge to one paragraph (tight line spacing in Word)."""
         template = '<center>LINE1</center><center>LINE2</center>'
         merged = DocumentService._merge_template(template, {}, {})
 
@@ -237,6 +237,64 @@ Name<tab>Address<tab>Phone
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        # Should have exactly 2 paragraphs, no blank ones
         non_empty = [p for p in doc.paragraphs if p.text.strip()]
-        assert len(non_empty) == 2
+        assert len(non_empty) == 1
+        text = non_empty[0].text.replace('\n', '').replace('\r', '')
+        assert 'LINE1' in text and 'LINE2' in text
+        assert non_empty[0].alignment == WD_ALIGN_PARAGRAPH.CENTER
+
+    def test_two_center_blocks_with_cr_merge_tight(self):
+        """Title line + name line as separate centers should not double paragraph-gap in Word."""
+        template = '<center>DURABLE TITLE</center><cr><center>Person Name</center>'
+        merged = DocumentService._merge_template(template, {}, {})
+        assert merged.count('ql-align-center') == 1
+        assert '<br/>' in merged or 'br' in merged.lower()
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+        centered = [p for p in doc.paragraphs if p.text.strip() and p.alignment == WD_ALIGN_PARAGRAPH.CENTER]
+        assert len(centered) == 1
+        t = centered[0].text.replace('\n', '').replace('\r', '')
+        assert 'DURABLE TITLE' in t and 'Person Name' in t
+
+    def test_adjacent_right_blocks_merge_tight(self):
+        """Back-to-back <right> blocks should merge like <center> (no double paragraph gap)."""
+        template = '<right>R1</right><right>R2</right>'
+        merged = DocumentService._merge_template(template, {}, {})
+        assert merged.count('ql-align-right') == 1
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+        rights = [p for p in doc.paragraphs if p.text.strip() and p.alignment == WD_ALIGN_PARAGRAPH.RIGHT]
+        assert len(rights) == 1
+        t = rights[0].text.replace('\n', '').replace('\r', '')
+        assert 'R1' in t and 'R2' in t
+
+
+class TestMergeStackedAlignedParagraphHelpers:
+    """Unit tests for _merge_stacked_quill_aligned_paragraphs (used after <center>/<right> expansion)."""
+
+    def test_merge_two_center_paragraphs_html(self):
+        html = '<p class="ql-align-center">Line A</p> <p class="ql-align-center">Line B</p>'
+        out = DocumentService._merge_stacked_quill_aligned_paragraphs(html)
+        assert out.count('ql-align-center') == 1
+        assert '<br/>' in out
+        assert 'Line A' in out and 'Line B' in out
+
+    def test_merge_three_center_chain(self):
+        html = (
+            '<p class="ql-align-center">A</p>'
+            '<p class="ql-align-center">B</p>'
+            '<p class="ql-align-center">C</p>'
+        )
+        out = DocumentService._merge_stacked_quill_aligned_paragraphs(html)
+        assert out.count('ql-align-center') == 1
+        assert out.count('<br/>') == 2
+        assert 'A' in out and 'B' in out and 'C' in out
+
+    def test_does_not_merge_center_with_left_body(self):
+        html = '<p class="ql-align-center">Title</p><p>Body text</p>'
+        out = DocumentService._merge_stacked_quill_aligned_paragraphs(html)
+        assert out.count('ql-align-center') == 1
+        assert 'Title' in out and 'Body text' in out
+        assert out.count('<p') == 2

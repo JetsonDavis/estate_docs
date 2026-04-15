@@ -2503,6 +2503,28 @@ class DocumentService:
         return html
 
     @staticmethod
+    def _merge_consecutive_same_class_paragraphs(html: str, class_token: str) -> str:
+        """Merge adjacent <p> tags that share a Quill alignment class into one <p> with <br/>."""
+        esc = re.escape(class_token)
+        pat = rf'(<p\b[^>]*\b{esc}\b[^>]*>)(.*?)(</p>)(\s*)(<p\b[^>]*\b{esc}\b[^>]*>)(.*?)(</p>)'
+        for _ in range(64):
+            new = re.sub(pat, r'\1\2<br/>\6\3', html, flags=re.DOTALL | re.IGNORECASE)
+            if new == html:
+                break
+            html = new
+        return html
+
+    @staticmethod
+    def _merge_stacked_quill_aligned_paragraphs(html: str) -> str:
+        """
+        Separate <center> blocks become separate <p class="ql-align-*">; Word adds space between
+        paragraphs. Merge consecutive same-alignment blocks so title lines stack tightly.
+        """
+        for token in ('ql-align-center', 'ql-align-right', 'ql-align-justify'):
+            html = DocumentService._merge_consecutive_same_class_paragraphs(html, token)
+        return html
+
+    @staticmethod
     def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
         """
         Merge template content with answer values.
@@ -2601,6 +2623,7 @@ class DocumentService:
         # into <br/> it becomes </p><br/>… which Word renders as an extra paragraph + break (large gap).
         merged = re.sub(r'</p>\s*<cr>\s*', '</p>', merged, flags=re.IGNORECASE)
         merged = re.sub(r'<cr>\s*(?=<p\b)', '', merged, flags=re.IGNORECASE)
+        merged = DocumentService._merge_stacked_quill_aligned_paragraphs(merged)
         # Remaining <cr> = line breaks inside one block
         merged = re.sub(r'\s*<[Cc][Rr]>\s*', '<br/>', merged)
 
