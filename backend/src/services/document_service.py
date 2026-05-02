@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
@@ -32,6 +32,19 @@ class HTMLToWordConverter(HTMLParser):
         self.list_level = 0
         self.in_list = False
 
+    @staticmethod
+    def _default_paragraph_spacing(paragraph):
+        """
+        Clear Word's default Normal-style space before/after and use single line spacing.
+
+        Merged templates control vertical gaps with <cr> (line breaks), not empty paragraphs.
+        Without this, centered titles and body text look like double-spaced paragraphs.
+        """
+        pf = paragraph.paragraph_format
+        pf.space_before = Pt(0)
+        pf.space_after = Pt(0)
+        pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
+
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
 
@@ -39,6 +52,7 @@ class HTMLToWordConverter(HTMLParser):
             # Insert a Word page break
             if self.current_paragraph is None:
                 self.current_paragraph = self.doc.add_paragraph()
+                self._default_paragraph_spacing(self.current_paragraph)
             run = self.current_paragraph.add_run()
             run.add_break(WD_BREAK.PAGE)
             self.current_paragraph = None
@@ -47,6 +61,7 @@ class HTMLToWordConverter(HTMLParser):
         elif tag == 'p':
             # Create new paragraph
             self.current_paragraph = self.doc.add_paragraph()
+            self._default_paragraph_spacing(self.current_paragraph)
             self.current_run = None
 
             # Apply paragraph-level styling from style attribute
@@ -77,6 +92,7 @@ class HTMLToWordConverter(HTMLParser):
             # Add line break within current paragraph
             if self.current_paragraph is None:
                 self.current_paragraph = self.doc.add_paragraph()
+                self._default_paragraph_spacing(self.current_paragraph)
             if self.current_run is None:
                 self.current_run = self.current_paragraph.add_run()
             self.current_run.add_break()
@@ -128,6 +144,7 @@ class HTMLToWordConverter(HTMLParser):
         elif tag == 'li':
             # Create list item paragraph
             self.current_paragraph = self.doc.add_paragraph(style='List Bullet' if self.in_list else None)
+            self._default_paragraph_spacing(self.current_paragraph)
             self.current_run = None
 
     def handle_endtag(self, tag):
@@ -156,6 +173,7 @@ class HTMLToWordConverter(HTMLParser):
         # Ensure we have a paragraph
         if self.current_paragraph is None:
             self.current_paragraph = self.doc.add_paragraph()
+            self._default_paragraph_spacing(self.current_paragraph)
 
         # Handle tabs by converting them to proper Word tab stops
         # Split data by tabs and add tab characters
@@ -2926,9 +2944,9 @@ class DocumentService:
         html_content = re.sub(r'<p>\s*<br\s*/?>\s*</p>', '<p></p>', html_content)
         html_content = re.sub(r'<p>\s*</p>', '', html_content)
 
-        # Convert <br> to proper paragraph breaks
-        # Split on <br> and wrap in <p> tags if not already in one
-        html_content = re.sub(r'<br\s*/?>', '</p><p>', html_content)
+        # Do NOT convert <br/> to </p><p>. _merge_template maps <cr> to <br/> for tight line
+        # breaks; HTMLToWordConverter turns <br> into Word line breaks within the paragraph.
+        # Replacing <br/> with new <p> blocks reintroduces paragraph spacing (large gaps in Word).
 
         # Ensure content is wrapped in paragraphs
         if not html_content.strip().startswith('<p'):

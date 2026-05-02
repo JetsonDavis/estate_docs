@@ -3,6 +3,7 @@ import styled, { keyframes } from 'styled-components'
 import { userService } from '../../services/userService'
 import { User, UserCreate, UserUpdate } from '../../types/user'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import { useAuth } from '../../hooks/useAuth'
 
 const UsersContainer = styled.div`
   padding: 2rem;
@@ -372,6 +373,26 @@ const FormSelect = styled.select`
   }
 `
 
+const TableRoleSelect = styled.select`
+  min-width: 7rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: white;
+  cursor: pointer;
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+  &:disabled {
+    background-color: #f3f4f6;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+`
+
 const FormHelper = styled.p`
   margin-top: 0.25rem;
   font-size: 0.75rem;
@@ -442,6 +463,7 @@ const SubmitButton = styled.button`
 `
 
 const Users: React.FC = () => {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -461,6 +483,7 @@ const Users: React.FC = () => {
     full_name: '',
     role: 'user',
   })
+  const [roleUpdatingId, setRoleUpdatingId] = useState<number | null>(null)
 
   const pageSize = 20
 
@@ -535,7 +558,11 @@ const Users: React.FC = () => {
 
     try {
       if (editingUser) {
-        await userService.updateUser(editingUser.id, formData as UserUpdate)
+        const payload: UserUpdate = { ...(formData as UserUpdate) }
+        if (currentUser && editingUser.id === currentUser.id) {
+          delete payload.role
+        }
+        await userService.updateUser(editingUser.id, payload)
         setSuccess('User updated successfully')
       } else {
         await userService.createUser(formData as UserCreate)
@@ -562,6 +589,22 @@ const Users: React.FC = () => {
       setError(err.response?.data?.detail || 'Failed to deactivate user')
     } finally {
       setDeleteTarget(null)
+    }
+  }
+
+  const handleTableRoleChange = async (user: User, role: 'admin' | 'user') => {
+    if (currentUser && user.id === currentUser.id) return
+    if (user.role === role) return
+    try {
+      setRoleUpdatingId(user.id)
+      setError('')
+      await userService.updateUser(user.id, { role })
+      setSuccess('User type updated')
+      await loadUsers()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to update user type')
+    } finally {
+      setRoleUpdatingId(null)
     }
   }
 
@@ -617,7 +660,7 @@ const Users: React.FC = () => {
               setPage(1)
             }}
           >
-            <option value="all">All Roles</option>
+            <option value="all">All user types</option>
             <option value="admin">Admin</option>
             <option value="user">User</option>
           </FilterSelect>
@@ -649,7 +692,7 @@ const Users: React.FC = () => {
                   <th>User Name</th>
                   <th>Full Name</th>
                   <th>Email</th>
-                  <th>Role</th>
+                  <th>User Type</th>
                   <th>Status</th>
                   <th>Last Login</th>
                   <th>Actions</th>
@@ -668,9 +711,25 @@ const Users: React.FC = () => {
                       <UserEmail>{user.email}</UserEmail>
                     </td>
                     <td>
-                      <Badge $variant={user.role === 'admin' ? 'admin' : 'user'}>
-                        {user.role}
-                      </Badge>
+                      <TableRoleSelect
+                        value={user.role}
+                        disabled={
+                          !!(currentUser && user.id === currentUser.id) ||
+                          roleUpdatingId === user.id
+                        }
+                        title={
+                          currentUser && user.id === currentUser.id
+                            ? 'You cannot change your own user type'
+                            : undefined
+                        }
+                        onChange={e =>
+                          handleTableRoleChange(user, e.target.value as 'admin' | 'user')
+                        }
+                        aria-label={`User type for ${user.username}`}
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </TableRoleSelect>
                     </td>
                     <td>
                       <Badge $variant={user.is_active ? 'active' : 'inactive'}>
@@ -780,10 +839,20 @@ const Users: React.FC = () => {
                 />
               </FormGroup>
               <FormGroup>
-                <FormLabel>Role</FormLabel>
+                <FormLabel>User Type</FormLabel>
                 <FormSelect
                   value={formData.role || 'user'}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
+                  disabled={
+                    !!editingUser &&
+                    currentUser !== null &&
+                    editingUser.id === currentUser.id
+                  }
+                  title={
+                    editingUser && currentUser && editingUser.id === currentUser.id
+                      ? 'You cannot change your own user type'
+                      : undefined
+                  }
                 >
                   <option value="user">User</option>
                   <option value="admin">Admin</option>

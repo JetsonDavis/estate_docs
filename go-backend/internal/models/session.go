@@ -15,9 +15,9 @@ type InputForm struct {
 	CreatedAt        time.Time  `gorm:"not null" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"not null" json:"updated_at"`
 
-	User         User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
-	Flow         *DocumentFlow  `gorm:"foreignKey:FlowID;constraint:OnDelete:SET NULL" json:"-"`
-	CurrentGroup *QuestionGroup `gorm:"foreignKey:CurrentGroupID;constraint:OnDelete:SET NULL" json:"-"`
+	User         User            `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Flow         *DocumentFlow   `gorm:"foreignKey:FlowID;constraint:OnDelete:SET NULL" json:"-"`
+	CurrentGroup *QuestionGroup  `gorm:"foreignKey:CurrentGroupID;constraint:OnDelete:SET NULL" json:"-"`
 	Answers      []SessionAnswer `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE" json:"answers,omitempty"`
 }
 

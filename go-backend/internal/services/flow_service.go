@@ -18,10 +18,10 @@ func NewFlowService(db *gorm.DB) *FlowService {
 }
 
 type FlowCreateInput struct {
-	Name             string `json:"name"`
+	Name             string  `json:"name"`
 	Description      *string `json:"description"`
-	StartingGroupID  *int   `json:"starting_group_id"`
-	QuestionGroupIDs []int  `json:"question_group_ids"`
+	StartingGroupID  *int    `json:"starting_group_id"`
+	QuestionGroupIDs []int   `json:"question_group_ids"`
 }
 
 type FlowUpdateInput struct {

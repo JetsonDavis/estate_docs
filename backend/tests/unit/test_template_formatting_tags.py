@@ -1,8 +1,11 @@
 """Test template formatting tags: <center>, <right>, <indent>, <tab>."""
 
+import re
+
 import pytest
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.shared import Pt
 from src.services.document_service import DocumentService, HTMLToWordConverter
 
 
@@ -256,6 +259,37 @@ Name<tab>Address<tab>Phone
         assert len(centered) == 1
         t = centered[0].text.replace('\n', '').replace('\r', '')
         assert 'DURABLE TITLE' in t and 'Person Name' in t
+
+    def test_br_must_not_become_paragraph_breaks_in_word_pipeline(self):
+        """Regression: merge_document used to replace every <br/> with </p><p>, duplicating Word
+        paragraph spacing for <cr> line breaks. Feeding merged HTML as-is must stay one paragraph."""
+        merged = DocumentService._merge_template(
+            '<center>DURABLE TITLE</center><cr><center>Person Name</center>', {}, {}
+        )
+        assert '<br/>' in merged.replace(' ', '')
+        broken = re.sub(r'<br\s*/?>', '</p><p>', merged)
+        doc_ok = Document()
+        HTMLToWordConverter(doc_ok).feed(merged)
+        doc_bad = Document()
+        HTMLToWordConverter(doc_bad).feed(broken)
+        ok_n = len([p for p in doc_ok.paragraphs if p.text.strip()])
+        bad_n = len([p for p in doc_bad.paragraphs if p.text.strip()])
+        assert ok_n == 1
+        assert bad_n >= 2
+
+    def test_word_converter_clears_default_paragraph_spacing(self):
+        """Word Normal style adds space before/after paragraphs; merged docs use <cr> for gaps."""
+        merged = DocumentService._merge_template(
+            '<center>A</center><center>B</center>Body', {}, {}
+        )
+        doc = Document()
+        HTMLToWordConverter(doc).feed(merged)
+        for p in doc.paragraphs:
+            if not p.text.strip():
+                continue
+            assert p.paragraph_format.space_before == Pt(0)
+            assert p.paragraph_format.space_after == Pt(0)
+            assert p.paragraph_format.line_spacing_rule == WD_LINE_SPACING.SINGLE
 
     def test_adjacent_right_blocks_merge_tight(self):
         """Back-to-back <right> blocks should merge like <center> (no double paragraph gap)."""

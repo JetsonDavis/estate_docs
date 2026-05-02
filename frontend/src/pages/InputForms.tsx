@@ -1703,16 +1703,21 @@ const InputForms: React.FC = () => {
 
     // Add person answers with conjunctions (exclude synthetic IDs)
     Object.entries(personAnswers).forEach(([questionId, values]) => {
-      if (parseInt(questionId) >= 100000) return
+      const pqId = parseInt(questionId)
+      if (pqId >= 100000) return
+      // Inline people-object fields store the complete person JSON in answers.
+      // Do not append legacy name-only personAnswers for the same question, or
+      // the later duplicate save will overwrite details like phone/address.
+      if (answers[pqId]?.trim()) return
       const filteredValues = values.filter(v => v.trim() !== '')
       if (filteredValues.length > 0) {
-        const conjunctions = personConjunctions[parseInt(questionId)] || []
+        const conjunctions = personConjunctions[pqId] || []
         const personData = filteredValues.map((name, idx) => ({
           name,
           conjunction: conjunctions[idx] || undefined
         }))
         answerArray.push({
-          question_id: parseInt(questionId),
+          question_id: pqId,
           answer_value: JSON.stringify(personData)
         })
       }
@@ -1731,6 +1736,7 @@ const InputForms: React.FC = () => {
       const requiredQuestions = sessionData.questions.filter(q => q.is_required)
       const missingAnswers = requiredQuestions.filter(q => {
         if (q.question_type === 'person' || q.question_type === 'person_backup') {
+          if (answers[q.id]?.trim()) return false
           const personVals = personAnswers[q.id] || ['']
           return !personVals.some(v => v.trim() !== '')
         }
@@ -1800,15 +1806,19 @@ const InputForms: React.FC = () => {
       Object.entries(personAnswers).forEach(([questionId, values]) => {
         const pqId = parseInt(questionId)
         if (pqId >= 100000 || !validQuestionIds.has(pqId)) return
+        // Preserve complete inline people-object answers. The legacy
+        // personAnswers map only contains names/conjunctions and would otherwise
+        // overwrite object details on navigation.
+        if (answers[pqId]?.trim()) return
         const filteredValues = values.filter(v => v.trim() !== '')
         if (filteredValues.length > 0) {
-          const conjunctions = personConjunctions[parseInt(questionId)] || []
+          const conjunctions = personConjunctions[pqId] || []
           const personData = filteredValues.map((name, idx) => ({
             name,
             conjunction: conjunctions[idx] || undefined
           }))
           answerArray.push({
-            question_id: parseInt(questionId),
+            question_id: pqId,
             answer_value: JSON.stringify(personData)
           })
         }

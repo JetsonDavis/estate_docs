@@ -18,41 +18,41 @@ func NewPersonService(db *gorm.DB) *PersonService {
 }
 
 type PersonCreateInput struct {
-	Name                         string           `json:"name"`
-	PhoneNumber                  *string          `json:"phone_number"`
-	DateOfBirth                  *string          `json:"date_of_birth"`
-	SSN                          *string          `json:"ssn"`
-	Email                        *string          `json:"email"`
-	Employer                     *string          `json:"employer"`
-	Occupation                   *string          `json:"occupation"`
-	MailingAddress               *json.RawMessage `json:"mailing_address"`
-	PhysicalAddress              *json.RawMessage `json:"physical_address"`
-	TrustorIsLiving              *int             `json:"trustor_is_living"`
-	DateOfDeath                  *string          `json:"date_of_death"`
-	TrustorDeathCertReceived     *int             `json:"trustor_death_certificate_received"`
-	TrustorOfSoundMind           *int             `json:"trustor_of_sound_mind"`
-	TrustorHasRelinquished       *int             `json:"trustor_has_relinquished"`
-	TrustorRelinquishedDate      *string          `json:"trustor_relinquished_date"`
-	TrustorRelingDocReceived     *int             `json:"trustor_reling_doc_received"`
+	Name                     string           `json:"name"`
+	PhoneNumber              *string          `json:"phone_number"`
+	DateOfBirth              *string          `json:"date_of_birth"`
+	SSN                      *string          `json:"ssn"`
+	Email                    *string          `json:"email"`
+	Employer                 *string          `json:"employer"`
+	Occupation               *string          `json:"occupation"`
+	MailingAddress           *json.RawMessage `json:"mailing_address"`
+	PhysicalAddress          *json.RawMessage `json:"physical_address"`
+	TrustorIsLiving          *int             `json:"trustor_is_living"`
+	DateOfDeath              *string          `json:"date_of_death"`
+	TrustorDeathCertReceived *int             `json:"trustor_death_certificate_received"`
+	TrustorOfSoundMind       *int             `json:"trustor_of_sound_mind"`
+	TrustorHasRelinquished   *int             `json:"trustor_has_relinquished"`
+	TrustorRelinquishedDate  *string          `json:"trustor_relinquished_date"`
+	TrustorRelingDocReceived *int             `json:"trustor_reling_doc_received"`
 }
 
 type PersonUpdateInput struct {
-	Name                         *string          `json:"name"`
-	PhoneNumber                  *string          `json:"phone_number"`
-	DateOfBirth                  *string          `json:"date_of_birth"`
-	SSN                          *string          `json:"ssn"`
-	Email                        *string          `json:"email"`
-	Employer                     *string          `json:"employer"`
-	Occupation                   *string          `json:"occupation"`
-	MailingAddress               *json.RawMessage `json:"mailing_address"`
-	PhysicalAddress              *json.RawMessage `json:"physical_address"`
-	TrustorIsLiving              *int             `json:"trustor_is_living"`
-	DateOfDeath                  *string          `json:"date_of_death"`
-	TrustorDeathCertReceived     *int             `json:"trustor_death_certificate_received"`
-	TrustorOfSoundMind           *int             `json:"trustor_of_sound_mind"`
-	TrustorHasRelinquished       *int             `json:"trustor_has_relinquished"`
-	TrustorRelinquishedDate      *string          `json:"trustor_relinquished_date"`
-	TrustorRelingDocReceived     *int             `json:"trustor_reling_doc_received"`
+	Name                     *string          `json:"name"`
+	PhoneNumber              *string          `json:"phone_number"`
+	DateOfBirth              *string          `json:"date_of_birth"`
+	SSN                      *string          `json:"ssn"`
+	Email                    *string          `json:"email"`
+	Employer                 *string          `json:"employer"`
+	Occupation               *string          `json:"occupation"`
+	MailingAddress           *json.RawMessage `json:"mailing_address"`
+	PhysicalAddress          *json.RawMessage `json:"physical_address"`
+	TrustorIsLiving          *int             `json:"trustor_is_living"`
+	DateOfDeath              *string          `json:"date_of_death"`
+	TrustorDeathCertReceived *int             `json:"trustor_death_certificate_received"`
+	TrustorOfSoundMind       *int             `json:"trustor_of_sound_mind"`
+	TrustorHasRelinquished   *int             `json:"trustor_has_relinquished"`
+	TrustorRelinquishedDate  *string          `json:"trustor_relinquished_date"`
+	TrustorRelingDocReceived *int             `json:"trustor_reling_doc_received"`
 }
 
 type PersonRelationshipInput struct {
@@ -70,12 +70,12 @@ func (s *PersonService) Create(input PersonCreateInput) (*models.Person, error) 
 		Occupation:               input.Occupation,
 		MailingAddress:           input.MailingAddress,
 		PhysicalAddress:          input.PhysicalAddress,
-		TrustorIsLiving:         input.TrustorIsLiving,
+		TrustorIsLiving:          input.TrustorIsLiving,
 		DateOfDeath:              input.DateOfDeath,
 		TrustorDeathCertReceived: input.TrustorDeathCertReceived,
-		TrustorOfSoundMind:      input.TrustorOfSoundMind,
-		TrustorHasRelinquished:  input.TrustorHasRelinquished,
-		TrustorRelinquishedDate: input.TrustorRelinquishedDate,
+		TrustorOfSoundMind:       input.TrustorOfSoundMind,
+		TrustorHasRelinquished:   input.TrustorHasRelinquished,
+		TrustorRelinquishedDate:  input.TrustorRelinquishedDate,
 		TrustorRelingDocReceived: input.TrustorRelingDocReceived,
 		IsActive:                 1,
 		CreatedAt:                time.Now().UTC(),
@@ -231,9 +231,9 @@ func (s *PersonService) RemoveRelationship(personID, relatedPersonID int) error 
 }
 
 type PersonRelationshipResponse struct {
-	PersonID         int    `json:"person_id"`
-	RelatedPersonID  int    `json:"related_person_id"`
-	RelationshipType string `json:"relationship_type"`
+	PersonID         int            `json:"person_id"`
+	RelatedPersonID  int            `json:"related_person_id"`
+	RelationshipType string         `json:"relationship_type"`
 	RelatedPerson    *models.Person `json:"related_person,omitempty"`
 }
 

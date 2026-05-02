@@ -15,8 +15,8 @@ import (
 
 // FlowLogicStep represents a single step in a flow's flow_logic JSON array.
 type FlowLogicStep struct {
-	Type        string               `json:"type"`
-	GroupID     *int                 `json:"groupId,omitempty"`
+	Type        string                `json:"type"`
+	GroupID     *int                  `json:"groupId,omitempty"`
 	Conditional *FlowLogicConditional `json:"conditional,omitempty"`
 }
 
@@ -173,10 +173,10 @@ func GetOrderedGroups(db *gorm.DB, session *models.InputForm) ([]models.Question
 
 // QuestionLogicItem represents a single item in a group's question_logic JSON.
 type QuestionLogicItem struct {
-	Type        string                     `json:"type"`
-	QuestionID  *int                       `json:"questionId,omitempty"`
-	StopFlow    bool                       `json:"stopFlow,omitempty"`
-	Conditional *QuestionLogicConditional  `json:"conditional,omitempty"`
+	Type        string                    `json:"type"`
+	QuestionID  *int                      `json:"questionId,omitempty"`
+	StopFlow    bool                      `json:"stopFlow,omitempty"`
+	Conditional *QuestionLogicConditional `json:"conditional,omitempty"`
 }
 
 // QuestionLogicConditional represents a conditional within question_logic.
@@ -198,9 +198,9 @@ type QuestionWithDepth struct {
 
 // ConditionalFollowup holds follow-up questions triggered by a specific answer value.
 type ConditionalFollowup struct {
-	TriggerValue string                    `json:"trigger_value"`
-	Operator     string                    `json:"operator"`
-	Questions    []FollowupQuestionEntry   `json:"questions"`
+	TriggerValue string                  `json:"trigger_value"`
+	Operator     string                  `json:"operator"`
+	Questions    []FollowupQuestionEntry `json:"questions"`
 }
 
 // FollowupQuestionEntry is a question + its own nested followups.
@@ -211,10 +211,10 @@ type FollowupQuestionEntry struct {
 
 // QuestionLogicResult holds all results from evaluating question_logic.
 type QuestionLogicResult struct {
-	Questions             []QuestionWithDepth
-	RepeatableFollowups   map[int][]ConditionalFollowup // question_id -> followups
-	QuestionNumbers       map[int]string                // question_id -> hierarchical number
-	AllFollowups          map[int][]ConditionalFollowup // question_id -> followups (all questions)
+	Questions              []QuestionWithDepth
+	RepeatableFollowups    map[int][]ConditionalFollowup // question_id -> followups
+	QuestionNumbers        map[int]string                // question_id -> hierarchical number
+	AllFollowups           map[int][]ConditionalFollowup // question_id -> followups (all questions)
 	ConditionalIdentifiers []string
 }
 

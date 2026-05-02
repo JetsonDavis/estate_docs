@@ -82,6 +82,18 @@ This backend reads from the **same PostgreSQL database** as the Python backend. 
 - `document_flows`, `flow_question_groups`
 - `people`, `person_relationships`
 
+## Conformance check (vs Python backend)
+
+From the repository root:
+
+```bash
+./scripts/conform-go-mirror.sh
+```
+
+This runs `go fmt`, `go vet`, `go test ./...`, and `go build` for `go-backend`. Add new tests when porting behavior so the mirror stays aligned with Python for the same inputs (where the Go implementation exists).
+
+`internal/services/document_service_test.go` covers identifier replacement and `<<person.field>>` lookup, matching the Python merge’s identifier/person resolution for those cases. Full template merge parity (macros, IF/ELSE, `<cr>`, counters, etc.) is still **Python-only** until ported—see Known TODOs.
+
 ## Known TODOs
 
 - **File upload conversion** — the `/api/templates/upload` endpoint accepts files but does not yet convert Word/PDF to markdown (needs a Go equivalent of python-docx/mammoth).
