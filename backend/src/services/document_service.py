@@ -337,7 +337,8 @@ class DocumentService:
         paragraph.add_run('\t')
         DocumentService._add_page_number_run(paragraph)
         paragraph.add_run('\t')
-        paragraph.add_run(input_form_name or '')
+        input_form_run = paragraph.add_run(input_form_name or '')
+        input_form_run.font.size = Pt(8)
 
     @staticmethod
     def generate_document(

@@ -3,6 +3,7 @@
 import json
 import pytest
 from docx import Document
+from docx.shared import Pt
 from src.services.document_service import DocumentService
 
 
@@ -20,6 +21,7 @@ class TestMergeDocumentFooter:
         assert "PAGE" in footer_xml
         assert "Will question group 5-2-26" in footer_paragraph.text
         assert footer_paragraph.text.startswith("\t")
+        assert footer_paragraph.runs[-1].font.size == Pt(8)
 
 
 class TestMacroWithArrayIndex:
