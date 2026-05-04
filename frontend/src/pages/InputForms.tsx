@@ -429,6 +429,7 @@ const InputForms: React.FC = () => {
 
   // Ref for debouncing person answer saves
   const personAnswerSaveTimeoutRef = useRef<Record<number, NodeJS.Timeout | null>>({})
+  const pendingPersonAnswerRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     if (sessionId) {
@@ -1675,16 +1676,67 @@ const InputForms: React.FC = () => {
     }, 300)
   }
 
+  const cancelPendingPersonSaves = () => {
+    Object.values(personAnswerSaveTimeoutRef.current).forEach(timeout => {
+      if (timeout) clearTimeout(timeout)
+    })
+    personAnswerSaveTimeoutRef.current = {}
+  }
+
+  const answersWithPendingPersonDetails = (): Record<number, string> => {
+    const mergedAnswers: Record<number, string> = { ...answers }
+
+    for (const [key, personJson] of Object.entries(pendingPersonAnswerRef.current)) {
+      const [questionIdPart, instanceIndexPart] = key.split(':')
+      const questionId = Number(questionIdPart)
+      if (!Number.isFinite(questionId) || !personJson) continue
+
+      const realQuestionId = questionId >= 100000 ? Math.floor(questionId / 100000) : questionId
+      const question = findQuestionById(questionId)
+      const instanceIndexFromKey = Number(instanceIndexPart)
+      const instanceIndex = questionId >= 100000
+        ? questionId % 100000
+        : (Number.isFinite(instanceIndexFromKey) ? instanceIndexFromKey : 0)
+
+      if (question?.repeatable || questionId >= 100000 || instanceIndex > 0) {
+        let currentArray: string[] = ['']
+        const currentValue = mergedAnswers[realQuestionId] || ''
+        if (currentValue) {
+          try {
+            const parsed = JSON.parse(currentValue)
+            currentArray = Array.isArray(parsed)
+              ? parsed.map((item: any) => typeof item === 'string' ? item : JSON.stringify(item))
+              : [currentValue]
+          } catch {
+            currentArray = [currentValue]
+          }
+        }
+
+        while (currentArray.length <= instanceIndex) {
+          currentArray.push('')
+        }
+        currentArray[instanceIndex] = personJson
+        mergedAnswers[realQuestionId] = JSON.stringify(currentArray)
+      } else {
+        mergedAnswers[realQuestionId] = personJson
+      }
+    }
+
+    return mergedAnswers
+  }
+
   const saveCurrentAnswers = async () => {
     if (!sessionData) return
+    cancelPendingPersonSaves()
+    const answersToPersist = answersWithPendingPersonDetails()
 
     // Exclude synthetic IDs and reconstruct flat arrays for distributed questions
-    const answerArray = Object.entries(answers)
+    const answerArray = Object.entries(answersToPersist)
       .filter(([questionId]) => parseInt(questionId) < 100000)
       .map(([questionId, answerValue]) => {
         const qId = parseInt(questionId)
         let maxSynIdx = 0
-        for (const key of Object.keys(answers)) {
+        for (const key of Object.keys(answersToPersist)) {
           const numKey = parseInt(key)
           if (numKey >= 100000 && Math.floor(numKey / 100000) === qId) {
             const idx = numKey % 100000
@@ -1694,7 +1746,7 @@ const InputForms: React.FC = () => {
         if (maxSynIdx > 0) {
           const arr: string[] = [answerValue]
           for (let i = 1; i <= maxSynIdx; i++) {
-            arr.push(answers[qId * 100000 + i] || '')
+            arr.push(answersToPersist[qId * 100000 + i] || '')
           }
           return { question_id: qId, answer_value: JSON.stringify(arr) }
         }
@@ -1708,7 +1760,7 @@ const InputForms: React.FC = () => {
       // Inline people-object fields store the complete person JSON in answers.
       // Do not append legacy name-only personAnswers for the same question, or
       // the later duplicate save will overwrite details like phone/address.
-      if (answers[pqId]?.trim()) return
+      if (answersToPersist[pqId]?.trim()) return
       const filteredValues = values.filter(v => v.trim() !== '')
       if (filteredValues.length > 0) {
         const conjunctions = personConjunctions[pqId] || []
@@ -1730,17 +1782,19 @@ const InputForms: React.FC = () => {
 
   const handleNavigate = async (direction: 'forward' | 'backward') => {
     if (!sessionData) return
+    cancelPendingPersonSaves()
+    const answersToPersist = answersWithPendingPersonDetails()
 
     // Validate required questions on forward navigation
     if (direction === 'forward') {
       const requiredQuestions = sessionData.questions.filter(q => q.is_required)
       const missingAnswers = requiredQuestions.filter(q => {
         if (q.question_type === 'person' || q.question_type === 'person_backup') {
-          if (answers[q.id]?.trim()) return false
+          if (answersToPersist[q.id]?.trim()) return false
           const personVals = personAnswers[q.id] || ['']
           return !personVals.some(v => v.trim() !== '')
         }
-        return !answers[q.id] || answers[q.id].trim() === ''
+        return !answersToPersist[q.id] || answersToPersist[q.id].trim() === ''
       })
 
       if (missingAnswers.length > 0) {
@@ -1775,7 +1829,7 @@ const InputForms: React.FC = () => {
       // For non-repeatable questions that were distributed across synthetic IDs,
       // reconstruct the flat JSON array so we don't overwrite the DB with just
       // the instance-0 value.
-      const answerArray = Object.entries(answers)
+      const answerArray = Object.entries(answersToPersist)
         .filter(([questionId]) => {
           const qId = parseInt(questionId)
           return qId < 100000 && validQuestionIds.has(qId)
@@ -1784,7 +1838,7 @@ const InputForms: React.FC = () => {
           const qId = parseInt(questionId)
           // Check if this real ID has synthetic siblings (meaning it was distributed)
           let maxSynIdx = 0
-          for (const key of Object.keys(answers)) {
+          for (const key of Object.keys(answersToPersist)) {
             const numKey = parseInt(key)
             if (numKey >= 100000 && Math.floor(numKey / 100000) === qId) {
               const idx = numKey % 100000
@@ -1795,7 +1849,7 @@ const InputForms: React.FC = () => {
             // Reconstruct flat array from instance 0 (real ID) + instances 1+ (synthetic IDs)
             const arr: string[] = [answerValue]
             for (let i = 1; i <= maxSynIdx; i++) {
-              arr.push(answers[qId * 100000 + i] || '')
+              arr.push(answersToPersist[qId * 100000 + i] || '')
             }
             return { question_id: qId, answer_value: JSON.stringify(arr) }
           }
@@ -1809,7 +1863,7 @@ const InputForms: React.FC = () => {
         // Preserve complete inline people-object answers. The legacy
         // personAnswers map only contains names/conjunctions and would otherwise
         // overwrite object details on navigation.
-        if (answers[pqId]?.trim()) return
+        if (answersToPersist[pqId]?.trim()) return
         const filteredValues = values.filter(v => v.trim() !== '')
         if (filteredValues.length > 0) {
           const conjunctions = personConjunctions[pqId] || []
@@ -2234,6 +2288,23 @@ const InputForms: React.FC = () => {
         const matchedPerson = earlierPeople.find(p =>
           p.name.toLowerCase() === (personData.name || '').toLowerCase() && personData.name?.trim()
         )
+        const personAnswerKey = `${question.id}:${instanceIndex}`
+
+        const setPersonJsonValue = (jsonValue: string) => {
+          pendingPersonAnswerRef.current[personAnswerKey] = jsonValue
+          handleValueChange(jsonValue)
+        }
+
+        const getLatestPersonData = () => {
+          const pending = pendingPersonAnswerRef.current[personAnswerKey]
+          if (!pending) return personData
+          try {
+            const parsed = JSON.parse(pending)
+            return parsed && typeof parsed === 'object' ? parsed : personData
+          } catch {
+            return personData
+          }
+        }
 
         // Update person field in local state only (called on every keystroke)
         const updatePersonField = (field: string, fieldValue: string) => {
@@ -2241,42 +2312,54 @@ const InputForms: React.FC = () => {
           if (field === 'name') {
             const match = earlierPeople.find(p => p.name.toLowerCase() === fieldValue.toLowerCase())
             if (match) {
-              handleValueChange(JSON.stringify(match.data))
+              setPersonJsonValue(JSON.stringify(match.data))
               return
             }
           }
-          const newData = { ...personData, [field]: fieldValue }
-          handleValueChange(JSON.stringify(newData))
+          const newData = { ...getLatestPersonData(), [field]: fieldValue }
+          setPersonJsonValue(JSON.stringify(newData))
         }
 
         const updatePersonAddressField = (addressType: 'mailing_address' | 'physical_address', field: string, fieldValue: string) => {
-          const currentAddress = personData[addressType] || {}
+          const latestPersonData = getLatestPersonData()
+          const currentAddress = latestPersonData[addressType] || {}
           const newAddress = { ...currentAddress, [field]: fieldValue }
-          const newData = { ...personData, [addressType]: newAddress }
-          handleValueChange(JSON.stringify(newData))
+          const newData = { ...latestPersonData, [addressType]: newAddress }
+          setPersonJsonValue(JSON.stringify(newData))
         }
 
         // Save person data on blur (called when field loses focus)
         const savePersonOnBlur = () => {
-          // Get current value from repeatable array to avoid stale state
-          const currentArray = getRepeatableAnswerArray(question.id)
-          // Parse each JSON string element back to an object to avoid
-          // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
-          const personObjects = currentArray.map(item => {
-            if (!item) return null
-            try {
-              const parsed = JSON.parse(item)
-              if (typeof parsed === 'object' && parsed !== null) return parsed
-            } catch { /* not JSON, treat as plain name */ }
-            return { name: item }
-          }).filter(Boolean)
-          // For non-repeatable questions, save as single object (not array).
-          // handleAnswerBlur will combine instances for non-repeatable followups
-          // inside repeatable parents, and the renderer expects single object format.
-          const currentValue = !question.repeatable && personObjects.length === 1
-            ? JSON.stringify(personObjects[0])
-            : JSON.stringify(personObjects)
-          handleAnswerBlur(question.id, currentValue)
+          if (personAnswerSaveTimeoutRef.current[question.id]) {
+            clearTimeout(personAnswerSaveTimeoutRef.current[question.id]!)
+          }
+          personAnswerSaveTimeoutRef.current[question.id] = setTimeout(() => {
+            const latestJson = pendingPersonAnswerRef.current[personAnswerKey] ?? value
+            // Get current value from repeatable array to avoid stale state
+            const currentArray = getRepeatableAnswerArray(question.id)
+            const updatedArray = [...currentArray]
+            while (updatedArray.length <= instanceIndex) {
+              updatedArray.push('')
+            }
+            updatedArray[instanceIndex] = latestJson
+            // Parse each JSON string element back to an object to avoid
+            // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
+            const personObjects = updatedArray.map(item => {
+              if (!item) return null
+              try {
+                const parsed = JSON.parse(item)
+                if (typeof parsed === 'object' && parsed !== null) return parsed
+              } catch { /* not JSON, treat as plain name */ }
+              return { name: item }
+            }).filter(Boolean)
+            // For non-repeatable questions, save as single object (not array).
+            // handleAnswerBlur will combine instances for non-repeatable followups
+            // inside repeatable parents, and the renderer expects single object format.
+            const currentValue = !question.repeatable && personObjects.length === 1
+              ? JSON.stringify(personObjects[0])
+              : JSON.stringify(personObjects)
+            handleAnswerBlur(question.id, currentValue)
+          }, 500)
         }
 
         return (
@@ -2708,6 +2791,23 @@ const InputForms: React.FC = () => {
         const matchedPersonBackup = earlierPeopleBackup.find(p =>
           p.name.toLowerCase() === (personBackupData.name || '').toLowerCase() && personBackupData.name?.trim()
         )
+        const personBackupAnswerKey = `${question.id}:${instanceIndex}`
+
+        const setPersonBackupJsonValue = (jsonValue: string) => {
+          pendingPersonAnswerRef.current[personBackupAnswerKey] = jsonValue
+          handleValueChange(jsonValue)
+        }
+
+        const getLatestPersonBackupData = () => {
+          const pending = pendingPersonAnswerRef.current[personBackupAnswerKey]
+          if (!pending) return personBackupData
+          try {
+            const parsed = JSON.parse(pending)
+            return parsed && typeof parsed === 'object' ? parsed : personBackupData
+          } catch {
+            return personBackupData
+          }
+        }
 
         // Update person field in local state only (called on every keystroke)
         const updatePersonBackupField = (field: string, fieldValue: string) => {
@@ -2715,48 +2815,60 @@ const InputForms: React.FC = () => {
           if (field === 'name') {
             const match = earlierPeopleBackup.find(p => p.name.toLowerCase() === fieldValue.toLowerCase())
             if (match) {
-              handleValueChange(JSON.stringify({ ...match.data, replaces: personBackupData.replaces }))
+              setPersonBackupJsonValue(JSON.stringify({ ...match.data, replaces: getLatestPersonBackupData().replaces }))
               return
             }
           }
-          const newData = { ...personBackupData, [field]: fieldValue }
-          handleValueChange(JSON.stringify(newData))
+          const newData = { ...getLatestPersonBackupData(), [field]: fieldValue }
+          setPersonBackupJsonValue(JSON.stringify(newData))
         }
 
         const updatePersonBackupAddressField = (addressType: 'mailing_address' | 'physical_address', field: string, fieldValue: string) => {
-          const currentAddress = personBackupData[addressType] || {}
+          const latestPersonBackupData = getLatestPersonBackupData()
+          const currentAddress = latestPersonBackupData[addressType] || {}
           const newAddress = { ...currentAddress, [field]: fieldValue }
-          const newData = { ...personBackupData, [addressType]: newAddress }
-          handleValueChange(JSON.stringify(newData))
+          const newData = { ...latestPersonBackupData, [addressType]: newAddress }
+          setPersonBackupJsonValue(JSON.stringify(newData))
         }
 
         // Save person data on blur (called when field loses focus)
         const savePersonBackupOnBlur = () => {
-          // Get current value from repeatable array to avoid stale state
-          const currentArray = getRepeatableAnswerArray(question.id)
-          // Parse each JSON string element back to an object to avoid
-          // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
-          const personObjects = currentArray.map(item => {
-            if (!item) return null
-            try {
-              const parsed = JSON.parse(item)
-              if (typeof parsed === 'object' && parsed !== null) return parsed
-            } catch { /* not JSON, treat as plain name */ }
-            return { name: item }
-          }).filter(Boolean)
-          // For non-repeatable questions, save as single object (not array).
-          const currentValue = !question.repeatable && personObjects.length === 1
-            ? JSON.stringify(personObjects[0])
-            : JSON.stringify(personObjects)
-          handleAnswerBlur(question.id, currentValue)
+          if (personAnswerSaveTimeoutRef.current[question.id]) {
+            clearTimeout(personAnswerSaveTimeoutRef.current[question.id]!)
+          }
+          personAnswerSaveTimeoutRef.current[question.id] = setTimeout(() => {
+            const latestJson = pendingPersonAnswerRef.current[personBackupAnswerKey] ?? value
+            // Get current value from repeatable array to avoid stale state
+            const currentArray = getRepeatableAnswerArray(question.id)
+            const updatedArray = [...currentArray]
+            while (updatedArray.length <= instanceIndex) {
+              updatedArray.push('')
+            }
+            updatedArray[instanceIndex] = latestJson
+            // Parse each JSON string element back to an object to avoid
+            // double-encoding (e.g., name becoming '{"name":"john"}' instead of 'john')
+            const personObjects = updatedArray.map(item => {
+              if (!item) return null
+              try {
+                const parsed = JSON.parse(item)
+                if (typeof parsed === 'object' && parsed !== null) return parsed
+              } catch { /* not JSON, treat as plain name */ }
+              return { name: item }
+            }).filter(Boolean)
+            // For non-repeatable questions, save as single object (not array).
+            const currentValue = !question.repeatable && personObjects.length === 1
+              ? JSON.stringify(personObjects[0])
+              : JSON.stringify(personObjects)
+            handleAnswerBlur(question.id, currentValue)
+          }, 500)
         }
 
         // Update a field AND immediately save (for <select> elements where onBlur is unreliable)
         const updateAndSavePersonBackupField = (field: string, fieldValue: string) => {
-          const newData = { ...personBackupData, [field]: fieldValue }
+          const newData = { ...getLatestPersonBackupData(), [field]: fieldValue }
           const newJson = JSON.stringify(newData)
           // Update local state
-          handleValueChange(newJson)
+          setPersonBackupJsonValue(newJson)
           // Build the full array with the updated value and save immediately
           const currentArray = getRepeatableAnswerArray(question.id)
           const updatedArray = [...currentArray]
@@ -4075,20 +4187,51 @@ const InputForms: React.FC = () => {
       <PersonFormModal
         isOpen={personModalForQuestion !== null}
         onClose={() => setPersonModalForQuestion(null)}
-        onSave={(person: Person) => {
-          if (personModalForQuestion !== null) {
-            // Add the new person to the last empty field or create a new one
+        onSave={async (person: Person) => {
+          if (personModalForQuestion !== null && sessionData) {
+            const question = findQuestionById(personModalForQuestion)
+            const realQuestionId = personModalForQuestion >= 100000
+              ? Math.floor(personModalForQuestion / 100000)
+              : personModalForQuestion
+            const personAnswer = JSON.stringify(person)
+            let answerValue = personAnswer
+
+            if (question?.repeatable) {
+              const current = getRepeatableAnswerArray(realQuestionId)
+              const emptyIndex = current.findIndex(item => !item || item.trim() === '')
+              const updated = [...current]
+              if (emptyIndex >= 0) {
+                updated[emptyIndex] = personAnswer
+              } else {
+                updated.push(personAnswer)
+              }
+              answerValue = JSON.stringify(updated)
+              setAnswers(prev => ({ ...prev, [realQuestionId]: answerValue }))
+            } else {
+              setAnswers(prev => ({ ...prev, [personModalForQuestion]: personAnswer }))
+            }
+
             setPersonAnswers(prev => {
               const current = prev[personModalForQuestion] || ['']
-              const lastIndex = current.length - 1
-              if (current[lastIndex] === '') {
-                const updated = [...current]
-                updated[lastIndex] = person.name
-                return { ...prev, [personModalForQuestion]: updated }
+              const emptyIndex = current.findIndex(item => !item || item.trim() === '')
+              const updated = [...current]
+              if (emptyIndex >= 0) {
+                updated[emptyIndex] = person.name
               } else {
-                return { ...prev, [personModalForQuestion]: [...current, person.name] }
+                updated.push(person.name)
               }
+              return { ...prev, [personModalForQuestion]: updated }
             })
+
+            try {
+              await sessionService.saveAnswers(sessionData.session_id, {
+                answers: [{ question_id: realQuestionId, answer_value: answerValue }]
+              })
+              markSaved(personModalForQuestion)
+            } catch (err) {
+              console.error('Failed to save person answer:', err)
+              toast('Failed to save person details', 'error')
+            }
           }
           setPersonModalForQuestion(null)
         }}
