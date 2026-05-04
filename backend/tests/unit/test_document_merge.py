@@ -2,7 +2,24 @@
 
 import json
 import pytest
+from docx import Document
 from src.services.document_service import DocumentService
+
+
+class TestMergeDocumentFooter:
+    """Regression tests for Word footer metadata on merged documents."""
+
+    def test_add_merge_footer_includes_page_field_and_input_form_name(self):
+        doc = Document()
+
+        DocumentService._add_merge_footer(doc, "Will question group 5-2-26")
+
+        footer_paragraph = doc.sections[0].footer.paragraphs[0]
+        footer_xml = footer_paragraph._p.xml
+
+        assert "PAGE" in footer_xml
+        assert "Will question group 5-2-26" in footer_paragraph.text
+        assert footer_paragraph.text.startswith("\t")
 
 
 class TestMacroWithArrayIndex:

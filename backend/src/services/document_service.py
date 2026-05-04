@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
@@ -293,6 +293,51 @@ from ..schemas.document import GenerateDocumentRequest
 
 class DocumentService:
     """Service for document generation and merge operations."""
+
+    @staticmethod
+    def _add_page_number_run(paragraph) -> None:
+        """Append a Word PAGE field to a paragraph."""
+        run = paragraph.add_run()
+
+        fld_begin = OxmlElement('w:fldChar')
+        fld_begin.set(qn('w:fldCharType'), 'begin')
+
+        instr_text = OxmlElement('w:instrText')
+        instr_text.set(qn('xml:space'), 'preserve')
+        instr_text.text = 'PAGE'
+
+        fld_separate = OxmlElement('w:fldChar')
+        fld_separate.set(qn('w:fldCharType'), 'separate')
+
+        placeholder = OxmlElement('w:t')
+        placeholder.text = '1'
+
+        fld_end = OxmlElement('w:fldChar')
+        fld_end.set(qn('w:fldCharType'), 'end')
+
+        run._r.append(fld_begin)
+        run._r.append(instr_text)
+        run._r.append(fld_separate)
+        run._r.append(placeholder)
+        run._r.append(fld_end)
+
+    @staticmethod
+    def _add_merge_footer(doc, input_form_name: str) -> None:
+        """Add page number centered and input form name right-aligned in the footer."""
+        section = doc.sections[0]
+        footer = section.footer
+        paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        paragraph.text = ''
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(3.25), WD_TAB_ALIGNMENT.CENTER)
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(6.5), WD_TAB_ALIGNMENT.RIGHT)
+
+        paragraph.add_run('\t')
+        DocumentService._add_page_number_run(paragraph)
+        paragraph.add_run('\t')
+        paragraph.add_run(input_form_name or '')
 
     @staticmethod
     def generate_document(
@@ -2921,6 +2966,7 @@ class DocumentService:
 
         # Create a Word document
         doc = Document()
+        DocumentService._add_merge_footer(doc, session.client_identifier or '')
 
         # Clean and prepare HTML content
         # The merged_content now contains HTML from the rich text editor
