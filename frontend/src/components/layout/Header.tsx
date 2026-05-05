@@ -258,9 +258,6 @@ const Header: React.FC = () => {
                     <HeaderLink to="/admin/templates">
                       Templates
                     </HeaderLink>
-                    <HeaderLink to="/admin/users">
-                      Users
-                    </HeaderLink>
                     <HeaderLink to="/document">
                       Input Form
                     </HeaderLink>

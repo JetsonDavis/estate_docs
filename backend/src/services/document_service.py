@@ -8,7 +8,8 @@ import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT
+from docx.enum.section import WD_SECTION_START
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
@@ -31,6 +32,8 @@ class HTMLToWordConverter(HTMLParser):
         self.style_stack = []  # Stack to track nested formatting
         self.list_level = 0
         self.in_list = False
+        self.in_footer_change = False
+        self.footer_change_parts = []
 
     @staticmethod
     def _default_paragraph_spacing(paragraph):
@@ -48,13 +51,15 @@ class HTMLToWordConverter(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
 
-        if tag == 'pagebreak':
-            # Insert a Word page break
-            if self.current_paragraph is None:
-                self.current_paragraph = self.doc.add_paragraph()
-                self._default_paragraph_spacing(self.current_paragraph)
-            run = self.current_paragraph.add_run()
-            run.add_break(WD_BREAK.PAGE)
+        if tag == 'footer':
+            self.in_footer_change = True
+            self.footer_change_parts = []
+
+        elif tag == 'pagebreak':
+            # Start the next Word section/page. Sections let each page carry the
+            # footer that is active for that page instead of shifting footer
+            # changes to the following page.
+            self.doc.add_section(WD_SECTION_START.NEW_PAGE)
             self.current_paragraph = None
             self.current_run = None
 
@@ -89,6 +94,10 @@ class HTMLToWordConverter(HTMLParser):
                             pass
 
         elif tag == 'br':
+            if self.in_footer_change:
+                self.footer_change_parts.append(' ')
+                return
+
             # Add line break within current paragraph
             if self.current_paragraph is None:
                 self.current_paragraph = self.doc.add_paragraph()
@@ -148,7 +157,16 @@ class HTMLToWordConverter(HTMLParser):
             self.current_run = None
 
     def handle_endtag(self, tag):
-        if tag == 'p':
+        if tag == 'footer':
+            footer_text = re.sub(r'\s+', ' ', ''.join(self.footer_change_parts)).strip()
+            if footer_text:
+                DocumentService._add_merge_footer_to_section(self.doc.sections[-1], footer_text)
+            self.in_footer_change = False
+            self.footer_change_parts = []
+            self.current_paragraph = None
+            self.current_run = None
+
+        elif tag == 'p':
             self.current_paragraph = None
             self.current_run = None
 
@@ -166,6 +184,10 @@ class HTMLToWordConverter(HTMLParser):
             self.current_run = None
 
     def handle_data(self, data):
+        if self.in_footer_change:
+            self.footer_change_parts.append(data)
+            return
+
         # Skip completely empty data, but preserve whitespace-only if it contains tabs
         if not data.strip() and '\t' not in data:
             return
@@ -325,6 +347,12 @@ class DocumentService:
     def _add_merge_footer(doc, input_form_name: str) -> None:
         """Add page number centered and input form name right-aligned in the footer."""
         section = doc.sections[0]
+        DocumentService._add_merge_footer_to_section(section, input_form_name)
+
+    @staticmethod
+    def _add_merge_footer_to_section(section, input_form_name: str) -> None:
+        """Add page number centered and right-side text to a specific Word section footer."""
+        section.footer.is_linked_to_previous = False
         footer = section.footer
         paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
         paragraph.text = ''
@@ -364,10 +392,78 @@ class DocumentService:
         return cleaned, footer_text
 
     @staticmethod
+    def _preserve_block_breaks_inside_template_tags(text: str) -> str:
+        """
+        Convert editor paragraph breaks inside custom template tags to <cr>.
+
+        Rich text editing can store:
+            <p><right>Line 1</p><p>Line 2</right></p>
+        The global merge flattening intentionally turns normal paragraph breaks into
+        spaces, but inside formatting/footer tags those breaks are user-authored line
+        breaks and must survive until tag processing.
+        """
+        tags = ('center', 'right', 'indent', 'footer')
+
+        def preserve_breaks(match):
+            tag = match.group(1)
+            content = match.group(2)
+            content = re.sub(r'</p>\s*<p(?:\s[^>]*)?\s*>', '<cr>', content, flags=re.IGNORECASE)
+            content = re.sub(r'<br(?:\s[^>]*)?\s*/?>', '<cr>', content, flags=re.IGNORECASE)
+            content = re.sub(r'</?p(?:\s[^>]*)?\s*>', '', content, flags=re.IGNORECASE)
+            return f'<{tag}>{content}</{tag}>'
+
+        tag_alt = '|'.join(tags)
+        pattern = rf'<({tag_alt})>(.*?)</\1>'
+        return re.sub(pattern, preserve_breaks, text, flags=re.DOTALL | re.IGNORECASE)
+
+    @staticmethod
+    def _preserve_quill_alignment_paragraphs(text: str) -> str:
+        """Convert Quill aligned paragraphs to custom tags before global paragraph flattening."""
+        alignment_tags = {
+            'ql-align-center': 'center',
+            'ql-align-right': 'right',
+        }
+
+        def convert_aligned_paragraph(match):
+            attrs = match.group(1)
+            content = match.group(2)
+            class_match = re.search(r'class=["\']([^"\']+)["\']', attrs, flags=re.IGNORECASE)
+            if not class_match:
+                return match.group(0)
+
+            classes = class_match.group(1).split()
+            for class_name, tag in alignment_tags.items():
+                if class_name in classes:
+                    return f'<{tag}>{content}</{tag}>'
+
+            return match.group(0)
+
+        return re.sub(
+            r'<p\b([^>]*)>(.*?)</p>',
+            convert_aligned_paragraph,
+            text,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+
+    @staticmethod
+    def _unwrap_custom_tags_from_alignment_wrappers(text: str) -> str:
+        """Avoid nested alignment when Quill alignment wraps explicit custom tags."""
+        for tag in ('center', 'right'):
+            pattern = rf'<{tag}>\s*<{tag}>(.*?)</{tag}>(.*?)</{tag}>'
+            for _ in range(5):
+                updated = re.sub(pattern, rf'<{tag}>\1\2</{tag}>', text, flags=re.DOTALL | re.IGNORECASE)
+                if updated == text:
+                    break
+                text = updated
+
+        return text
+
+    @staticmethod
     def generate_document(
         db: Session,
         request: GenerateDocumentRequest,
-        user_id: int
+        user_id: int,
+        allow_all_sessions: bool = False
     ) -> GeneratedDocument:
         """
         Generate a document by merging session answers into a template.
@@ -376,6 +472,7 @@ class DocumentService:
             db: Database session
             request: Document generation request
             user_id: User ID generating the document
+            allow_all_sessions: True when an admin may use any input form
 
         Returns:
             Generated document
@@ -392,16 +489,16 @@ class DocumentService:
                 detail="Template not found"
             )
 
-        # Get session (verify user owns it)
-        session = db.query(InputForm).filter(
-            InputForm.id == request.session_id,
-            InputForm.user_id == user_id
-        ).first()
+        # Get session. Staff access is owner-scoped; admins can generate from any input form.
+        session_query = db.query(InputForm).filter(InputForm.id == request.session_id)
+        if not allow_all_sessions:
+            session_query = session_query.filter(InputForm.user_id == user_id)
+        session = session_query.first()
 
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Get all answers with their questions in a single joined query
@@ -2603,7 +2700,8 @@ class DocumentService:
     def _merge_consecutive_same_class_paragraphs(html: str, class_token: str) -> str:
         """Merge adjacent <p> tags that share a Quill alignment class into one <p> with <br/>."""
         esc = re.escape(class_token)
-        pat = rf'(<p\b[^>]*\b{esc}\b[^>]*>)(.*?)(</p>)(\s*)(<p\b[^>]*\b{esc}\b[^>]*>)(.*?)(</p>)'
+        paragraph_body = r'(?:(?!</p>).)*?'
+        pat = rf'(<p\b[^>]*\b{esc}\b[^>]*>)({paragraph_body})(</p>)(\s*)(<p\b[^>]*\b{esc}\b[^>]*>)({paragraph_body})(</p>)'
         for _ in range(64):
             new = re.sub(pat, r'\1\2<br/>\6\3', html, flags=re.DOTALL | re.IGNORECASE)
             if new == html:
@@ -2617,7 +2715,7 @@ class DocumentService:
         Separate <center> blocks become separate <p class="ql-align-*">; Word adds space between
         paragraphs. Merge consecutive same-alignment blocks so title lines stack tightly.
         """
-        for token in ('ql-align-center', 'ql-align-right', 'ql-align-justify'):
+        for token in ('ql-align-center', 'ql-align-right'):
             html = DocumentService._merge_consecutive_same_class_paragraphs(html, token)
         return html
 
@@ -2628,7 +2726,8 @@ class DocumentService:
         raw_answer_map: dict = None,
         conjunction_map: dict = None,
         identifier_group_map: dict = None,
-        return_footer: bool = False
+        return_footer: bool = False,
+        preserve_footer_tags: bool = False
     ):
         """
         Merge template content with answer values.
@@ -2651,8 +2750,11 @@ class DocumentService:
             identifier_group_map: {identifier: repeatable_group_id} for repeatable questions
 
         Returns:
-            Merged content with identifiers replaced, or (content, footer_text) when
-            return_footer=True. footer_text is None when no <footer> tag was present.
+            Merged content with identifiers replaced. By default, footer tags are
+            removed from the body. When return_footer=True, returns
+            (content, footer_text) where footer_text is the final footer tag value.
+            When preserve_footer_tags=True, footer tags remain in the content as
+            Word section footer change markers for merge_document.
         """
         import html
 
@@ -2674,10 +2776,26 @@ class DocumentService:
         # Decode HTML entities like &lt; &gt; &amp;
         template_content = html.unescape(template_content)
 
+        # Some editor paths can leave a user-authored page-break token as a raw
+        # <p> immediately before a page footer marker. Treat that as the same
+        # page-break marker as escaped &lt;p&gt;, but only after prior content so
+        # a first-page footer at the top of a template does not create a blank page.
+        def protect_raw_pagebreak_before_footer(match):
+            return '__PAGE_BREAK__' if template_content[:match.start()].strip() else match.group(0)
+
+        template_content = re.sub(
+            r'<p>\s*(?=<[Ff][Oo][Oo][Tt][Ee][Rr]\b)',
+            protect_raw_pagebreak_before_footer,
+            template_content
+        )
+
         # Unwrap delimiter-only inline tags before protecting bold/italic (so @ / << / >> still match).
         template_content = DocumentService._unwrap_inline_tags_splitting_template_syntax(template_content)
 
         template_content = DocumentService._protect_quill_inline_format(template_content)
+        template_content = DocumentService._preserve_quill_alignment_paragraphs(template_content)
+        template_content = DocumentService._unwrap_custom_tags_from_alignment_wrappers(template_content)
+        template_content = DocumentService._preserve_block_breaks_inside_template_tags(template_content)
 
         # Flatten: strip HTML paragraph/break tags and literal newlines.
         # The editor uses line breaks for readability only; use <cr> or <CR> for line breaks
@@ -2723,9 +2841,11 @@ class DocumentService:
             merged, answer_map, raw_answer_map, conjunction_map, identifier_group_map
         )
 
-        # Pass 6: Footer tag extraction. Footer text can include resolved identifiers,
-        # but the tag itself should not appear in the document body.
-        merged, footer_text = DocumentService._extract_footer_tag(merged)
+        # Pass 6: Footer tag handling. Footer text can include resolved identifiers.
+        # Preview/plain merge output removes footer metadata from the body; Word merge
+        # preserves it as a section footer change marker consumed by HTMLToWordConverter.
+        if not preserve_footer_tags:
+            merged, footer_text = DocumentService._extract_footer_tag(merged)
 
         # Pass 7: Formatting tags (alignment, tabs, indentation)
         merged = DocumentService._process_formatting_tags(merged)
@@ -2777,7 +2897,8 @@ class DocumentService:
         db: Session,
         session_id: int,
         template_id: int,
-        user_id: int
+        user_id: int,
+        allow_all_sessions: bool = False
     ) -> dict:
         """
         Preview a document merge without saving.
@@ -2787,6 +2908,7 @@ class DocumentService:
             session_id: Session ID
             template_id: Template ID
             user_id: User ID
+            allow_all_sessions: True when an admin may use any input form
 
         Returns:
             Preview data including merged content and missing identifiers
@@ -2803,16 +2925,16 @@ class DocumentService:
                 detail="Template not found"
             )
 
-        # Get session
-        session = db.query(InputForm).filter(
-            InputForm.id == session_id,
-            InputForm.user_id == user_id
-        ).first()
+        # Get session. Staff access is owner-scoped; admins can preview any input form.
+        session_query = db.query(InputForm).filter(InputForm.id == session_id)
+        if not allow_all_sessions:
+            session_query = session_query.filter(InputForm.user_id == user_id)
+        session = session_query.first()
 
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Get all answers with their questions in a single joined query
@@ -2960,7 +3082,8 @@ class DocumentService:
         db: Session,
         session_id: int,
         template_id: int,
-        user_id: int
+        user_id: int,
+        allow_all_sessions: bool = False
     ) -> bytes:
         """
         Merge a template with session data and return a Word document.
@@ -2970,6 +3093,7 @@ class DocumentService:
             session_id: Document session ID
             template_id: Template ID
             user_id: User ID
+            allow_all_sessions: True when an admin may use any input form
 
         Returns:
             Bytes of the generated Word document
@@ -2986,16 +3110,16 @@ class DocumentService:
                 detail="Template not found"
             )
 
-        # Get session (verify user owns it)
-        session = db.query(InputForm).filter(
-            InputForm.id == session_id,
-            InputForm.user_id == user_id
-        ).first()
+        # Get session. Staff access is owner-scoped; admins can merge any input form.
+        session_query = db.query(InputForm).filter(InputForm.id == session_id)
+        if not allow_all_sessions:
+            session_query = session_query.filter(InputForm.user_id == user_id)
+        session = session_query.first()
 
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Get all answers with their questions in a single joined query
@@ -3013,19 +3137,18 @@ class DocumentService:
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
-        merged_content, footer_text = DocumentService._merge_template(
+        merged_content = DocumentService._merge_template(
             content,
             answer_map,
             raw_answer_map,
             conj_map,
             id_grp_map,
-            return_footer=True
+            preserve_footer_tags=True
         )
 
         # Create a Word document
         doc = Document()
-        footer_value = footer_text if footer_text is not None else (session.client_identifier or '')
-        DocumentService._add_merge_footer(doc, footer_value)
+        DocumentService._add_merge_footer(doc, session.client_identifier or '')
 
         # Clean and prepare HTML content
         # The merged_content now contains HTML from the rich text editor

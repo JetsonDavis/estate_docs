@@ -100,6 +100,19 @@ class TestFormattingTagsInTemplate:
         text = right_blocks[0].text.replace('\n', '').replace('\r', '')
         assert 'LINE1' in text and 'LINE2' in text
 
+    def test_right_preserves_editor_paragraph_breaks_inside_tag(self):
+        """Paragraph breaks created inside <right> should remain Word line breaks."""
+        template = '<p><right>LINE1</p><p>LINE2</right></p>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        right_blocks = [p for p in doc.paragraphs if p.alignment == WD_ALIGN_PARAGRAPH.RIGHT and p.text.strip()]
+        assert len(right_blocks) == 1
+        assert right_blocks[0].text == 'LINE1\nLINE2'
+
     def test_indent_tag_basic(self):
         """<indent>text</indent> should create indented paragraph."""
         template = '<indent>Indented text</indent>'
@@ -281,6 +294,50 @@ Name<tab>Address<tab>Phone
         assert len(centered) == 1
         t = centered[0].text.replace('\n', '').replace('\r', '')
         assert 'DURABLE TITLE' in t and 'Person Name' in t
+
+    def test_quill_center_alignment_survives_template_flattening(self):
+        """Stored Quill alignment must survive even without explicit <center> tags."""
+        merged = DocumentService._merge_template(
+            '<p class="ql-align-center">AFFIDAVIT OF WITNESSES&lt;cr&gt;</p>'
+            '<p class="ql-align-justify">&lt;cr&gt;</p>'
+            '<p class="ql-align-center">&lt;center&gt;NOTARY PUBLIC&lt;/center&gt;&lt;cr&gt;</p>',
+            {},
+            {}
+        )
+
+        doc = Document()
+        HTMLToWordConverter(doc).feed(merged)
+
+        centered = [
+            paragraph for paragraph in doc.paragraphs
+            if paragraph.text.strip() and paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        ]
+        centered_text = "\n".join(paragraph.text for paragraph in centered)
+        assert "AFFIDAVIT OF WITNESSES" in centered_text
+        assert "NOTARY PUBLIC" in centered_text
+
+    def test_distant_center_blocks_do_not_swallow_intervening_right_blocks(self):
+        """Only adjacent aligned paragraphs should be merged."""
+        merged = DocumentService._merge_template(
+            '<p class="ql-align-center">ACKNOWLEDGMENT OF PRINCIPAL&lt;cr&gt;</p>'
+            '<p class="ql-align-justify">Body text&lt;cr&gt;</p>'
+            '<p class="ql-align-center">AFFIDAVIT OF WITNESSES&lt;cr&gt;</p>'
+            '<p class="ql-align-justify">Witness &lt;right&gt;Witness&lt;/right&gt;</p>'
+            '<p class="ql-align-center">&lt;center&gt;NOTARY PUBLIC&lt;/center&gt;&lt;cr&gt;</p>',
+            {},
+            {}
+        )
+
+        doc = Document()
+        HTMLToWordConverter(doc).feed(merged)
+
+        notary = next(paragraph for paragraph in doc.paragraphs if "NOTARY PUBLIC" in paragraph.text)
+        witness = next(
+            paragraph for paragraph in doc.paragraphs
+            if paragraph.text.strip() == "Witness" and paragraph.alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        )
+        assert notary.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        assert witness.alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
     def test_br_must_not_become_paragraph_breaks_in_word_pipeline(self):
         """Regression: merge_document used to replace every <br/> with </p><p>, duplicating Word

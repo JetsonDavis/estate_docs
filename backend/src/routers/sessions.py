@@ -54,14 +54,15 @@ async def list_sessions(
     db: Session = Depends(get_db)
 ) -> List[InputFormResponse]:
     """
-    List all document sessions for the current user.
+    List document sessions. Admins see all input forms; staff see their own.
     
     - **skip**: Number of records to skip (default: 0)
     - **limit**: Maximum number of records to return (default: 100)
     """
+    session_user_id = None if current_user.get("role") == "admin" else get_user_id(current_user)
     sessions, _ = SessionService.list_sessions(
         db,
-        get_user_id(current_user),
+        session_user_id,
         skip,
         limit
     )
@@ -95,7 +96,7 @@ async def get_session(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Input form not found"
         )
     
     answers = SessionService.get_session_answers(db, session_id, get_user_id(current_user))
@@ -123,7 +124,7 @@ async def get_session_progress(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Input form not found"
         )
     
     answers = SessionService.get_session_answers(db, session_id, get_user_id(current_user))
@@ -189,7 +190,7 @@ async def delete_session(
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Input form not found"
         )
 
 
@@ -293,11 +294,12 @@ async def get_session_identifiers(
 
     - **session_id**: Session ID
     """
-    identifiers = SessionService.get_session_identifiers(db, session_id, get_user_id(current_user))
+    session_user_id = None if current_user.get("role") == "admin" else get_user_id(current_user)
+    identifiers = SessionService.get_session_identifiers(db, session_id, session_user_id)
     if identifiers is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Input form not found"
         )
 
     return identifiers

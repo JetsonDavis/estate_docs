@@ -588,7 +588,7 @@ const MergeDocuments: React.FC = () => {
                 </ListBoxHeader>
                 <ListBoxContent>
                   {sessions.length === 0 ? (
-                    <EmptyList>No sessions found</EmptyList>
+                    <EmptyList>No Input Forms Found</EmptyList>
                   ) : (
                     <ItemList>
                       {sessions.map((session) => (

@@ -95,7 +95,7 @@ func (s *SessionService) GetAnswers(sessionID, userID int) ([]models.SessionAnsw
 	// Verify ownership
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	var answers []models.SessionAnswer
@@ -106,7 +106,7 @@ func (s *SessionService) GetAnswers(sessionID, userID int) ([]models.SessionAnsw
 func (s *SessionService) SaveAnswers(sessionID, userID int, answers []AnswerInput) error {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return errors.New("session not found")
+		return errors.New("input form not found")
 	}
 
 	for _, a := range answers {
@@ -143,7 +143,7 @@ func (s *SessionService) SaveAnswers(sessionID, userID int, answers []AnswerInpu
 func (s *SessionService) DeleteAnswers(sessionID, userID int, questionIDs []int) error {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return errors.New("session not found")
+		return errors.New("input form not found")
 	}
 
 	return s.DB.Where("session_id = ? AND question_id IN ?", sessionID, questionIDs).
@@ -158,7 +158,7 @@ func (s *SessionService) SubmitAnswers(sessionID, userID int, answers []AnswerIn
 
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	// Determine next group using flow_logic and question_logic conditionals
@@ -186,7 +186,7 @@ func (s *SessionService) Navigate(sessionID, userID int, direction string, answe
 
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	if session.CurrentGroupID != nil {
@@ -219,7 +219,7 @@ func (s *SessionService) Navigate(sessionID, userID int, direction string, answe
 func (s *SessionService) Delete(sessionID, userID int) error {
 	result := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).Delete(&models.InputForm{})
 	if result.RowsAffected == 0 {
-		return errors.New("session not found")
+		return errors.New("input form not found")
 	}
 	return result.Error
 }
@@ -227,7 +227,7 @@ func (s *SessionService) Delete(sessionID, userID int) error {
 func (s *SessionService) GetQuestions(sessionID, userID int) (map[string]interface{}, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	// Resolve ordered groups from flow_logic
@@ -350,7 +350,7 @@ func (s *SessionService) GetQuestions(sessionID, userID int) (map[string]interfa
 func (s *SessionService) GetIdentifiers(sessionID, userID int) (map[string]string, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	var answers []models.SessionAnswer
@@ -369,7 +369,7 @@ func (s *SessionService) GetIdentifiers(sessionID, userID int) (map[string]strin
 func (s *SessionService) Copy(sessionID, userID int) (*models.InputForm, error) {
 	var orig models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&orig).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	newSession := models.InputForm{
@@ -406,7 +406,7 @@ func (s *SessionService) Copy(sessionID, userID int) (*models.InputForm, error) 
 func (s *SessionService) VerifyPersistence(sessionID, userID int) (map[string]interface{}, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	var snapshots []models.AnswerSnapshot
@@ -442,7 +442,7 @@ func (s *SessionService) VerifyPersistence(sessionID, userID int) (map[string]in
 func (s *SessionService) MarkComplete(sessionID, userID int) (*models.InputForm, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	now := time.Now().UTC()

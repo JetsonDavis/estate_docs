@@ -3,8 +3,9 @@
 import json
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
-from src.services.document_service import DocumentService
+from src.services.document_service import DocumentService, HTMLToWordConverter
 
 
 class TestMergeDocumentFooter:
@@ -47,6 +48,19 @@ class TestMergeDocumentFooter:
         assert footer_text == "Jane Client Estate Plan"
         assert "Jane Client Estate Plan" not in merged
 
+    def test_footer_override_handles_editor_paragraph_breaks_and_removes_body_text(self):
+        merged, footer_text = DocumentService._merge_template(
+            "<p><footer>Footer</p><p>1</footer></p><p>Body text</p>",
+            {},
+            {},
+            return_footer=True
+        )
+
+        assert footer_text == "Footer 1"
+        assert "Body text" in merged
+        assert "Footer" not in merged
+        assert "<footer>" not in merged.lower()
+
     def test_add_merge_footer_uses_custom_footer_text(self):
         doc = Document()
 
@@ -58,6 +72,82 @@ class TestMergeDocumentFooter:
         assert "PAGE" in footer_xml
         assert "Custom Footer" in footer_paragraph.text
         assert footer_paragraph.runs[-1].font.size == Pt(8)
+
+    def test_word_footer_tags_update_current_page_section(self):
+        doc = Document()
+        DocumentService._add_merge_footer(doc, "Input Form Name")
+
+        parser = HTMLToWordConverter(doc)
+        parser.feed(
+            "<footer>Footer 1</footer>"
+            "<p>First page text</p>"
+            "<pagebreak/>"
+            "<footer>Footer 2</footer>"
+            "<p>Second page text</p>"
+            "<pagebreak/>"
+            "<footer>Footer 3</footer>"
+            "<p>Third page text</p>"
+        )
+
+        assert len(doc.sections) == 3
+        assert "Footer 1" in doc.sections[0].footer.paragraphs[0].text
+        assert "Footer 2" in doc.sections[1].footer.paragraphs[0].text
+        assert "Footer 3" in doc.sections[2].footer.paragraphs[0].text
+        assert "PAGE" in doc.sections[0].footer.paragraphs[0]._p.xml
+        assert "PAGE" in doc.sections[1].footer.paragraphs[0]._p.xml
+        assert "PAGE" in doc.sections[2].footer.paragraphs[0]._p.xml
+
+        body_text = "\n".join(paragraph.text for paragraph in doc.paragraphs)
+        assert "First page text" in body_text
+        assert "Second page text" in body_text
+        assert "Third page text" in body_text
+        assert "Footer 1" not in body_text
+        assert "Footer 2" not in body_text
+        assert "Footer 3" not in body_text
+
+    def test_page_without_footer_tag_inherits_previous_footer(self):
+        doc = Document()
+        DocumentService._add_merge_footer(doc, "Input Form Name")
+
+        parser = HTMLToWordConverter(doc)
+        parser.feed(
+            "<p>First page text</p>"
+            "<pagebreak/>"
+            "<p>Second page text</p>"
+        )
+
+        assert len(doc.sections) == 2
+        assert doc.sections[1].footer.is_linked_to_previous
+
+    def test_raw_pagebreak_before_footer_updates_current_page_and_preserves_centering(self):
+        """Raw <p><footer> can come from the editor and should still start that page."""
+        merged = DocumentService._merge_template(
+            "First page text"
+            "<p><footer>Last Footer</footer>"
+            "<center>AFFIDAVIT OF WITNESSES</center>"
+            "<cr>"
+            "<center>NOTARY PUBLIC</center>",
+            {},
+            {},
+            preserve_footer_tags=True
+        )
+
+        doc = Document()
+        DocumentService._add_merge_footer(doc, "Input Form Name")
+        HTMLToWordConverter(doc).feed(merged)
+
+        assert len(doc.sections) == 2
+        assert "Input Form Name" in doc.sections[0].footer.paragraphs[0].text
+        assert "Last Footer" in doc.sections[1].footer.paragraphs[0].text
+
+        centered = [
+            paragraph for paragraph in doc.paragraphs
+            if paragraph.text.strip() and paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        ]
+        assert len(centered) == 1
+        centered_text = centered[0].text.replace('\n', '').replace('\r', '')
+        assert "AFFIDAVIT OF WITNESSES" in centered_text
+        assert "NOTARY PUBLIC" in centered_text
 
 
 class TestMacroWithArrayIndex:

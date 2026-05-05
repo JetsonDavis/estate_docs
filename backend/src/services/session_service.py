@@ -114,45 +114,45 @@ class SessionService:
         return session
 
     @staticmethod
-    def get_session(db: Session, session_id: int, user_id: int) -> Optional[InputForm]:
+    def get_session(db: Session, session_id: int, user_id: Optional[int]) -> Optional[InputForm]:
         """
-        Get session by ID (user can only access their own sessions).
+        Get session by ID. When user_id is None, ownership is not scoped.
 
         Args:
             db: Database session
             session_id: Session ID
-            user_id: User ID
+            user_id: User ID, or None for admin/all-user access
 
         Returns:
             Session if found and belongs to user, None otherwise
         """
-        return db.query(InputForm).filter(
-            InputForm.id == session_id,
-            InputForm.user_id == user_id
-        ).first()
+        query = db.query(InputForm).filter(InputForm.id == session_id)
+        if user_id is not None:
+            query = query.filter(InputForm.user_id == user_id)
+        return query.first()
 
     @staticmethod
     def list_sessions(
         db: Session,
-        user_id: int,
+        user_id: Optional[int],
         skip: int = 0,
         limit: int = 100
     ) -> Tuple[List[InputForm], int]:
         """
-        List sessions for a user.
+        List sessions for a user. When user_id is None, list all sessions.
 
         Args:
             db: Database session
-            user_id: User ID
+            user_id: User ID, or None for admin/all-user access
             skip: Number of records to skip
             limit: Maximum number of records to return
 
         Returns:
             Tuple of (sessions list, total count)
         """
-        query = db.query(InputForm).filter(
-            InputForm.user_id == user_id
-        )
+        query = db.query(InputForm)
+        if user_id is not None:
+            query = query.filter(InputForm.user_id == user_id)
 
         total = query.count()
         sessions = query.order_by(InputForm.created_at.desc()).offset(skip).limit(limit).all()
@@ -182,7 +182,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Allow saving answers on completed sessions for editing
@@ -388,7 +388,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         return db.query(SessionAnswer).filter(
@@ -438,7 +438,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Allow viewing/editing completed sessions - don't block access
@@ -1209,7 +1209,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Separate synthetic IDs from real IDs
@@ -1374,7 +1374,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         if not question_ids:
@@ -1420,7 +1420,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Allow navigation and saving on completed sessions for editing
@@ -1459,7 +1459,7 @@ class SessionService:
         return session
 
     @staticmethod
-    def get_session_identifiers(db: Session, session_id: int, user_id: int) -> Optional[Dict[str, str]]:
+    def get_session_identifiers(db: Session, session_id: int, user_id: Optional[int]) -> Optional[Dict[str, str]]:
         """
         Get all question identifiers from a session that have been answered,
         along with their formatted display values.
@@ -1467,10 +1467,10 @@ class SessionService:
         Args:
             db: Database session
             session_id: Session ID
-            user_id: User ID (for authorization)
+            user_id: User ID for owner-scoped access, or None for admin/all-user access
 
         Returns:
-            Dict mapping identifier -> formatted value, or None if session not found
+            Dict mapping identifier -> formatted value, or None if input form not found
         """
         from .document_service import DocumentService
 
@@ -1514,7 +1514,7 @@ class SessionService:
         if not original_session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Get all existing client identifiers for this user for uniqueness check
@@ -1655,7 +1655,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Get all snapshots for this session
@@ -1733,7 +1733,7 @@ class SessionService:
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Input form not found"
             )
 
         # Toggle completion status

@@ -119,6 +119,13 @@ class TestSessionService:
 
         assert retrieved is None
 
+    def test_get_session_unscoped_for_admin_access(self, db_session: Session, sample_session):
+        """Passing user_id=None should allow admin/all-user session access."""
+        retrieved = SessionService.get_session(db_session, sample_session.id, None)
+
+        assert retrieved is not None
+        assert retrieved.id == sample_session.id
+
     def test_list_sessions(self, db_session: Session, sample_question_group):
         """Test listing sessions for a user."""
         # Create multiple sessions
@@ -133,6 +140,27 @@ class TestSessionService:
 
         assert total == 3
         assert len(sessions) == 3
+
+    def test_list_sessions_unscoped_for_admin_access(self, db_session: Session, sample_question_group):
+        """Passing user_id=None should list input forms across all users."""
+        for i in range(2):
+            session_data = InputFormCreate(
+                client_identifier=f"User 1 Client {i}",
+                starting_group_id=sample_question_group.id
+            )
+            SessionService.create_session(db_session, session_data, 1)
+
+        session_data = InputFormCreate(
+            client_identifier="User 2 Client",
+            starting_group_id=sample_question_group.id
+        )
+        SessionService.create_session(db_session, session_data, 2)
+
+        sessions, total = SessionService.list_sessions(db_session, None)
+
+        assert total == 3
+        assert len(sessions) == 3
+        assert {session.user_id for session in sessions} == {1, 2}
 
     def test_list_sessions_pagination(self, db_session: Session, sample_question_group):
         """Test listing sessions with pagination."""

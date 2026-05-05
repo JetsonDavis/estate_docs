@@ -36,10 +36,12 @@ async def generate_document(
     The system will replace all <<identifier>> placeholders in the template
     with corresponding answer values from the session.
     """
+    user_id = get_user_id(current_user)
     document = DocumentService.generate_document(
         db,
         request,
-        get_user_id(current_user)
+        user_id,
+        allow_all_sessions=current_user.get("role") == "admin"
     )
     
     return GeneratedDocumentResponse.model_validate(document)
@@ -61,11 +63,13 @@ async def preview_document(
     Returns the merged content and lists any missing identifiers that
     don't have corresponding answers in the session.
     """
+    user_id = get_user_id(current_user)
     preview = DocumentService.preview_document(
         db,
         session_id,
         template_id,
-        get_user_id(current_user)
+        user_id,
+        allow_all_sessions=current_user.get("role") == "admin"
     )
     
     return DocumentPreviewResponse(**preview)
@@ -176,11 +180,13 @@ async def merge_document(
     the system will fetch the person and use the specified field.
     """
     try:
+        user_id = get_user_id(current_user)
         docx_bytes = DocumentService.merge_document(
             db,
             request.session_id,
             request.template_id,
-            get_user_id(current_user)
+            user_id,
+            allow_all_sessions=current_user.get("role") == "admin"
         )
         
         return StreamingResponse(

@@ -69,7 +69,7 @@ func (h *SessionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.Service.GetByID(id, userID)
 	if err != nil {
-		utils.Error(w, http.StatusNotFound, "Session not found")
+		utils.Error(w, http.StatusNotFound, "Input form not found")
 		return
 	}
 
@@ -281,7 +281,7 @@ func (h *SessionHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.Service.GetByID(id, userID)
 	if err != nil {
-		utils.Error(w, http.StatusNotFound, "Session not found")
+		utils.Error(w, http.StatusNotFound, "Input form not found")
 		return
 	}
 

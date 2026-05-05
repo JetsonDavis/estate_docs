@@ -29,7 +29,7 @@ func (s *DocumentService) Generate(input GenerateDocumentInput, userID int) (*mo
 	// Verify session
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", input.SessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	// Get template
@@ -72,7 +72,7 @@ func (s *DocumentService) Generate(input GenerateDocumentInput, userID int) (*mo
 func (s *DocumentService) Preview(sessionID, templateID, userID int) (map[string]interface{}, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, errors.New("session not found")
+		return nil, errors.New("input form not found")
 	}
 
 	var tmpl models.Template
@@ -134,7 +134,7 @@ func (s *DocumentService) Delete(docID, userID int) error {
 func (s *DocumentService) MergeDocument(sessionID, templateID, userID int) ([]byte, string, error) {
 	var session models.InputForm
 	if err := s.DB.Where("id = ? AND user_id = ?", sessionID, userID).First(&session).Error; err != nil {
-		return nil, "", errors.New("session not found")
+		return nil, "", errors.New("input form not found")
 	}
 
 	var tmpl models.Template

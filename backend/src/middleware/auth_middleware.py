@@ -99,7 +99,11 @@ async def require_auth(request: Request, db: Session = Depends(get_db)) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account has been deactivated",
         )
-    
+
+    # Use current database authorization data, not potentially stale JWT claims.
+    user["role"] = db_user.role.value
+    user["username"] = db_user.username
+
     return user
 
 
