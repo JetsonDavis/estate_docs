@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Enterprise Document Intelligence Architecture</title>
+  <desc id="desc">A high-level flow from document sources through ingestion, processing, extraction, summarization, storage, and API or chatbot access.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <style>
+      .lane { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .box { fill: #ffffff; stroke: #2563eb; stroke-width: 2; rx: 12; }
+      .store { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; rx: 12; }
+      .warn { fill: #fff7ed; stroke: #f97316; stroke-width: 2; rx: 12; }
+      .access { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2; rx: 12; }
+      .title { font: 700 18px Arial, sans-serif; fill: #0f172a; }
+      .label { font: 700 14px Arial, sans-serif; fill: #0f172a; }
+      .small { font: 12px Arial, sans-serif; fill: #334155; }
+      .lane-title { font: 700 15px Arial, sans-serif; fill: #475569; }
+      .arrow { stroke: #334155; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .dashed { stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="760" fill="#ffffff"/>
+  <text x="600" y="35" text-anchor="middle" class="title">Enterprise Document Intelligence System</text>
+
+  <rect x="30" y="65" width="180" height="630" class="lane"/>
+  <text x="120" y="90" text-anchor="middle" class="lane-title">Sources</text>
+  <rect x="50" y="120" width="140" height="115" class="box"/>
+  <text x="120" y="148" text-anchor="middle" class="label">Users / Systems</text>
+  <text x="120" y="172" text-anchor="middle" class="small">Email, SFTP</text>
+  <text x="120" y="192" text-anchor="middle" class="small">Upload UI</text>
+  <text x="120" y="212" text-anchor="middle" class="small">Scanners, ERP/CRM</text>
+
+  <rect x="250" y="65" width="190" height="630" class="lane"/>
+  <text x="345" y="90" text-anchor="middle" class="lane-title">Ingest</text>
+  <rect x="270" y="120" width="150" height="85" class="box"/>
+  <text x="345" y="150" text-anchor="middle" class="label">Ingestion Layer</text>
+  <text x="345" y="174" text-anchor="middle" class="small">Normalize metadata</text>
+  <rect x="270" y="245" width="150" height="75" class="store"/>
+  <text x="345" y="274" text-anchor="middle" class="label">Object Storage</text>
+  <text x="345" y="296" text-anchor="middle" class="small">Original files</text>
+  <rect x="270" y="360" width="150" height="75" class="store"/>
+  <text x="345" y="389" text-anchor="middle" class="label">Event Queue</text>
+  <text x="345" y="411" text-anchor="middle" class="small">Kafka / SQS / PubSub</text>
+
+  <rect x="480" y="65" width="280" height="630" class="lane"/>
+  <text x="620" y="90" text-anchor="middle" class="lane-title">Process</text>
+  <rect x="520" y="120" width="200" height="70" class="box"/>
+  <text x="620" y="148" text-anchor="middle" class="label">Workflow Orchestrator</text>
+  <text x="620" y="170" text-anchor="middle" class="small">Retries, state, routing</text>
+  <rect x="520" y="225" width="200" height="65" class="box"/>
+  <text x="620" y="252" text-anchor="middle" class="label">Classify + Route</text>
+  <text x="620" y="273" text-anchor="middle" class="small">Invoice, contract, policy</text>
+  <rect x="520" y="325" width="200" height="65" class="box"/>
+  <text x="620" y="352" text-anchor="middle" class="label">OCR + Text Extract</text>
+  <text x="620" y="373" text-anchor="middle" class="small">PDF text + scan OCR</text>
+  <rect x="520" y="425" width="200" height="65" class="box"/>
+  <text x="620" y="452" text-anchor="middle" class="label">Parse Layout</text>
+  <text x="620" y="473" text-anchor="middle" class="small">Pages, tables, headers</text>
+  <rect x="520" y="525" width="200" height="65" class="box"/>
+  <text x="620" y="552" text-anchor="middle" class="label">Extract + Summarize</text>
+  <text x="620" y="573" text-anchor="middle" class="small">Fields, entities, summaries</text>
+  <rect x="520" y="625" width="200" height="50" class="warn"/>
+  <text x="620" y="655" text-anchor="middle" class="label">Human Review</text>
+
+  <rect x="800" y="65" width="190" height="630" class="lane"/>
+  <text x="895" y="90" text-anchor="middle" class="lane-title">Store + Index</text>
+  <rect x="820" y="130" width="150" height="60" class="store"/>
+  <text x="895" y="158" text-anchor="middle" class="label">Structured DB</text>
+  <text x="895" y="178" text-anchor="middle" class="small">Fields, metadata</text>
+  <rect x="820" y="230" width="150" height="60" class="store"/>
+  <text x="895" y="258" text-anchor="middle" class="label">Full-text Search</text>
+  <text x="895" y="278" text-anchor="middle" class="small">Keyword search</text>
+  <rect x="820" y="330" width="150" height="60" class="store"/>
+  <text x="895" y="358" text-anchor="middle" class="label">Vector DB</text>
+  <text x="895" y="378" text-anchor="middle" class="small">Semantic search</text>
+  <rect x="820" y="430" width="150" height="60" class="store"/>
+  <text x="895" y="458" text-anchor="middle" class="label">Warehouse</text>
+  <text x="895" y="478" text-anchor="middle" class="small">Reporting</text>
+  <rect x="820" y="530" width="150" height="60" class="store"/>
+  <text x="895" y="558" text-anchor="middle" class="label">Knowledge Graph</text>
+  <text x="895" y="578" text-anchor="middle" class="small">Optional relations</text>
+
+  <rect x="1030" y="65" width="140" height="630" class="lane"/>
+  <text x="1100" y="90" text-anchor="middle" class="lane-title">Access</text>
+  <rect x="1045" y="145" width="110" height="65" class="access"/>
+  <text x="1100" y="172" text-anchor="middle" class="label">API</text>
+  <text x="1100" y="192" text-anchor="middle" class="small">REST/GraphQL</text>
+  <rect x="1045" y="260" width="110" height="65" class="access"/>
+  <text x="1100" y="287" text-anchor="middle" class="label">Chatbot</text>
+  <text x="1100" y="307" text-anchor="middle" class="small">RAG + tools</text>
+  <rect x="1045" y="375" width="110" height="65" class="access"/>
+  <text x="1100" y="402" text-anchor="middle" class="label">Auth</text>
+  <text x="1100" y="422" text-anchor="middle" class="small">SSO, RBAC</text>
+  <rect x="1045" y="490" width="110" height="65" class="access"/>
+  <text x="1100" y="517" text-anchor="middle" class="label">Audit Logs</text>
+  <text x="1100" y="537" text-anchor="middle" class="small">Traceability</text>
+
+  <path class="arrow" d="M190 162 L270 162"/>
+  <path class="arrow" d="M345 205 L345 245"/>
+  <path class="arrow" d="M420 397 L520 155"/>
+  <path class="arrow" d="M620 190 L620 225"/>
+  <path class="arrow" d="M620 290 L620 325"/>
+  <path class="arrow" d="M620 390 L620 425"/>
+  <path class="arrow" d="M620 490 L620 525"/>
+  <path class="arrow dashed" d="M620 590 L620 625"/>
+  <path class="arrow" d="M720 555 C765 555 775 160 820 160"/>
+  <path class="arrow" d="M720 555 C765 555 775 260 820 260"/>
+  <path class="arrow" d="M720 555 C765 555 775 360 820 360"/>
+  <path class="arrow" d="M720 555 C765 555 775 460 820 460"/>
+  <path class="arrow" d="M720 555 L820 560"/>
+  <path class="arrow" d="M970 160 L1045 177"/>
+  <path class="arrow" d="M970 260 L1045 177"/>
+  <path class="arrow" d="M970 360 L1045 292"/>
+  <path class="arrow" d="M970 260 L1045 292"/>
+  <path class="arrow" d="M1045 292 C1010 292 1010 172 1045 172"/>
+  <path class="arrow dashed" d="M1045 407 L1000 407 L1000 177 L1045 177"/>
+  <path class="arrow dashed" d="M1045 522 L1000 522 L1000 292 L1045 292"/>
+</svg>

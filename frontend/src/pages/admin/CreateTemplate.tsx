@@ -231,6 +231,9 @@ const CreateTemplate: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', paddingTop: '16px' }}>
                 Text (Use {'<<identifier>>'} for placeholders)
               </label>
+              <p style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                Formatting tags: {'<right>'}Text right-aligns that line. Paired tags like {'<center>'}Title{'</center>'}, {'<indent>'}Text{'</indent>'}, and {'<tab>'} are also supported.
+              </p>
               <RichTextEditor
                 value={markdownContent}
                 onChange={setMarkdownContent}

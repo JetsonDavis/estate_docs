@@ -2470,6 +2470,16 @@ class DocumentService:
             flags=re.DOTALL
         )
 
+        # Convert line-start <right>text to a right-aligned paragraph through the next
+        # explicit line/paragraph boundary. This supports template shorthand like:
+        #   <right>Signed this day
+        text = re.sub(
+            r'<[Rr][Ii][Gg][Hh][Tt]>(.*?)(?=(?:<[Cc][Rr]>|</p>|<p\b|$))',
+            lambda m: apply_alignment(m, 'class="ql-align-right"'),
+            text,
+            flags=re.DOTALL
+        )
+
         # Convert <indent>...</indent> to HTML with left margin/indent
         text = re.sub(
             r'<[Ii][Nn][Dd][Ee][Nn][Tt]>(.*?)</[Ii][Nn][Dd][Ee][Nn][Tt]>',

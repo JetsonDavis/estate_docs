@@ -64,6 +64,28 @@ class TestFormattingTagsInTemplate:
         assert right_para is not None
         assert right_para.alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
+    def test_right_tag_line_shorthand(self):
+        """<right>text should right-align only that line through the next <cr>."""
+        template = 'Normal line<cr><right>RIGHT LINE<cr>Normal again'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        right_para = None
+        normal_after = None
+        for para in doc.paragraphs:
+            if 'RIGHT LINE' in para.text:
+                right_para = para
+            if 'Normal again' in para.text:
+                normal_after = para
+
+        assert right_para is not None
+        assert right_para.alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        assert normal_after is not None
+        assert normal_after.alignment in (None, WD_ALIGN_PARAGRAPH.LEFT)
+
     def test_right_with_cr_inside(self):
         """<right> with <cr> inside should right-align all lines in one paragraph."""
         template = '<right>LINE1<cr>LINE2</right>'
