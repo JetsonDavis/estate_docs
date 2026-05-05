@@ -258,6 +258,9 @@ const Header: React.FC = () => {
                     <HeaderLink to="/admin/templates">
                       Templates
                     </HeaderLink>
+                    <HeaderLink to="/admin/users">
+                      Users
+                    </HeaderLink>
                     <HeaderLink to="/document">
                       Input Form
                     </HeaderLink>
@@ -301,14 +304,16 @@ const Header: React.FC = () => {
                     </IconButton>
                     {showDropdown && (
                       <DropdownMenu>
-                        <DropdownItem
-                          onClick={() => {
-                            setShowDropdown(false)
-                            navigate('/admin/users')
-                          }}
-                        >
-                          Users
-                        </DropdownItem>
+                        {isAdmin && (
+                          <DropdownItem
+                            onClick={() => {
+                              setShowDropdown(false)
+                              navigate('/admin/users')
+                            }}
+                          >
+                            Users
+                          </DropdownItem>
+                        )}
                         <DropdownItem
                           onClick={() => {
                             setShowDropdown(false)

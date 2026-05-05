@@ -207,6 +207,21 @@ const Dashboard: React.FC = () => {
               <DashboardCard>
                 <CardHeader>
                   <CardIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m0-4a4 4 0 100-8 4 4 0 000 8zm8 0a4 4 0 100-8 4 4 0 000 8z" />
+                  </CardIcon>
+                  <CardContent>
+                    <CardTitle>Users</CardTitle>
+                    <CardDescription>Manage user accounts and roles</CardDescription>
+                  </CardContent>
+                </CardHeader>
+                <CardButton to="/admin/users" $secondary>
+                  Manage Users
+                </CardButton>
+              </DashboardCard>
+
+              <DashboardCard>
+                <CardHeader>
+                  <CardIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </CardIcon>
                   <CardContent>
@@ -262,7 +277,7 @@ const Dashboard: React.FC = () => {
             <InfoTitle>Welcome to Estate Doc(tor)</InfoTitle>
             <InfoText>
               {isAdmin
-                ? 'As an administrator, you can manage users, create question groups, design document templates, and configure document flows.'
+                ? 'As an administrator, you can manage users, create question groups, design document templates, and merge completed documents.'
                 : 'Complete documents to generate personalized estate documents based on your answers.'}
             </InfoText>
           </InfoContent>

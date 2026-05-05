@@ -341,6 +341,29 @@ class DocumentService:
         input_form_run.font.size = Pt(8)
 
     @staticmethod
+    def _extract_footer_tag(text: str) -> Tuple[str, Optional[str]]:
+        """Remove <footer> tags from merged body content and return the last footer value."""
+        footer_text: Optional[str] = None
+
+        def capture_footer(match):
+            nonlocal footer_text
+            raw_footer = match.group(1)
+            normalized = re.sub(r'\s*<[Cc][Rr]>\s*', ' ', raw_footer)
+            normalized = re.sub(r'<br(?:\s[^>]*)?\s*/?>', ' ', normalized, flags=re.IGNORECASE)
+            normalized = re.sub(r'<[^>]+>', '', normalized)
+            footer_text = re.sub(r'\s+', ' ', normalized).strip()
+            return ''
+
+        cleaned = re.sub(
+            r'<[Ff][Oo][Oo][Tt][Ee][Rr]>(.*?)</[Ff][Oo][Oo][Tt][Ee][Rr]>',
+            capture_footer,
+            text,
+            flags=re.DOTALL
+        )
+
+        return cleaned, footer_text
+
+    @staticmethod
     def generate_document(
         db: Session,
         request: GenerateDocumentRequest,
@@ -2599,7 +2622,14 @@ class DocumentService:
         return html
 
     @staticmethod
-    def _merge_template(template_content: str, answer_map: dict, raw_answer_map: dict = None, conjunction_map: dict = None, identifier_group_map: dict = None) -> str:
+    def _merge_template(
+        template_content: str,
+        answer_map: dict,
+        raw_answer_map: dict = None,
+        conjunction_map: dict = None,
+        identifier_group_map: dict = None,
+        return_footer: bool = False
+    ):
         """
         Merge template content with answer values.
 
@@ -2610,7 +2640,8 @@ class DocumentService:
         3. [[ ... ]] conditional sections — remove sections with empty identifiers
         4. Counter tokens (##, ###, ##%) — replace with running numbers
         5. Identifier replacement — replace remaining <<identifier>> tokens
-        6. Formatting tags — process alignment, tabs, and indentation tags
+        6. Footer tag extraction — remove footer override tags from body content
+        7. Formatting tags — process alignment, tabs, and indentation tags
 
         Args:
             template_content: Template markdown content
@@ -2620,7 +2651,8 @@ class DocumentService:
             identifier_group_map: {identifier: repeatable_group_id} for repeatable questions
 
         Returns:
-            Merged content with identifiers replaced
+            Merged content with identifiers replaced, or (content, footer_text) when
+            return_footer=True. footer_text is None when no <footer> tag was present.
         """
         import html
 
@@ -2659,6 +2691,7 @@ class DocumentService:
         raw_map = raw_answer_map if raw_answer_map else answer_map
         _id_grp_map = identifier_group_map or {}
         global_counter = [0]
+        footer_text = None
 
         # Pass 0: Process macros
         merged = DocumentService._process_macros(template_content)
@@ -2690,7 +2723,11 @@ class DocumentService:
             merged, answer_map, raw_answer_map, conjunction_map, identifier_group_map
         )
 
-        # Pass 6: Formatting tags (alignment, tabs, indentation)
+        # Pass 6: Footer tag extraction. Footer text can include resolved identifiers,
+        # but the tag itself should not appear in the document body.
+        merged, footer_text = DocumentService._extract_footer_tag(merged)
+
+        # Pass 7: Formatting tags (alignment, tabs, indentation)
         merged = DocumentService._process_formatting_tags(merged)
 
         # <cr> after </p> or before <p> is redundant (block boundary already breaks lines); if turned
@@ -2729,6 +2766,9 @@ class DocumentService:
 
         # Strip leading/trailing whitespace from the final output
         merged = merged.strip()
+
+        if return_footer:
+            return merged, footer_text
 
         return merged
 
@@ -2973,11 +3013,19 @@ class DocumentService:
         # Get template markdown content and merge using the shared _merge_template function
         # This handles all conditional logic ([[ ]], {{ IF }}, etc.) and identifier replacement
         content = template.markdown_content or ""
-        merged_content = DocumentService._merge_template(content, answer_map, raw_answer_map, conj_map, id_grp_map)
+        merged_content, footer_text = DocumentService._merge_template(
+            content,
+            answer_map,
+            raw_answer_map,
+            conj_map,
+            id_grp_map,
+            return_footer=True
+        )
 
         # Create a Word document
         doc = Document()
-        DocumentService._add_merge_footer(doc, session.client_identifier or '')
+        footer_value = footer_text if footer_text is not None else (session.client_identifier or '')
+        DocumentService._add_merge_footer(doc, footer_value)
 
         # Clean and prepare HTML content
         # The merged_content now contains HTML from the rich text editor

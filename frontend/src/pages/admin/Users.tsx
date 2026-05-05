@@ -599,10 +599,10 @@ const Users: React.FC = () => {
       setRoleUpdatingId(user.id)
       setError('')
       await userService.updateUser(user.id, { role })
-      setSuccess('User type updated')
+      setSuccess('Role updated')
       await loadUsers()
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update user type')
+      setError(err.response?.data?.detail || 'Failed to update role')
     } finally {
       setRoleUpdatingId(null)
     }
@@ -660,9 +660,9 @@ const Users: React.FC = () => {
               setPage(1)
             }}
           >
-            <option value="all">All user types</option>
+            <option value="all">All roles</option>
             <option value="admin">Admin</option>
-            <option value="user">User</option>
+            <option value="user">Staff</option>
           </FilterSelect>
           <FilterSelect
             value={statusFilter}
@@ -692,7 +692,7 @@ const Users: React.FC = () => {
                   <th>User Name</th>
                   <th>Full Name</th>
                   <th>Email</th>
-                  <th>User Type</th>
+                  <th>Role</th>
                   <th>Status</th>
                   <th>Last Login</th>
                   <th>Actions</th>
@@ -719,15 +719,15 @@ const Users: React.FC = () => {
                         }
                         title={
                           currentUser && user.id === currentUser.id
-                            ? 'You cannot change your own user type'
+                            ? 'You cannot change your own role'
                             : undefined
                         }
                         onChange={e =>
                           handleTableRoleChange(user, e.target.value as 'admin' | 'user')
                         }
-                        aria-label={`User type for ${user.username}`}
+                        aria-label={`Role for ${user.username}`}
                       >
-                        <option value="user">User</option>
+                        <option value="user">Staff</option>
                         <option value="admin">Admin</option>
                       </TableRoleSelect>
                     </td>
@@ -839,7 +839,7 @@ const Users: React.FC = () => {
                 />
               </FormGroup>
               <FormGroup>
-                <FormLabel>User Type</FormLabel>
+                <FormLabel>Role</FormLabel>
                 <FormSelect
                   value={formData.role || 'user'}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
@@ -850,11 +850,11 @@ const Users: React.FC = () => {
                   }
                   title={
                     editingUser && currentUser && editingUser.id === currentUser.id
-                      ? 'You cannot change your own user type'
+                      ? 'You cannot change your own role'
                       : undefined
                   }
                 >
-                  <option value="user">User</option>
+                  <option value="user">Staff</option>
                   <option value="admin">Admin</option>
                 </FormSelect>
               </FormGroup>

@@ -23,6 +23,42 @@ class TestMergeDocumentFooter:
         assert footer_paragraph.text.startswith("\t")
         assert footer_paragraph.runs[-1].font.size == Pt(8)
 
+    def test_merge_template_extracts_footer_override_and_removes_body_tag(self):
+        merged, footer_text = DocumentService._merge_template(
+            "Body text<cr><footer>Custom footer text</footer>",
+            {},
+            {},
+            return_footer=True
+        )
+
+        assert footer_text == "Custom footer text"
+        assert "Body text" in merged
+        assert "Custom footer text" not in merged
+        assert "<footer>" not in merged.lower()
+
+    def test_footer_override_resolves_identifiers_before_extraction(self):
+        merged, footer_text = DocumentService._merge_template(
+            "Body text<footer><<client_name>> Estate Plan</footer>",
+            {"client_name": "Jane Client"},
+            {"client_name": "Jane Client"},
+            return_footer=True
+        )
+
+        assert footer_text == "Jane Client Estate Plan"
+        assert "Jane Client Estate Plan" not in merged
+
+    def test_add_merge_footer_uses_custom_footer_text(self):
+        doc = Document()
+
+        DocumentService._add_merge_footer(doc, "Custom Footer")
+
+        footer_paragraph = doc.sections[0].footer.paragraphs[0]
+        footer_xml = footer_paragraph._p.xml
+
+        assert "PAGE" in footer_xml
+        assert "Custom Footer" in footer_paragraph.text
+        assert footer_paragraph.runs[-1].font.size == Pt(8)
+
 
 class TestMacroWithArrayIndex:
     """Regression tests: macro containing <<identifier[N]>> must resolve."""
