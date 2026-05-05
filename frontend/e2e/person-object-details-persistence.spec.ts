@@ -117,7 +117,7 @@ test.describe('Person object details persistence', () => {
     await textInputs.nth(6).fill('85001')
     await textInputs.nth(6).blur()
 
-    await page.getByRole('button', { name: 'Exit' }).click()
+    await page.getByRole('button', { name: 'E' }).click()
     await page.waitForURL(url => url.pathname === '/document', { timeout: 10000 })
 
     const session = await api('GET', `/sessions/${sessionId}`)

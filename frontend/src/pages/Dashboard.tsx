@@ -207,6 +207,21 @@ const Dashboard: React.FC = () => {
               <DashboardCard>
                 <CardHeader>
                   <CardIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h8m-8 4h8m-8 4h5m-7 6h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-4.414-4.414A1 1 0 0012.586 4H6a2 2 0 00-2 2v13a2 2 0 002 2z" />
+                  </CardIcon>
+                  <CardContent>
+                    <CardTitle>Merge Documents</CardTitle>
+                    <CardDescription>Merge input forms with document templates</CardDescription>
+                  </CardContent>
+                </CardHeader>
+                <CardButton to="/merge-documents" $secondary>
+                  Merge Documents
+                </CardButton>
+              </DashboardCard>
+
+              <DashboardCard>
+                <CardHeader>
+                  <CardIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m0-4a4 4 0 100-8 4 4 0 000 8zm8 0a4 4 0 100-8 4 4 0 000 8z" />
                   </CardIcon>
                   <CardContent>
@@ -263,6 +278,21 @@ const Dashboard: React.FC = () => {
                 </CardHeader>
                 <CardButton to="/documents" $secondary>
                   View Documents
+                </CardButton>
+              </DashboardCard>
+
+              <DashboardCard>
+                <CardHeader>
+                  <CardIcon fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h8m-8 4h8m-8 4h5m-7 6h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-4.414-4.414A1 1 0 0012.586 4H6a2 2 0 00-2 2v13a2 2 0 002 2z" />
+                  </CardIcon>
+                  <CardContent>
+                    <CardTitle>Merge Documents</CardTitle>
+                    <CardDescription>Merge input forms with document templates</CardDescription>
+                  </CardContent>
+                </CardHeader>
+                <CardButton to="/merge-documents" $secondary>
+                  Merge Documents
                 </CardButton>
               </DashboardCard>
             </>

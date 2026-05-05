@@ -4172,7 +4172,7 @@ const InputForms: React.FC = () => {
                   >
                     {submitting ? 'Saving...' : (
                       sessionData.is_last_group
-                        ? 'Exit'
+                        ? 'Save'
                         : 'Next →'
                     )}
                   </BtnPrimary>

@@ -20,6 +20,8 @@ from .s3_service import s3_service
 
 _logger = logging.getLogger(__name__)
 
+_RIGHT_TAB_MARKER = '\ue010RIGHT_TAB\ue011'
+
 
 class HTMLToWordConverter(HTMLParser):
     """Custom HTML parser that converts HTML to Word document with proper formatting."""
@@ -47,6 +49,11 @@ class HTMLToWordConverter(HTMLParser):
         pf.space_before = Pt(0)
         pf.space_after = Pt(0)
         pf.line_spacing_rule = WD_LINE_SPACING.SINGLE
+
+    @staticmethod
+    def _add_right_tab_stop(paragraph):
+        """Add a right tab stop for inline right-aligned text."""
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Inches(6.5), WD_TAB_ALIGNMENT.RIGHT)
 
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
@@ -196,6 +203,10 @@ class HTMLToWordConverter(HTMLParser):
         if self.current_paragraph is None:
             self.current_paragraph = self.doc.add_paragraph()
             self._default_paragraph_spacing(self.current_paragraph)
+
+        if _RIGHT_TAB_MARKER in data:
+            self._add_right_tab_stop(self.current_paragraph)
+            data = data.replace(_RIGHT_TAB_MARKER, '\t')
 
         # Handle tabs by converting them to proper Word tab stops
         # Split data by tabs and add tab characters
@@ -2553,14 +2564,14 @@ class DocumentService:
         - <center>text</center> or <CENTER>text</CENTER> - Center alignment
         - <right>text</right> or <RIGHT>text</RIGHT> - Right alignment
         - <indent>text</indent> or <INDENT>text</INDENT> - Indent text
-        - <tab> or <TAB> - Insert a tab character
+        - <tab> or <TAB> - Insert 10 spaces
 
         These tags are converted to HTML that the HTMLToWordConverter can process.
         If there are <cr> tags inside formatting tags, lines are joined with <br/> in one
         paragraph so Word does not add extra space between lines (vs one <p> per line).
         """
-        # Convert <tab> to actual tab character
-        text = re.sub(r'<[Tt][Aa][Bb]>', '\t', text)
+        # Convert <tab> to a fixed-width spacer.
+        text = re.sub(r'<[Tt][Aa][Bb]>', ' ' * 10, text)
 
         def apply_alignment(match, alignment_class):
             """Helper to apply alignment to content, handling <cr> tokens inside."""
@@ -2572,6 +2583,31 @@ class DocumentService:
             inner = '<br/>'.join(lines)
             # Single <p> per block — do not emit </p>...<p> glue (orphan <p> + <cr> caused huge Word gaps).
             return f'<p {alignment_class}>{inner}</p>'
+
+        def is_inline_right(match):
+            """Inline <right> when there is left-side text on the same template line."""
+            content = match.group(1)
+            if re.search(r'<[Cc][Rr]>|<br(?:\s[^>]*)?\s*/?>', content, flags=re.IGNORECASE):
+                return False
+
+            prefix = text[:match.start()]
+            line_parts = re.split(r'<[Cc][Rr]>|</p>|<p\b[^>]*>|<br(?:\s[^>]*)?\s*/?>', prefix, flags=re.IGNORECASE)
+            line_prefix = line_parts[-1] if line_parts else ''
+            line_prefix = re.sub(
+                r'<[Rr][Ii][Gg][Hh][Tt]>.*?</[Rr][Ii][Gg][Hh][Tt]>',
+                '',
+                line_prefix,
+                flags=re.DOTALL
+            )
+            line_prefix = re.sub(r'<[^>]+>', '', line_prefix)
+            line_prefix = line_prefix.replace('&nbsp;', ' ').replace('\xa0', ' ')
+            return bool(line_prefix.strip())
+
+        def apply_paired_right(match):
+            content = match.group(1).strip()
+            if is_inline_right(match):
+                return f'{_RIGHT_TAB_MARKER}{content}'
+            return apply_alignment(match, 'class="ql-align-right"')
 
         # Convert <center>...</center> to HTML with alignment class
         # Handle <cr> inside by applying centering to each line
@@ -2585,7 +2621,7 @@ class DocumentService:
         # Convert <right>...</right> to HTML with alignment class
         text = re.sub(
             r'<[Rr][Ii][Gg][Hh][Tt]>(.*?)</[Rr][Ii][Gg][Hh][Tt]>',
-            lambda m: apply_alignment(m, 'class="ql-align-right"'),
+            apply_paired_right,
             text,
             flags=re.DOTALL
         )

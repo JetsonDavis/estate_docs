@@ -4,7 +4,7 @@ import re
 
 import pytest
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT
 from docx.shared import Pt
 from src.services.document_service import DocumentService, HTMLToWordConverter
 
@@ -100,6 +100,23 @@ class TestFormattingTagsInTemplate:
         text = right_blocks[0].text.replace('\n', '').replace('\r', '')
         assert 'LINE1' in text and 'LINE2' in text
 
+    def test_inline_right_tag_stays_in_same_paragraph_with_right_tab(self):
+        """Left text plus <right> text should share one paragraph baseline."""
+        template = '_____________________________________ <right>_____________________________________</right>'
+        merged = DocumentService._merge_template(template, {}, {})
+
+        doc = Document()
+        parser = HTMLToWordConverter(doc)
+        parser.feed(merged)
+
+        non_empty = [p for p in doc.paragraphs if p.text.strip()]
+        assert len(non_empty) == 1
+        paragraph = non_empty[0]
+        assert paragraph.alignment in (None, WD_ALIGN_PARAGRAPH.LEFT)
+        assert '\t' in paragraph.text
+        assert paragraph.text.count('_____________________________________') == 2
+        assert any(tab.alignment == WD_TAB_ALIGNMENT.RIGHT for tab in paragraph.paragraph_format.tab_stops)
+
     def test_right_preserves_editor_paragraph_breaks_inside_tag(self):
         """Paragraph breaks created inside <right> should remain Word line breaks."""
         template = '<p><right>LINE1</p><p>LINE2</right></p>'
@@ -148,7 +165,7 @@ class TestFormattingTagsInTemplate:
         assert 'LINE1' in text and 'LINE2' in text
 
     def test_tab_tag_basic(self):
-        """<tab> should insert tab character."""
+        """<tab> should insert 10 spaces."""
         template = 'Name<tab>Address<tab>Phone'
         merged = DocumentService._merge_template(template, {}, {})
 
@@ -156,10 +173,10 @@ class TestFormattingTagsInTemplate:
         parser = HTMLToWordConverter(doc)
         parser.feed(merged)
 
-        # Check that tab characters are present
         text = ''.join(run.text for run in doc.paragraphs[0].runs)
-        assert '\t' in text
-        assert text.count('\t') == 2
+        assert '\t' not in text
+        spacer = '\xa0' * 10
+        assert 'Name' + spacer + 'Address' + spacer + 'Phone' == text
 
     def test_center_with_identifier(self):
         """<center> tag should work with identifiers."""
@@ -256,7 +273,7 @@ Name<tab>Address<tab>Phone
         parser.feed(merged)
 
         text = ''.join(run.text for run in doc.paragraphs[0].runs)
-        assert '\t' in text
+        assert text == 'A' + ('\xa0' * 10) + 'B'
 
     def test_cr_after_center_before_body_no_giant_gap(self):
         """<cr> after </center> must not become an extra paragraph + break (Word gap bug)."""
@@ -332,12 +349,11 @@ Name<tab>Address<tab>Phone
         HTMLToWordConverter(doc).feed(merged)
 
         notary = next(paragraph for paragraph in doc.paragraphs if "NOTARY PUBLIC" in paragraph.text)
-        witness = next(
-            paragraph for paragraph in doc.paragraphs
-            if paragraph.text.strip() == "Witness" and paragraph.alignment == WD_ALIGN_PARAGRAPH.RIGHT
-        )
+        witness = next(paragraph for paragraph in doc.paragraphs if paragraph.text.count("Witness") == 2)
         assert notary.alignment == WD_ALIGN_PARAGRAPH.CENTER
-        assert witness.alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        assert witness.alignment in (None, WD_ALIGN_PARAGRAPH.LEFT)
+        assert "\t" in witness.text
+        assert any(tab.alignment == WD_TAB_ALIGNMENT.RIGHT for tab in witness.paragraph_format.tab_stops)
 
     def test_br_must_not_become_paragraph_breaks_in_word_pipeline(self):
         """Regression: merge_document used to replace every <br/> with </p><p>, duplicating Word
