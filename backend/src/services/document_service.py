@@ -457,6 +457,30 @@ class DocumentService:
         )
 
     @staticmethod
+    def _merge_consecutive_quill_alignment_paragraphs_with_cr(html: str) -> str:
+        """
+        Join consecutive <p> tags that share the same Quill alignment using <cr>.
+
+        Rich text editors often emit one paragraph per line when alignment is applied. A line
+        that contains only the literal <cr> token then becomes its own <p>; after
+        _preserve_quill_alignment_paragraphs that turns into <center><cr></center> (or right).
+        _process_formatting_tags.apply_alignment drops such blocks because splitting on <cr>
+        yields no non-empty lines — so centered content after the token disappears.
+
+        Merging same-alignment paragraphs before conversion preserves line boundaries and tokens.
+        """
+        for class_token in ('ql-align-center', 'ql-align-right'):
+            esc = re.escape(class_token)
+            paragraph_body = r'(?:(?!</p>).)*?'
+            pat = rf'(<p\b[^>]*\b{esc}\b[^>]*>)({paragraph_body})(</p>)(\s*)(<p\b[^>]*\b{esc}\b[^>]*>)({paragraph_body})(</p>)'
+            for _ in range(64):
+                new = re.sub(pat, r'\1\2<cr>\6\3', html, flags=re.DOTALL | re.IGNORECASE)
+                if new == html:
+                    break
+                html = new
+        return html
+
+    @staticmethod
     def _unwrap_custom_tags_from_alignment_wrappers(text: str) -> str:
         """Avoid nested alignment when Quill alignment wraps explicit custom tags."""
         for tag in ('center', 'right'):
@@ -2829,6 +2853,9 @@ class DocumentService:
         template_content = DocumentService._unwrap_inline_tags_splitting_template_syntax(template_content)
 
         template_content = DocumentService._protect_quill_inline_format(template_content)
+        template_content = DocumentService._merge_consecutive_quill_alignment_paragraphs_with_cr(
+            template_content
+        )
         template_content = DocumentService._preserve_quill_alignment_paragraphs(template_content)
         template_content = DocumentService._unwrap_custom_tags_from_alignment_wrappers(template_content)
         template_content = DocumentService._preserve_block_breaks_inside_template_tags(template_content)

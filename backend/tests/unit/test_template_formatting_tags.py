@@ -333,6 +333,28 @@ Name<tab>Address<tab>Phone
         assert "AFFIDAVIT OF WITNESSES" in centered_text
         assert "NOTARY PUBLIC" in centered_text
 
+    def test_quill_center_split_paragraphs_with_cr_only_middle_preserves_lines(self):
+        """Regression: Quill may emit a centered paragraph that contains only <cr>; merge must not drop following lines."""
+        merged = DocumentService._merge_template(
+            '<p class="ql-align-center">TITLE LINE</p>'
+            '<p class="ql-align-center">&lt;cr&gt;</p>'
+            '<p class="ql-align-center">&lt;&lt;name&gt;&gt;</p>',
+            {'name': 'Jane Doe'},
+            {}
+        )
+        assert 'TITLE LINE' in merged
+        assert 'Jane Doe' in merged
+
+        doc = Document()
+        HTMLToWordConverter(doc).feed(merged)
+        centered = [
+            paragraph for paragraph in doc.paragraphs
+            if paragraph.text.strip() and paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        ]
+        assert len(centered) == 1
+        body = centered[0].text.replace('\n', '').replace('\r', '')
+        assert 'TITLE LINE' in body and 'Jane Doe' in body
+
     def test_distant_center_blocks_do_not_swallow_intervening_right_blocks(self):
         """Only adjacent aligned paragraphs should be merged."""
         merged = DocumentService._merge_template(
